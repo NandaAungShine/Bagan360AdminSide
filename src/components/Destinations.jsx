@@ -1,5 +1,7 @@
+// components/Destinations.jsx
 import React, { useState, useEffect } from 'react';
 import Header from './Header';
+import axios from 'axios';
 
 function Destinations() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -8,11 +10,12 @@ function Destinations() {
   });
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedDestinationId, setSelectedDestinationId] = useState(null);
   const [selectedDestinationForEdit, setSelectedDestinationForEdit] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showAllDropdown, setShowAllDropdown] = useState(false);
   const [images, setImages] = useState([]);
+  const [imageFiles, setImageFiles] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const [formData, setFormData] = useState({
     destinationName: '',
@@ -27,80 +30,118 @@ function Destinations() {
     images: []
   });
 
-  const [destinations, setDestinations] = useState([
-    {
-      id: 1,
-      name: 'Bagan Ancient City',
-      location: 'Mandalay Region',
-      price: '150,000',
-      rating: 4.8,
-      reviews: '2.3K',
-      images: ['🏯', '🏯', '🏯'],
-      description: 'Thousands of ancient pagodas and temples spread across the plains',
-      bestTimeToVisit: 'November to February',
-      activities: 'Temple hopping, hot air balloon, sunset viewing'
+  const [destinations, setDestinations] = useState([]);
+
+  const getToken = () => {
+    return localStorage.getItem('token');
+  };
+
+  const api = axios.create({
+    baseURL: '/api',
+    timeout: 30000,
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
     },
-    {
-      id: 2,
-      name: 'Inle Lake',
-      location: 'Shan State',
-      price: '120,000',
-      rating: 4.7,
-      reviews: '1.8K',
-      images: ['🌊', '🌊', '🌊'],
-      description: 'Famous for floating gardens and leg-rowing fishermen',
-      bestTimeToVisit: 'September to November',
-      activities: 'Boat tours, floating markets, vineyard visits'
-    },
-    {
-      id: 3,
-      name: 'Golden Rock (Kyaiktiyo)',
-      location: 'Mon State',
-      price: '80,000',
-      rating: 4.6,
-      reviews: '1.2K',
-      images: ['⛰️', '⛰️', '⛰️'],
-      description: 'Sacred golden boulder balancing on the edge of a cliff',
-      bestTimeToVisit: 'November to March',
-      activities: 'Pilgrimage, hiking, sunrise viewing'
-    },
-    {
-      id: 4,
-      name: 'Mandalay Palace',
-      location: 'Mandalay',
-      price: '50,000',
-      rating: 4.4,
-      reviews: '950',
-      images: ['🏰', '🏰', '🏰'],
-      description: 'Last royal palace of the Burmese monarchy',
-      bestTimeToVisit: 'October to February',
-      activities: 'Cultural tours, palace exploration, photography'
-    },
-    {
-      id: 5,
-      name: 'Ngapali Beach',
-      location: 'Rakhine State',
-      price: '200,000',
-      rating: 4.9,
-      reviews: '3.1K',
-      images: ['🏖️', '🏖️', '🏖️'],
-      description: 'Pristine white sand beach with crystal clear waters',
-      bestTimeToVisit: 'November to April',
-      activities: 'Swimming, snorkeling, seafood dining, boat trips'
-    },
-    {
-      id: 6,
-      name: 'Shwedagon Pagoda',
-      location: 'Yangon',
-      price: '30,000',
-      rating: 4.9,
-      reviews: '5.2K',
-      images: ['🛕', '🛕', '🛕'],
-      description: 'Most sacred Buddhist pagoda in Myanmar, covered in gold',
-      bestTimeToVisit: 'Year-round',
-      activities: 'Religious tours, cultural experience, evening visits'
+  });
+
+  // Helper function for image URL
+  const getImageUrl = (imagePath) => {
+    if (!imagePath) return null;
+    // If image path starts with 'image/', use it directly with backend URL
+    if (imagePath.startsWith('image/')) {
+      return `http://130.94.21.185:8000/${imagePath}`;
     }
-  ]);
+    // Otherwise, just prepend the backend URL
+    return `http://130.94.21.185:8000/${imagePath}`;
+  };
+
+  api.interceptors.request.use(
+    (config) => {
+      const token = getToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      console.log('=== API Request ===');
+      console.log('Method:', config.method.toUpperCase());
+      console.log('URL:', config.baseURL + config.url);
+      return config;
+    },
+    (error) => {
+      console.error('Request Error:', error);
+      return Promise.reject(error);
+    }
+  );
+
+  api.interceptors.response.use(
+    (response) => {
+      console.log('=== API Response ===');
+      console.log('Status:', response.status);
+      console.log('Data:', response.data);
+      return response;
+    },
+    (error) => {
+      console.error('=== API Error ===');
+      if (error.response) {
+        console.error('Status:', error.response.status);
+        console.error('Data:', error.response.data);
+        alert(`Error ${error.response.status}: ${error.response.data?.message || error.response.data?.error || 'Server error'}`);
+      } else if (error.request) {
+        console.error('No response received');
+        alert('Cannot connect to server. Please check your connection.');
+      } else {
+        console.error('Error:', error.message);
+        alert('An error occurred. Please try again.');
+      }
+      return Promise.reject(error);
+    }
+  );
+
+  const fetchDestinations = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api.get('/admin/destination/list');
+      console.log('GET Response:', response.data);
+      
+      if (response.data && response.data.success && response.data.data) {
+        const formattedDestinations = response.data.data.map((item) => ({
+          id: item.id,
+          name: item.name || '',
+          location: item.location || '',
+          price: item.price ? `${item.price} MMK` : 'Free',
+          rating: item.rating || 4.5,
+          reviews: item.reviews || '0',
+          images: item.image ? [getImageUrl(item.image)] : ['📍'],
+          description: item.description || '',
+          bestTimeToVisit: item.best_time_to_visit || item.visit_date || '',
+          activities: item.activities || '',
+          discount: item.discount || '',
+          created_at: item.created_at || ''
+        }));
+        
+        setDestinations(formattedDestinations);
+        console.log('Formatted Destinations:', formattedDestinations);
+      } else {
+        setDestinations([]);
+      }
+    } catch (err) {
+      console.error('Fetch Error:', err);
+      setError('Failed to fetch destinations. Please try again.');
+      setDestinations([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const token = getToken();
+    if (!token) {
+      setError('Please login first');
+      return;
+    }
+    fetchDestinations();
+  }, []);
 
   const handleThemeChange = (isDark) => {
     setIsDarkMode(isDark);
@@ -124,6 +165,10 @@ function Destinations() {
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
+      // Store file for FormData
+      setImageFiles([...imageFiles, file]);
+      
+      // Preview
       const reader = new FileReader();
       reader.onloadend = () => {
         setImages([...images, reader.result]);
@@ -135,138 +180,228 @@ function Destinations() {
 
   const removeImage = (index) => {
     const newImages = images.filter((_, i) => i !== index);
+    const newImageFiles = imageFiles.filter((_, i) => i !== index);
     setImages(newImages);
+    setImageFiles(newImageFiles);
     setFormData({ ...formData, images: newImages });
   };
 
-  const handleAddDestination = () => {
-    if (formData.destinationName && formData.price) {
-      const newDestination = {
-        id: destinations.length + 1,
-        name: formData.destinationName,
-        location: formData.location || 'New Location',
-        price: formData.price.replace(/[^0-9]/g, ''),
-        rating: 4.5,
-        reviews: '0',
-        images: formData.images.length > 0 ? formData.images : ['📍'],
-        description: formData.description,
-        bestTimeToVisit: formData.bestTimeToVisit,
-        activities: formData.activities
-      };
-      setDestinations([newDestination, ...destinations]);
-      setFormData({
-        destinationName: '',
-        location: '',
-        price: '',
-        discount: '',
-        startDate: '',
-        endDate: '',
-        description: '',
-        activities: '',
-        bestTimeToVisit: '',
-        images: []
+  // ✅ CORRECT: Using FormData for POST
+  const handleAddDestination = async () => {
+    if (!formData.destinationName || !formData.price) {
+      alert('Please fill in destination name and price.');
+      return;
+    }
+
+    const token = getToken();
+    if (!token) {
+      alert('Please login first');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Create FormData
+      const formDataToSend = new FormData();
+      
+      // Add text fields
+      formDataToSend.append('name', formData.destinationName);
+      formDataToSend.append('location', formData.location || '');
+      formDataToSend.append('price', formData.price.replace(/[^0-9]/g, '') || '0');
+      formDataToSend.append('description', formData.description || '');
+      formDataToSend.append('best_time_to_visit', formData.bestTimeToVisit || '');
+      formDataToSend.append('activities', formData.activities || '');
+      formDataToSend.append('discount', formData.discount || '');
+      formDataToSend.append('start_date', formData.startDate || '');
+      formDataToSend.append('end_date', formData.endDate || '');
+
+      // Add image files
+      imageFiles.forEach((file) => {
+        formDataToSend.append('image', file);
       });
-      setImages([]);
-      alert('Destination added successfully!');
-    } else {
-      alert('Please fill in destination name and price');
+
+      console.log('Creating destination with FormData');
+      
+      // Use axios with FormData
+      const response = await axios.post('/api/admin/destination/create', formDataToSend, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
+      console.log('POST Response:', response.data);
+      
+      if (response.data && response.data.success) {
+        alert('Destination added successfully!');
+        await fetchDestinations();
+        setFormData({
+          destinationName: '',
+          location: '',
+          price: '',
+          discount: '',
+          startDate: '',
+          endDate: '',
+          description: '',
+          activities: '',
+          bestTimeToVisit: '',
+          images: []
+        });
+        setImages([]);
+        setImageFiles([]);
+      } else {
+        alert(response.data?.message || 'Failed to add destination.');
+      }
+    } catch (err) {
+      console.error('Create Error:', err);
+      if (err.response) {
+        console.error('Error Response Data:', err.response.data);
+        alert(`Error ${err.response.status}: ${err.response.data?.message || err.response.data?.error || 'Server error'}`);
+      } else {
+        alert('Error adding destination. Please try again.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleDeleteSelected = () => {
-    if (!selectedDestinationId) {
-      alert('Please select a destination to delete');
+  const handleDeleteDestination = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this destination?')) {
       return;
     }
-    if (window.confirm('Are you sure you want to delete this destination?')) {
-      setDestinations(destinations.filter(destination => destination.id !== selectedDestinationId));
-      setSelectedDestinationId(null);
-      alert('Destination deleted successfully!');
+
+    const token = getToken();
+    if (!token) {
+      alert('Please login first');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      console.log('Deleting destination ID:', id);
+      const response = await api.delete(`/admin/destination/delete/${id}`);
+      console.log('DELETE Response:', response.data);
+      
+      if (response.data && response.data.success) {
+        alert('Destination deleted successfully!');
+        await fetchDestinations();
+      } else {
+        alert(response.data?.message || 'Failed to delete destination.');
+      }
+    } catch (err) {
+      console.error('Delete Error:', err);
+      if (err.response) {
+        alert(`Error ${err.response.status}: ${err.response.data?.message || err.response.data?.error || 'Server error'}`);
+      } else {
+        alert('Error deleting destination. Please try again.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleEditSelected = () => {
-    if (!selectedDestinationId) {
-      alert('Please select a destination to edit');
-      return;
-    }
-    const destinationToEdit = destinations.find(destination => destination.id === selectedDestinationId);
+  const handleEditDestination = (id) => {
+    const destinationToEdit = destinations.find(destination => destination.id === id);
     if (destinationToEdit) {
       setSelectedDestinationForEdit(destinationToEdit);
       setFormData({
-        destinationName: destinationToEdit.name,
+        destinationName: destinationToEdit.name || '',
         location: destinationToEdit.location || '',
-        price: destinationToEdit.price,
-        discount: '',
-        startDate: '',
-        endDate: '',
+        price: destinationToEdit.price ? destinationToEdit.price.replace(/[^0-9]/g, '') : '',
+        discount: destinationToEdit.discount || '',
+        startDate: destinationToEdit.startDate || '',
+        endDate: destinationToEdit.endDate || '',
         description: destinationToEdit.description || '',
         activities: destinationToEdit.activities || '',
         bestTimeToVisit: destinationToEdit.bestTimeToVisit || '',
         images: destinationToEdit.images || []
       });
       setImages(destinationToEdit.images || []);
+      setImageFiles([]);
       setShowEditModal(true);
     }
   };
 
-  const handleConfirmEdit = () => {
-    if (selectedDestinationForEdit && formData.destinationName) {
-      const updatedDestinations = destinations.map(destination =>
-        destination.id === selectedDestinationForEdit.id
-          ? {
-              ...destination,
-              name: formData.destinationName,
-              location: formData.location || destination.location,
-              price: formData.price.replace(/[^0-9]/g, ''),
-              description: formData.description,
-              bestTimeToVisit: formData.bestTimeToVisit,
-              activities: formData.activities,
-              images: formData.images.length > 0 ? formData.images : destination.images
-            }
-          : destination
-      );
-      setDestinations(updatedDestinations);
-      setShowEditModal(false);
-      setSelectedDestinationId(null);
-      setSelectedDestinationForEdit(null);
-      setFormData({
-        destinationName: '',
-        location: '',
-        price: '',
-        discount: '',
-        startDate: '',
-        endDate: '',
-        description: '',
-        activities: '',
-        bestTimeToVisit: '',
-        images: []
+  // ✅ CORRECT: Using FormData for PUT
+  const handleConfirmEdit = async () => {
+    if (!selectedDestinationForEdit || !formData.destinationName) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    const token = getToken();
+    if (!token) {
+      alert('Please login first');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Create FormData
+      const formDataToSend = new FormData();
+      
+      formDataToSend.append('name', formData.destinationName);
+      formDataToSend.append('location', formData.location || '');
+      formDataToSend.append('price', formData.price.replace(/[^0-9]/g, '') || '0');
+      formDataToSend.append('description', formData.description || '');
+      formDataToSend.append('best_time_to_visit', formData.bestTimeToVisit || '');
+      formDataToSend.append('activities', formData.activities || '');
+      formDataToSend.append('discount', formData.discount || '');
+      formDataToSend.append('start_date', formData.startDate || '');
+      formDataToSend.append('end_date', formData.endDate || '');
+
+      imageFiles.forEach((file) => {
+        formDataToSend.append('image', file);
       });
-      setImages([]);
-      alert('Destination updated successfully!');
-    }
-  };
 
-  const handleSelectAll = () => {
-    if (selectedDestinationId === 'all') {
-      setSelectedDestinationId(null);
-    } else {
-      setSelectedDestinationId('all');
-    }
-    setShowAllDropdown(false);
-  };
-
-  const toggleDestinationSelection = (id) => {
-    if (selectedDestinationId === id) {
-      setSelectedDestinationId(null);
-    } else {
-      setSelectedDestinationId(id);
+      console.log('Updating destination ID:', selectedDestinationForEdit.id);
+      
+      const response = await axios.put(`/api/admin/destination/update/${selectedDestinationForEdit.id}`, formDataToSend, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
+      console.log('PUT Response:', response.data);
+      
+      if (response.data && response.data.success) {
+        alert('Destination updated successfully!');
+        setShowEditModal(false);
+        setSelectedDestinationForEdit(null);
+        await fetchDestinations();
+        setFormData({
+          destinationName: '',
+          location: '',
+          price: '',
+          discount: '',
+          startDate: '',
+          endDate: '',
+          description: '',
+          activities: '',
+          bestTimeToVisit: '',
+          images: []
+        });
+        setImages([]);
+        setImageFiles([]);
+      } else {
+        alert(response.data?.message || 'Failed to update destination.');
+      }
+    } catch (err) {
+      console.error('Update Error:', err);
+      if (err.response) {
+        alert(`Error ${err.response.status}: ${err.response.data?.message || err.response.data?.error || 'Server error'}`);
+      } else {
+        alert('Error updating destination. Please try again.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   const filteredDestinations = destinations.filter(destination =>
-    destination.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    destination.location.toLowerCase().includes(searchTerm.toLowerCase())
+    destination.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    destination.location?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const renderStars = (rating) => {
@@ -285,11 +420,71 @@ function Destinations() {
     );
   };
 
+  const CardActions = ({ destinationId }) => {
+    const [isOpen, setIsOpen] = useState(false);
+
+    const handleToggle = (e) => {
+      e.stopPropagation();
+      setIsOpen(!isOpen);
+    };
+
+    const handleEdit = (e) => {
+      e.stopPropagation();
+      setIsOpen(false);
+      handleEditDestination(destinationId);
+    };
+
+    const handleDelete = (e) => {
+      e.stopPropagation();
+      setIsOpen(false);
+      handleDeleteDestination(destinationId);
+    };
+
+    useEffect(() => {
+      const handleClickOutside = (event) => {
+        if (isOpen && !event.target.closest('.card-actions-wrapper')) {
+          setIsOpen(false);
+        }
+      };
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }, [isOpen]);
+
+    return (
+      <div className="card-actions-wrapper">
+        <button className="card-actions-btn" onClick={handleToggle}>
+          <i className="bi bi-three-dots-vertical"></i>
+        </button>
+        <div className={`card-actions-dropdown ${isOpen ? 'show' : ''}`}>
+          <button className="edit-btn" onClick={handleEdit}>
+            <i className="bi bi-pencil-square"></i> Edit
+          </button>
+          <button className="delete-btn" onClick={handleDelete}>
+            <i className="bi bi-trash"></i> Delete
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  if (loading && destinations.length === 0) {
+    return (
+      <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
+        <Header title="Destinations Management" onThemeChange={handleThemeChange} />
+        <div style={{ textAlign: 'center', padding: '50px' }}>
+          <div className="spinner-border" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p>Loading destinations...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Destinations Management" onThemeChange={handleThemeChange} />
 
-      {/* Search and Action Buttons Row */}
       <div className="search-actions-row">
         <div className="search-bar-wrapper">
           <i className="bi bi-search search-icon"></i>
@@ -301,34 +496,17 @@ function Destinations() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
-        <button className="action-btn delete-btn" onClick={handleDeleteSelected}>
-          <i className="bi bi-trash"></i> Delete
-        </button>
-        
-        <button className="action-btn edit-btn-action" onClick={handleEditSelected}>
-          <i className="bi bi-pencil-square"></i> Edit
-        </button>
-        
-        <div className="dropdown-wrapper">
-          <button className="action-btn all-btn" onClick={() => setShowAllDropdown(!showAllDropdown)}>
-            <i className="bi bi-check-all"></i> All <i className="bi bi-chevron-down"></i>
-          </button>
-          {showAllDropdown && (
-            <div className="dropdown-menu">
-              <button onClick={() => { setSelectedDestinationId('all'); setShowAllDropdown(false); }}>Select All</button>
-              <button onClick={() => { setSelectedDestinationId(null); setShowAllDropdown(false); }}>Deselect All</button>
-            </div>
-          )}
-        </div>
       </div>
 
-      {/* Main Content: Add Form (Left) + Destination Cards (Right) */}
+      {error && (
+        <div className="alert alert-danger" role="alert">
+          <i className="bi bi-exclamation-triangle-fill"></i> {error}
+        </div>
+      )}
+
       <div className="hotels-two-columns">
-        {/* Left Column - Add Form with Image Gallery on Top */}
         <div className="add-form-column">
           <div className="add-form-card">
-            {/* Image Gallery Section - ON TOP */}
             <div className="image-gallery-top">
               <label className="gallery-label">Images Gallery</label>
               <div className="image-gallery-wrapper">
@@ -358,10 +536,9 @@ function Destinations() {
               </div>
             </div>
 
-            {/* Form Fields - BELOW Image Gallery */}
             <div className="form-fields-section">
               <div className="add-form-group">
-                <label>Destination Name</label>
+                <label>Destination Name *</label>
                 <input
                   type="text"
                   name="destinationName"
@@ -384,11 +561,11 @@ function Destinations() {
 
               <div className="add-form-row">
                 <div className="add-form-group half">
-                  <label>Price</label>
+                  <label>Price (MMK) *</label>
                   <input
                     type="text"
                     name="price"
-                    placeholder="eg. 150000 ks"
+                    placeholder="eg. 150000"
                     value={formData.price}
                     onChange={handleInputChange}
                   />
@@ -459,55 +636,101 @@ function Destinations() {
                 ></textarea>
               </div>
 
-              <button className="add-item-btn-full" onClick={handleAddDestination}>
-                Add Destination
+              <button className="add-item-btn-full" onClick={handleAddDestination} disabled={loading}>
+                {loading ? 'Adding...' : 'Add Destination'}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Right Column - Destination Cards (2 per row) */}
         <div className="hotels-cards-column">
           <div className="hotels-scroll-area">
             <div className="hotels-grid-2cols">
-              {filteredDestinations.map((destination) => (
-                <div 
-                  key={destination.id} 
-                  className={`hotel-card-vertical ${selectedDestinationId === destination.id ? 'selected' : ''}`}
-                  onClick={() => toggleDestinationSelection(destination.id)}
-                >
-                  <div className="hotel-card-image">
-                    <div className="image-slider">
-                      <img src={destination.images[0]} alt={destination.name} />
+              {filteredDestinations.length > 0 ? (
+                filteredDestinations.map((destination) => (
+                  <div key={destination.id} className="hotel-card-vertical">
+                    <div className="hotel-card-image">
+                      <div className="image-slider">
+                        {destination.images && destination.images[0] && (
+                          destination.images[0].startsWith('http') ? (
+                            <img 
+                              src={destination.images[0]} 
+                              alt={destination.name} 
+                              style={{ objectFit: 'cover', width: '100%', height: '100%' }}
+                              onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.style.display = 'none';
+                                const parent = e.target.parentElement;
+                                if (parent) {
+                                  parent.innerHTML = `
+                                    <div style="font-size:60px;display:flex;align-items:center;justify-content:center;height:100%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white">
+                                      📍
+                                    </div>
+                                  `;
+                                }
+                              }}
+                            />
+                          ) : (
+                            <div style={{ 
+                              fontSize: '60px', 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'center', 
+                              height: '100%', 
+                              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                              color: 'white'
+                            }}>
+                              📍
+                            </div>
+                          )
+                        )}
+                      </div>
+                      <CardActions destinationId={destination.id} />
                     </div>
-                    <div className="selection-check">
-                      {selectedDestinationId === destination.id && <i className="bi bi-check-circle-fill"></i>}
-                    </div>
-                  </div>
-                  <div className="hotel-card-info">
-                    <h3 className="hotel-name">{destination.name}</h3>
-                    <p className="hotel-location">
-                      <i className="bi bi-geo-alt-fill"></i> {destination.location}
-                    </p>
-                    <p className="hotel-price">Starting from <span>MMK {destination.price}</span></p>
-                    <div className="hotel-rating">
-                      {renderStars(destination.rating)}
-                      <span className="rating-count">({destination.reviews})</span>
-                    </div>
-                    {destination.bestTimeToVisit && (
-                      <p className="best-time">
-                        <i className="bi bi-calendar-check"></i> Best: {destination.bestTimeToVisit}
+                    <div className="hotel-card-info">
+                      <h3 className="hotel-name">{destination.name}</h3>
+                      <p className="hotel-location">
+                        <i className="bi bi-geo-alt-fill"></i> {destination.location}
                       </p>
-                    )}
+                      <p className="hotel-price">Starting from <span>MMK {destination.price}</span></p>
+                      <div className="hotel-rating">
+                        {renderStars(destination.rating || 4.5)}
+                        <span className="rating-count">({destination.reviews || '0'})</span>
+                      </div>
+                      {destination.bestTimeToVisit && (
+                        <p className="best-time">
+                          <i className="bi bi-calendar-check"></i> Best: {destination.bestTimeToVisit}
+                        </p>
+                      )}
+                      {destination.description && (
+                        <p className="destination-description" style={{ fontSize: '13px', color: '#666', marginTop: '5px' }}>
+                          {destination.description.length > 80 ? `${destination.description.substring(0, 80)}...` : destination.description}
+                        </p>
+                      )}
+                      {destination.created_at && (
+                        <p className="created-at" style={{ fontSize: '11px', color: '#999', marginTop: '5px' }}>
+                          <i className="bi bi-clock"></i> Added: {destination.created_at}
+                        </p>
+                      )}
+                    </div>
                   </div>
+                ))
+              ) : (
+                <div style={{ 
+                  gridColumn: '1 / -1', 
+                  textAlign: 'center', 
+                  padding: '50px',
+                  color: '#999'
+                }}>
+                  <i className="bi bi-inbox" style={{ fontSize: '48px', display: 'block', marginBottom: '10px' }}></i>
+                  <p>No destinations found. Add your first destination!</p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Edit Modal */}
       {showEditModal && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -519,7 +742,7 @@ function Destinations() {
             </div>
             <div className="modal-body">
               <div className="form-group">
-                <label>Destination Name</label>
+                <label>Destination Name *</label>
                 <input
                   type="text"
                   name="destinationName"
@@ -538,7 +761,7 @@ function Destinations() {
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Price</label>
+                  <label>Price (MMK)</label>
                   <input
                     type="text"
                     name="price"
@@ -552,6 +775,26 @@ function Destinations() {
                     type="text"
                     name="discount"
                     value={formData.discount}
+                    onChange={handleInputChange}
+                  />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Start Date</label>
+                  <input
+                    type="date"
+                    name="startDate"
+                    value={formData.startDate}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>End Date</label>
+                  <input
+                    type="date"
+                    name="endDate"
+                    value={formData.endDate}
                     onChange={handleInputChange}
                   />
                 </div>
@@ -588,8 +831,8 @@ function Destinations() {
               <button className="discard-btn" onClick={() => setShowEditModal(false)}>
                 Cancel
               </button>
-              <button className="add-item-btn" onClick={handleConfirmEdit}>
-                Confirm Edit
+              <button className="add-item-btn" onClick={handleConfirmEdit} disabled={loading}>
+                {loading ? 'Updating...' : 'Confirm Edit'}
               </button>
             </div>
           </div>

@@ -1,3 +1,185 @@
+@import "bootstrap-icons/font/bootstrap-icons.css";
+@import "tailwindcss";
+
+/* HistoryOfPagodas.css - ဒီ CSS ကိုထည့်ပါ */
+
+/* Card Actions Dropdown */
+.card-actions-wrapper {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10;
+}
+
+.card-actions-btn {
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  color: #343a40;
+  font-size: 20px;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-actions-btn:hover {
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.card-actions-dropdown {
+  position: absolute;
+  right: 0;
+  top: 40px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  min-width: 150px;
+  padding: 8px 0;
+  z-index: 1000;
+  display: none;
+  animation: slideDown 0.2s ease;
+}
+
+.card-actions-dropdown.show {
+  display: block;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.card-actions-dropdown button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  color: #343a40;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.card-actions-dropdown button:hover {
+  background: #f8f9fa;
+}
+
+.card-actions-dropdown button.edit-btn {
+  color: #007bff;
+}
+
+.card-actions-dropdown button.edit-btn:hover {
+  background: #e7f3ff;
+}
+
+.card-actions-dropdown button.delete-btn {
+  color: #dc3545;
+}
+
+.card-actions-dropdown button.delete-btn:hover {
+  background: #ffe7e7;
+}
+
+.card-actions-dropdown button i {
+  font-size: 16px;
+  width: 20px;
+}
+
+/* Dark Theme */
+.dark-theme .card-actions-btn {
+  background: rgba(45, 55, 72, 0.9);
+  color: #e9ecef;
+}
+
+.dark-theme .card-actions-btn:hover {
+  background: #2d3748;
+}
+
+.dark-theme .card-actions-dropdown {
+  background: #2d3748;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.dark-theme .card-actions-dropdown button {
+  color: #e9ecef;
+}
+
+.dark-theme .card-actions-dropdown button:hover {
+  background: #374151;
+}
+
+.dark-theme .card-actions-dropdown button.edit-btn {
+  color: #60a5fa;
+}
+
+.dark-theme .card-actions-dropdown button.edit-btn:hover {
+  background: #1e3a5f;
+}
+
+.dark-theme .card-actions-dropdown button.delete-btn {
+  color: #f87171;
+}
+
+.dark-theme .card-actions-dropdown button.delete-btn:hover {
+  background: #3f1e1e;
+}
+
+/* Hide old action buttons */
+.search-actions-row .action-btn.delete-btn,
+.search-actions-row .action-btn.edit-btn-action,
+.search-actions-row .dropdown-wrapper {
+  display: none !important;
+}
+
+/* Hotel Card - Remove selection styles */
+.hotel-card-vertical {
+  cursor: default;
+}
+
+.hotel-card-vertical.selected {
+  border-color: #007bff;
+}
+
+.selection-check {
+  display: none !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .card-actions-dropdown {
+    min-width: 130px;
+  }
+  
+  .card-actions-dropdown button {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+}
+
+/* Modal z-index fix */
+.modal-overlay {
+  z-index: 2000;
+}
+
+.card-actions-dropdown {
+  z-index: 1500;
+}
+
 /* ==================== GLOBAL RESET ==================== */
 * {
   margin: 0;
