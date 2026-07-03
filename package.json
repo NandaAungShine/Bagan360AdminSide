@@ -1,6 +1,7 @@
 {
   "name": "bagan",
   "private": true,
+  "proxy": "http://130.94.21.185:8000",
   "version": "0.0.0",
   "type": "module",
   "scripts": {
@@ -10,18 +11,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.2.2",
-    "axios": "^1.16.0",
+    "@tailwindcss/vite": "^4.3.2",
+    "axios": "^1.18.1",
     "bootstrap": "^5.3.8",
     "bootstrap-icons": "^1.13.1",
     "chart.js": "^4.5.1",
-    "react": "^19.2.4",
+    "react": "^19.2.7",
     "react-bootstrap-icons": "^1.11.6",
     "react-chartjs-2": "^5.3.1",
-    "react-dom": "^19.2.4",
-    "react-router-dom": "^7.13.1",
-    "recharts": "^3.8.0",
-    "tailwindcss": "^4.2.2"
+    "react-dom": "^19.2.7",
+    "react-router-dom": "^7.18.1",
+    "recharts": "^3.9.1",
+    "tailwindcss": "^4.3.2"
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",
