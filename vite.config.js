@@ -8,12 +8,12 @@ export default defineConfig({
   server: {
     proxy: {
       '/auth': {
-        target: 'http://130.94.23.117:5000',
+        target: 'http://130.94.21.185:8000',  // Updated to correct IP
         changeOrigin: true,
         secure: false,
       },
       '/api': {
-        target: 'http://130.94.23.117:5000',
+        target: 'http://130.94.21.185:8000',  // Updated to correct IP
         changeOrigin: true,
         secure: false,
       }
