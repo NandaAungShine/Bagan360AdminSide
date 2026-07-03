@@ -1,3 +1,4 @@
+// components/Hotels.jsx
 import React, { useState, useEffect } from 'react';
 import Header from './Header';
 import axios from 'axios';
@@ -5,8 +6,6 @@ import axios from 'axios';
 function Hotels() {
   // ===== API Base URL =====
   const API_BASE = '/api/admin/hotel';
-  
-  // 🔥 Backend Base URL (Image အတွက်)
   const BACKEND_URL = 'http://130.94.21.185:8000';
 
   // ===== Theme =====
@@ -17,17 +16,17 @@ function Hotels() {
 
   // ===== UI States =====
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedHotelId, setSelectedHotelId] = useState(null);
   const [selectedHotelForEdit, setSelectedHotelForEdit] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showAllDropdown, setShowAllDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   // ===== Data States =====
   const [hotels, setHotels] = useState([]);
 
-  // ===== Image Preview (Single) =====
+  // ===== Image States =====
   const [imagePreview, setImagePreview] = useState(null);
+  const [imageFile, setImageFile] = useState(null);
 
   // ===== Form Data =====
   const [formData, setFormData] = useState({
@@ -40,7 +39,6 @@ function Hotels() {
     end_date: '',
     description: '',
     facilities: '',
-    imageFile: null
   });
 
   // ===== Theme Handler =====
@@ -58,53 +56,87 @@ function Hotels() {
     }
   }, [isDarkMode]);
 
-  // ===== Fetch Hotels (Image URL ပြန်တည်ဆောက်မယ်) =====
+  // ===== Get Token =====
+  const getToken = () => localStorage.getItem('token');
+
+  // ===== Axios Instance =====
+  const api = axios.create({
+    baseURL: API_BASE,
+    timeout: 30000,
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+  });
+
+  api.interceptors.request.use(
+    (config) => {
+      const token = getToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      console.log('=== API Request ===', config.method.toUpperCase(), config.url);
+      return config;
+    },
+    (error) => Promise.reject(error)
+  );
+
+  api.interceptors.response.use(
+    (response) => {
+      console.log('=== API Response ===', response.status);
+      return response;
+    },
+    (error) => {
+      console.error('=== API Error ===', error.response?.status, error.response?.data);
+      return Promise.reject(error);
+    }
+  );
+
+  // ===== Helper: Get Image URL (image/ လမ်းကြောင်းအတိုင်း) =====
+  const getImageUrl = (imagePath) => {
+    if (!imagePath) return null;
+    // Full URL ဖြစ်ရင် ပြန်ပေးမယ်
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      return imagePath;
+    }
+    // / နဲ့စရင် backend URL နဲ့ ပေါင်းမယ်
+    if (imagePath.startsWith('/')) {
+      return `${BACKEND_URL}${imagePath}`;
+    }
+    // ကျန်တဲ့ဟာတွေကို backend URL ရှေ့ဆက်ထည့်မယ် (image/ ပါပြီးသားဖြစ်မယ်)
+    // ဥပမာ: image/hotel/xxx.webp သို့မဟုတ် images/hotel/xxx.webp
+    return `${BACKEND_URL}/${imagePath}`;
+  };
+
+  // ===== Fetch Hotels =====
   const fetchHotels = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      const response = await axios.get(`${API_BASE}/list`);
+      const response = await api.get('/list');
+      console.log('GET Response:', response.data);
+
       let hotelData = response.data.data || response.data.hotels || response.data || [];
-      
-      // 🔥 Image URL ကို ပြန်တည်ဆောက်မယ်
-      hotelData = hotelData.map((hotel) => {
-        let imageUrl = '/default-hotel.jpg';
-        
-        if (hotel.image) {
-          // Case 1: Full URL ဖြစ်ရင်
-          if (hotel.image.startsWith('http://') || hotel.image.startsWith('https://')) {
-            imageUrl = hotel.image;
-          }
-          // Case 2: Relative path (/uploads/...) ဖြစ်ရင်
-          else if (hotel.image.startsWith('/')) {
-            imageUrl = `${BACKEND_URL}${hotel.image}`;
-          }
-          // Case 3: Filename only ဖြစ်ရင်
-          else if (typeof hotel.image === 'string' && hotel.image.length > 0 && !/^\d+$/.test(hotel.image)) {
-            imageUrl = `${BACKEND_URL}/uploads/${hotel.image}`;
-          }
-          // Case 4: Number (ID) ဖြစ်ရင် မပြဘူး
-          else {
-            imageUrl = '/default-hotel.jpg';
-          }
-        }
-        
-        return {
-          ...hotel,
-          image: imageUrl // 🔥 ပြင်ဆင်ပြီးသား URL ကို ပြန်သိမ်းမယ်
-        };
-      });
-      
-      console.log('📸 Hotels with images:', hotelData); // 👈 စစ်ကြည့်ဖို့
+      hotelData = hotelData.map((hotel) => ({
+        ...hotel,
+        image: getImageUrl(hotel.image)
+      }));
+
       setHotels(hotelData);
-    } catch (error) {
-      console.error('Fetch error:', error);
-      alert(`Failed to load hotels: ${error.response?.data?.message || error.message}`);
+    } catch (err) {
+      console.error('Fetch Error:', err);
+      setError('Failed to fetch hotels. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    const token = getToken();
+    if (!token) {
+      setError('Please login first');
+      return;
+    }
     fetchHotels();
   }, []);
 
@@ -121,19 +153,12 @@ function Hotels() {
 
     const previewUrl = URL.createObjectURL(file);
     setImagePreview(previewUrl);
-    setFormData((prev) => ({
-      ...prev,
-      imageFile: file
-    }));
+    setImageFile(file);
   };
 
-  // ===== Remove Image =====
   const removeImage = () => {
     setImagePreview(null);
-    setFormData((prev) => ({
-      ...prev,
-      imageFile: null
-    }));
+    setImageFile(null);
   };
 
   // ===== Reset Form =====
@@ -148,106 +173,107 @@ function Hotels() {
       end_date: '',
       description: '',
       facilities: '',
-      imageFile: null
     });
     setImagePreview(null);
+    setImageFile(null);
   };
 
   // ===== ADD HOTEL =====
   const handleAddHotel = async () => {
-    console.log("Add button clicked");
-
-    if (!formData.name || !formData.type || !formData.location || !formData.price || 
-        !formData.start_date || !formData.end_date || !formData.description || 
+    // Validation
+    if (!formData.name || !formData.type || !formData.location || !formData.price ||
+        !formData.start_date || !formData.end_date || !formData.description ||
         !formData.facilities) {
-      alert('All fields (except image) are required!');
+      alert('All fields are required!');
       return;
     }
 
-    if (!formData.imageFile) {
+    if (!imageFile) {
       alert('Please upload an image.');
       return;
     }
 
-    try {
-      setLoading(true);
-      const form = new FormData();
+    const token = getToken();
+    if (!token) {
+      alert('Please login first');
+      return;
+    }
 
+    setLoading(true);
+    try {
+      const form = new FormData();
       form.append('name', formData.name);
       form.append('type', formData.type);
       form.append('location', formData.location);
       form.append('price', formData.price);
       form.append('discount', formData.discount || '0');
-      
-      const totalAmount = parseFloat(formData.price) - parseFloat(formData.discount || 0);
-      form.append('total_amount', totalAmount);
-
       form.append('start_date', formData.start_date);
       form.append('end_date', formData.end_date);
       form.append('description', formData.description);
-      form.append('facilities', formData.facilities);
+      form.append('facilities', formData.facilities); // plain string
+      form.append('image', imageFile);
 
-      if (formData.imageFile) {
-        form.append('image', formData.imageFile);
-      }
-
-      await axios.post(`${API_BASE}/create`, form, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      const response = await axios.post(`${API_BASE}/create`, form, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
       });
 
-      alert('Hotel added successfully!');
-      resetForm();
-      fetchHotels();
-    } catch (error) {
-      console.error('Add error:', error);
-      alert(`Failed to add hotel: ${error.response?.data?.message || error.message}`);
+      console.log('POST Response:', response.data);
+      if (response.data && response.data.success) {
+        alert('Hotel added successfully!');
+        resetForm();
+        fetchHotels();
+      } else {
+        alert(response.data?.message || 'Failed to add hotel.');
+      }
+    } catch (err) {
+      console.error('Add Error:', err);
+      alert(`Error: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
   // ===== DELETE HOTEL =====
-  const handleDeleteSelected = async () => {
-    if (!selectedHotelId || selectedHotelId === 'all') {
-      alert('Please select a specific hotel to delete.');
-      return;
-    }
+  const handleDeleteHotel = async (id) => {
     if (!window.confirm('Are you sure you want to delete this hotel?')) return;
 
+    const token = getToken();
+    if (!token) {
+      alert('Please login first');
+      return;
+    }
+
+    setLoading(true);
     try {
-      setLoading(true);
-      await axios.delete(`${API_BASE}/delete/${selectedHotelId}`);
-      alert('Hotel deleted successfully!');
-      setSelectedHotelId(null);
-      fetchHotels();
-    } catch (error) {
-      console.error('Delete error:', error);
-      alert(`Failed to delete: ${error.response?.data?.message || error.message}`);
+      const response = await axios.delete(`${API_BASE}/delete/${id}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (response.data && response.data.success) {
+        alert('Hotel deleted successfully!');
+        fetchHotels();
+      } else {
+        alert(response.data?.message || 'Failed to delete hotel.');
+      }
+    } catch (err) {
+      console.error('Delete Error:', err);
+      alert(`Error: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
   // ===== EDIT (Open Modal) =====
-  const handleEditSelected = () => {
-    if (!selectedHotelId || selectedHotelId === 'all') {
-      alert('Please select a specific hotel to edit.');
-      return;
-    }
-    const hotelToEdit = hotels.find((h) => h.id === selectedHotelId);
+  const handleEditHotel = (id) => {
+    const hotelToEdit = hotels.find((h) => h.id === id);
     if (!hotelToEdit) {
       alert('Hotel not found.');
       return;
     }
 
     setSelectedHotelForEdit(hotelToEdit);
-
-    if (hotelToEdit.image) {
-      setImagePreview(hotelToEdit.image);
-    } else {
-      setImagePreview(null);
-    }
-
     setFormData({
       name: hotelToEdit.name || '',
       type: hotelToEdit.type || '',
@@ -258,79 +284,68 @@ function Hotels() {
       end_date: hotelToEdit.end_date || '',
       description: hotelToEdit.description || '',
       facilities: hotelToEdit.facilities || '',
-      imageFile: null
     });
-
+    setImagePreview(hotelToEdit.image || null);
+    setImageFile(null);
     setShowEditModal(true);
   };
 
   // ===== CONFIRM EDIT =====
   const handleConfirmEdit = async () => {
-    if (!formData.name || !formData.type || !formData.location || !formData.price || 
+    if (!formData.name || !formData.type || !formData.location || !formData.price ||
         !formData.description || !formData.facilities) {
-      alert('Please fill all required fields (image is optional).');
+      alert('Please fill all required fields.');
       return;
     }
 
-    try {
-      setLoading(true);
-      const form = new FormData();
+    const token = getToken();
+    if (!token) {
+      alert('Please login first');
+      return;
+    }
 
+    setLoading(true);
+    try {
+      const form = new FormData();
       form.append('name', formData.name);
       form.append('type', formData.type);
       form.append('location', formData.location);
       form.append('price', formData.price);
       form.append('discount', formData.discount || '0');
-      
-      const totalAmount = parseFloat(formData.price) - parseFloat(formData.discount || 0);
-      form.append('total_amount', totalAmount);
-
       form.append('start_date', formData.start_date);
       form.append('end_date', formData.end_date);
       form.append('description', formData.description);
       form.append('facilities', formData.facilities);
-
-      if (formData.imageFile) {
-        form.append('image', formData.imageFile);
+      
+      if (imageFile) {
+        form.append('image', imageFile);
       }
 
-      await axios.put(`${API_BASE}/update/${selectedHotelForEdit.id}`, form, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      const response = await axios.put(`${API_BASE}/update/${selectedHotelForEdit.id}`, form, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
       });
 
-      alert('Hotel updated successfully!');
-      setShowEditModal(false);
-      setSelectedHotelId(null);
-      setSelectedHotelForEdit(null);
-      resetForm();
-      fetchHotels();
-    } catch (error) {
-      console.error('Update error:', error);
-      alert(`Failed to update: ${error.response?.data?.message || error.message}`);
+      if (response.data && response.data.success) {
+        alert('Hotel updated successfully!');
+        setShowEditModal(false);
+        setSelectedHotelForEdit(null);
+        resetForm();
+        fetchHotels();
+      } else {
+        alert(response.data?.message || 'Failed to update hotel.');
+      }
+    } catch (err) {
+      console.error('Update Error:', err);
+      alert(`Error: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // ===== SELECT ALL =====
-  const handleSelectAll = () => {
-    if (selectedHotelId === 'all') {
-      setSelectedHotelId(null);
-    } else {
-      setSelectedHotelId('all');
-    }
-    setShowAllDropdown(false);
-  };
-
-  const toggleHotelSelection = (id) => {
-    if (selectedHotelId === id) {
-      setSelectedHotelId(null);
-    } else {
-      setSelectedHotelId(id);
-    }
-  };
-
-  // ===== FILTER & RENDER STARS =====
+  // ===== FILTER & RENDER =====
   const filteredHotels = hotels.filter((hotel) =>
     hotel.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     hotel.location?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -353,14 +368,75 @@ function Hotels() {
     );
   };
 
+  // ===== Card Actions Component =====
+  const CardActions = ({ hotelId }) => {
+    const [isOpen, setIsOpen] = useState(false);
+
+    const handleToggle = (e) => {
+      e.stopPropagation();
+      setIsOpen(!isOpen);
+    };
+
+    const handleEdit = (e) => {
+      e.stopPropagation();
+      setIsOpen(false);
+      handleEditHotel(hotelId);
+    };
+
+    const handleDelete = (e) => {
+      e.stopPropagation();
+      setIsOpen(false);
+      handleDeleteHotel(hotelId);
+    };
+
+    useEffect(() => {
+      const handleClickOutside = (event) => {
+        if (isOpen && !event.target.closest('.card-actions-wrapper')) {
+          setIsOpen(false);
+        }
+      };
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }, [isOpen]);
+
+    return (
+      <div className="card-actions-wrapper">
+        <button className="card-actions-btn" onClick={handleToggle}>
+          <i className="bi bi-three-dots-vertical"></i>
+        </button>
+        <div className={`card-actions-dropdown ${isOpen ? 'show' : ''}`}>
+          <button className="edit-btn" onClick={handleEdit}>
+            <i className="bi bi-pencil-square"></i> Edit
+          </button>
+          <button className="delete-btn" onClick={handleDelete}>
+            <i className="bi bi-trash"></i> Delete
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // ===== LOADING =====
+  if (loading && hotels.length === 0) {
+    return (
+      <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
+        <Header title="Hotels Management" onThemeChange={handleThemeChange} />
+        <div style={{ textAlign: 'center', padding: '50px' }}>
+          <div className="spinner-border" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p>Loading hotels...</p>
+        </div>
+      </div>
+    );
+  }
+
   // ===== RENDER =====
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Hotels Management" onThemeChange={handleThemeChange} />
 
-      {loading && <div className="loading-overlay">Processing...</div>}
-
-      {/* Search & Actions */}
+      {/* Search Bar Only */}
       <div className="search-actions-row">
         <div className="search-bar-wrapper">
           <i className="bi bi-search search-icon"></i>
@@ -372,27 +448,13 @@ function Hotels() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
-        <button className="action-btn delete-btn" onClick={handleDeleteSelected} disabled={loading}>
-          <i className="bi bi-trash"></i> Delete
-        </button>
-        
-        <button className="action-btn edit-btn-action" onClick={handleEditSelected} disabled={loading}>
-          <i className="bi bi-pencil-square"></i> Edit
-        </button>
-        
-        <div className="dropdown-wrapper">
-          <button className="action-btn all-btn" onClick={() => setShowAllDropdown(!showAllDropdown)}>
-            <i className="bi bi-check-all"></i> All <i className="bi bi-chevron-down"></i>
-          </button>
-          {showAllDropdown && (
-            <div className="dropdown-menu">
-              <button onClick={handleSelectAll}>Select All</button>
-              <button onClick={() => { setSelectedHotelId(null); setShowAllDropdown(false); }}>Deselect All</button>
-            </div>
-          )}
-        </div>
       </div>
+
+      {error && (
+        <div className="alert alert-danger" role="alert">
+          <i className="bi bi-exclamation-triangle-fill"></i> {error}
+        </div>
+      )}
 
       {/* Two Columns */}
       <div className="hotels-two-columns">
@@ -520,7 +582,7 @@ function Hotels() {
               </div>
 
               <div className="add-form-group">
-                <label>Facilities *</label>
+                <label>Facilities * (comma separated)</label>
                 <textarea
                   name="facilities"
                   rows="2"
@@ -531,7 +593,7 @@ function Hotels() {
               </div>
 
               <button className="add-item-btn-full" onClick={handleAddHotel} disabled={loading}>
-                {loading ? 'Adding...' : 'Add Item'}
+                {loading ? 'Adding...' : 'Add Hotel'}
               </button>
             </div>
           </div>
@@ -541,39 +603,52 @@ function Hotels() {
         <div className="hotels-cards-column">
           <div className="hotels-scroll-area">
             <div className="hotels-grid-2cols">
-              {filteredHotels.map((hotel) => (
-                <div 
-                  key={hotel.id} 
-                  className={`hotel-card-vertical ${selectedHotelId === hotel.id ? 'selected' : ''}`}
-                  onClick={() => toggleHotelSelection(hotel.id)}
-                >
-                  <div className="hotel-card-image">
-                    <div className="image-slider">
-                      <img 
-                        src={hotel.image || '/default-hotel.jpg'} 
-                        alt={hotel.name} 
-                        onError={(e) => {
-                          e.target.src = '/default-hotel.jpg'; // 🔥 ပုံမပေါ်ရင် default ပြမယ်
-                        }}
-                      />
+              {filteredHotels.length > 0 ? (
+                filteredHotels.map((hotel) => (
+                  <div key={hotel.id} className="hotel-card-vertical">
+                    <div className="hotel-card-image">
+                      <div className="image-slider">
+                        <img
+                          src={hotel.image || '/default-hotel.jpg'}
+                          alt={hotel.name}
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = '/default-hotel.jpg';
+                          }}
+                          style={{ objectFit: 'cover', width: '100%', height: '100%' }}
+                        />
+                      </div>
+                      <CardActions hotelId={hotel.id} />
                     </div>
-                    <div className="selection-check">
-                      {selectedHotelId === hotel.id && <i className="bi bi-check-circle-fill"></i>}
+                    <div className="hotel-card-info">
+                      <h3 className="hotel-name">{hotel.name}</h3>
+                      <p className="hotel-location">
+                        <i className="bi bi-geo-alt-fill"></i> {hotel.location || 'Location not specified'}
+                      </p>
+                      <p className="hotel-price">Starting from <span>MMK {hotel.price}</span></p>
+                      <div className="hotel-rating">
+                        {renderStars(hotel.rating || 0)}
+                        <span className="rating-count">({hotel.reviews || 0})</span>
+                      </div>
+                      {hotel.created_at && (
+                        <p className="created-at" style={{ fontSize: '11px', color: '#999', marginTop: '5px' }}>
+                          <i className="bi bi-clock"></i> Added: {hotel.created_at}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <div className="hotel-card-info">
-                    <h3 className="hotel-name">{hotel.name}</h3>
-                    <p className="hotel-location">
-                      <i className="bi bi-geo-alt-fill"></i> {hotel.location || 'Location not specified'}
-                    </p>
-                    <p className="hotel-price">Starting from <span>MMK {hotel.price}</span></p>
-                    <div className="hotel-rating">
-                      {renderStars(hotel.rating || 0)}
-                      <span className="rating-count">({hotel.reviews || 0})</span>
-                    </div>
-                  </div>
+                ))
+              ) : (
+                <div style={{
+                  gridColumn: '1 / -1',
+                  textAlign: 'center',
+                  padding: '50px',
+                  color: '#999'
+                }}>
+                  <i className="bi bi-inbox" style={{ fontSize: '48px', display: 'block', marginBottom: '10px' }}></i>
+                  <p>No hotels found. Add your first hotel!</p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         </div>
@@ -696,7 +771,7 @@ function Hotels() {
                 ></textarea>
               </div>
               <div className="form-group">
-                <label>Facilities *</label>
+                <label>Facilities * (comma separated)</label>
                 <textarea
                   name="facilities"
                   rows="2"
