@@ -13,6 +13,7 @@ import EBikes from './components/EBikes';
 import HotAirBalloons from './components/HotAirBalloons';
 import Tricycles from './components/Tricycles';
 import HorseCarts from './components/HorseCarts';
+import Banner from './components/Banner'; // Banner Component ကို import လုပ်ထားပြီးသား
 import Users from './components/Users';
 import Reviews from './components/Reviews';
 import Reports from './components/Reports';
@@ -148,6 +149,15 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
+
+        {/* 👇 New Banner Route added here (under Add section) */}
+        <Route path="/banner" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <Banner />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
         
         {/* User Management Routes */}
         <Route path="/users" element={
@@ -157,8 +167,6 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-        
-        
         
         {/* Review & Report Routes */}
         <Route path="/reviews" element={

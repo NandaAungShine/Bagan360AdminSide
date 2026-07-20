@@ -1,4 +1,3 @@
-// components/HistoryOfPagodas.jsx
 import React, { useState, useEffect } from 'react';
 import Header from './Header';
 import axios from 'axios';
@@ -9,7 +8,15 @@ function HistoryOfPagodas() {
     return savedTheme === 'dark';
   });
 
+  // ----- Search / Filter / Pagination States -----
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterName, setFilterName] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10); // 10 per page
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+
+  // ----- Other States -----
   const [selectedPagodaForEdit, setSelectedPagodaForEdit] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [images, setImages] = useState([]);
@@ -20,8 +27,7 @@ function HistoryOfPagodas() {
   const [formData, setFormData] = useState({
     pagodaName: '',
     location: '',
-    price: '',
-    discount: '',
+    // price & discount removed
     startDate: '',
     endDate: '',
     description: '',
@@ -33,68 +39,63 @@ function HistoryOfPagodas() {
 
   const [pagodas, setPagodas] = useState([]);
 
-  const getToken = () => {
-    return localStorage.getItem('token');
-  };
+  // ----- Axios Setup -----
+  const getToken = () => localStorage.getItem('token');
 
   const api = axios.create({
     baseURL: '/api',
     timeout: 30000,
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
   });
 
   api.interceptors.request.use(
     (config) => {
       const token = getToken();
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-      console.log('=== API Request ===');
-      console.log('Method:', config.method.toUpperCase());
-      console.log('URL:', config.baseURL + config.url);
-      console.log('Data:', config.data);
+      if (token) config.headers.Authorization = `Bearer ${token}`;
       return config;
     },
-    (error) => {
-      console.error('Request Error:', error);
-      return Promise.reject(error);
-    }
+    (error) => Promise.reject(error)
   );
 
   api.interceptors.response.use(
-    (response) => {
-      console.log('=== API Response ===');
-      console.log('Status:', response.status);
-      console.log('Data:', response.data);
-      return response;
-    },
+    (response) => response,
     (error) => {
-      console.error('=== API Error ===');
+      console.error('API Error:', error);
       if (error.response) {
-        console.error('Status:', error.response.status);
-        console.error('Data:', error.response.data);
         alert(`Error ${error.response.status}: ${error.response.data?.message || error.response.data?.error || 'Server error'}`);
       } else if (error.request) {
-        console.error('No response received');
         alert('Cannot connect to server. Please check your connection.');
       } else {
-        console.error('Error:', error.message);
         alert('An error occurred. Please try again.');
       }
       return Promise.reject(error);
     }
   );
 
-  const fetchPagodas = async () => {
+  // ----- Main Fetch Function -----
+  const fetchPagodas = async ({
+    pageNum = page,
+    limitNum = limit,
+    search = searchTerm,
+    filter = filterName,
+  } = {}) => {
     setLoading(true);
     setError(null);
+
     try {
-      const response = await api.get('/admin/pagoda/list');
-      console.log('GET Response:', response.data);
-      
+      let url = '';
+      if (search) {
+        url = `/admin/pagoda/search?search=${encodeURIComponent(search)}&page=${pageNum}&limit=${limitNum}`;
+      } else if (filter) {
+        url = `/admin/pagoda/filter?name=${encodeURIComponent(filter)}&page=${pageNum}&limit=${limitNum}`;
+      } else {
+        url = `/admin/pagoda/list?page=${pageNum}&limit=${limitNum}`;
+      }
+
+      console.log('Fetching:', url);
+      const response = await api.get(url);
+      console.log('Response:', response.data);
+
       if (response.data && response.data.success && response.data.data) {
         const formattedPagodas = response.data.data.map((item) => ({
           id: item.id,
@@ -102,7 +103,7 @@ function HistoryOfPagodas() {
           nameEn: item.name || '',
           location: item.location || '',
           locationMm: item.location || '',
-          price: item.fee ? `${item.fee} MMK` : 'Free',
+          // price removed; we don't need fee now
           rating: 4.5,
           reviews: '0',
           images: item.image ? [`http://130.94.21.185:8000/${item.image}`] : ['🛕'],
@@ -113,20 +114,23 @@ function HistoryOfPagodas() {
           tags: Array.isArray(item.tags) ? item.tags.join(', ') : (item.tags || ''),
           bestTimeToVisit: item.visit_date || '',
           bestTimeToVisitMm: item.visit_date || '',
-          discount: item.discount || '',
           facilities: item.facilities || '',
           startDate: item.visit_date || '',
           endDate: item.visit_date || '',
-          fee: item.fee || 0,
-          total_fee: item.total_fee || 0,
-          image: item.image || '',
-          created_at: item.created_at || ''
+          created_at: item.created_at || '',
         }));
-        
+
         setPagodas(formattedPagodas);
-        console.log('Formatted Pagodas:', formattedPagodas);
+
+        // Pagination info
+        const pagination = response.data.pagination || response.data.meta || {};
+        setTotalPages(pagination.totalPages || pagination.total_pages || 1);
+        setTotalItems(pagination.total || pagination.totalItems || formattedPagodas.length);
+        setPage(pageNum);
       } else {
         setPagodas([]);
+        setTotalPages(1);
+        setTotalItems(0);
       }
     } catch (err) {
       console.error('Fetch Error:', err);
@@ -137,19 +141,17 @@ function HistoryOfPagodas() {
     }
   };
 
+  // ----- Initial Load -----
   useEffect(() => {
     const token = getToken();
     if (!token) {
       setError('Please login first');
       return;
     }
-    fetchPagodas();
+    fetchPagodas({ pageNum: 1 });
   }, []);
 
-  const handleThemeChange = (isDark) => {
-    setIsDarkMode(isDark);
-  };
-
+  // ----- Theme -----
   useEffect(() => {
     if (isDarkMode) {
       document.body.classList.add('dark-mode');
@@ -160,6 +162,33 @@ function HistoryOfPagodas() {
     }
   }, [isDarkMode]);
 
+  const handleThemeChange = (isDark) => setIsDarkMode(isDark);
+
+  // ----- Search Handler -----
+  const handleSearch = (e) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    setFilterName(''); // Clear filter
+    fetchPagodas({ search: value, filter: '', pageNum: 1 });
+  };
+
+  // ----- Filter Handler -----
+  const handleFilter = () => {
+    if (!filterName.trim()) {
+      alert('Please enter a name to filter.');
+      return;
+    }
+    setSearchTerm(''); // Clear search
+    fetchPagodas({ filter: filterName, search: '', pageNum: 1 });
+  };
+
+  // ----- Page Change -----
+  const handlePageChange = (newPage) => {
+    if (newPage < 1 || newPage > totalPages) return;
+    fetchPagodas({ pageNum: newPage });
+  };
+
+  // ----- Form Handlers (price/discount removed) -----
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
@@ -168,10 +197,7 @@ function HistoryOfPagodas() {
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Store file for FormData
       setImageFiles([...imageFiles, file]);
-      
-      // Preview
       const reader = new FileReader();
       reader.onloadend = () => {
         setImages([...images, reader.result]);
@@ -189,64 +215,42 @@ function HistoryOfPagodas() {
     setFormData({ ...formData, images: newImages });
   };
 
-  // ✅ CORRECT: Using FormData for POST
+  // ----- Add Pagoda (price/discount removed) -----
   const handleAddPagoda = async () => {
     if (!formData.pagodaName || !formData.location) {
       alert('Please fill in pagoda name and location.');
       return;
     }
-
     const token = getToken();
     if (!token) {
       alert('Please login first');
       return;
     }
-
     setLoading(true);
     try {
-      // Create FormData
       const formDataToSend = new FormData();
-      
-      // Add text fields
       formDataToSend.append('name', formData.pagodaName);
       formDataToSend.append('location', formData.location);
-      formDataToSend.append('fee', formData.price || '0');
+      // fee and discount removed, so we don't append them
       formDataToSend.append('visit_date', formData.startDate || '');
       formDataToSend.append('description', formData.description || '');
       formDataToSend.append('history', formData.history || '');
-      formDataToSend.append('discount', formData.discount || '');
-      
-      // Add tags as comma separated string or array
       if (formData.tags) {
         const tagsArray = formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag);
         formDataToSend.append('tags', JSON.stringify(tagsArray));
       }
+      imageFiles.forEach((file) => formDataToSend.append('image', file));
 
-      // Add image files
-      imageFiles.forEach((file) => {
-        formDataToSend.append('image', file);
-      });
-
-      console.log('Creating pagoda with FormData');
-      
-      // Use axios with FormData
       const response = await axios.post('/api/admin/pagoda/create', formDataToSend, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data',
-        },
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
       });
-      
-      console.log('POST Response:', response.data);
-      
+
       if (response.data && response.data.success) {
         alert('Pagoda added successfully!');
-        await fetchPagodas();
+        await fetchPagodas({ pageNum: 1 });
         setFormData({
           pagodaName: '',
           location: '',
-          price: '',
-          discount: '',
           startDate: '',
           endDate: '',
           description: '',
@@ -262,52 +266,38 @@ function HistoryOfPagodas() {
       }
     } catch (err) {
       console.error('Create Error:', err);
-      if (err.response) {
-        console.error('Error Response Data:', err.response.data);
-        alert(`Error ${err.response.status}: ${err.response.data?.message || err.response.data?.error || 'Server error'}`);
-      } else {
-        alert('Error adding pagoda. Please try again.');
-      }
+      alert('Error adding pagoda. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  // ----- Delete -----
   const handleDeletePagoda = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this pagoda?')) {
-      return;
-    }
-
+    if (!window.confirm('Are you sure you want to delete this pagoda?')) return;
     const token = getToken();
     if (!token) {
       alert('Please login first');
       return;
     }
-
     setLoading(true);
     try {
-      console.log('Deleting pagoda ID:', id);
       const response = await api.delete(`/admin/pagoda/delete/${id}`);
-      console.log('DELETE Response:', response.data);
-      
       if (response.data && response.data.success) {
         alert('Pagoda deleted successfully!');
-        await fetchPagodas();
+        await fetchPagodas({ pageNum: page });
       } else {
         alert(response.data?.message || 'Failed to delete pagoda.');
       }
     } catch (err) {
       console.error('Delete Error:', err);
-      if (err.response) {
-        alert(`Error ${err.response.status}: ${err.response.data?.message || err.response.data?.error || 'Server error'}`);
-      } else {
-        alert('Error deleting pagoda. Please try again.');
-      }
+      alert('Error deleting pagoda. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  // ----- Edit (open modal) -----
   const handleEditPagoda = (id) => {
     const pagodaToEdit = pagodas.find(pagoda => pagoda.id === id);
     if (pagodaToEdit) {
@@ -315,8 +305,6 @@ function HistoryOfPagodas() {
       setFormData({
         pagodaName: pagodaToEdit.name || '',
         location: pagodaToEdit.location || '',
-        price: pagodaToEdit.fee ? pagodaToEdit.fee.toString() : '',
-        discount: pagodaToEdit.discount || '',
         startDate: pagodaToEdit.bestTimeToVisit || '',
         endDate: pagodaToEdit.endDate || '',
         description: pagodaToEdit.descriptionMm || '',
@@ -331,62 +319,43 @@ function HistoryOfPagodas() {
     }
   };
 
-  // ✅ CORRECT: Using FormData for PUT
+  // ----- Confirm Edit (price/discount removed) -----
   const handleConfirmEdit = async () => {
     if (!selectedPagodaForEdit || !formData.pagodaName) {
       alert('Please fill in all required fields');
       return;
     }
-
     const token = getToken();
     if (!token) {
       alert('Please login first');
       return;
     }
-
     setLoading(true);
     try {
-      // Create FormData
       const formDataToSend = new FormData();
-      
       formDataToSend.append('name', formData.pagodaName);
       formDataToSend.append('location', formData.location);
-      formDataToSend.append('fee', formData.price || '0');
       formDataToSend.append('visit_date', formData.startDate || '');
       formDataToSend.append('description', formData.description || '');
       formDataToSend.append('history', formData.history || '');
-      formDataToSend.append('discount', formData.discount || '');
-      
       if (formData.tags) {
         const tagsArray = formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag);
         formDataToSend.append('tags', JSON.stringify(tagsArray));
       }
+      imageFiles.forEach((file) => formDataToSend.append('image', file));
 
-      imageFiles.forEach((file) => {
-        formDataToSend.append('image', file);
-      });
-
-      console.log('Updating pagoda ID:', selectedPagodaForEdit.id);
-      
       const response = await axios.put(`/api/admin/pagoda/update/${selectedPagodaForEdit.id}`, formDataToSend, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data',
-        },
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
       });
-      
-      console.log('PUT Response:', response.data);
-      
+
       if (response.data && response.data.success) {
         alert('Pagoda updated successfully!');
         setShowEditModal(false);
         setSelectedPagodaForEdit(null);
-        await fetchPagodas();
+        await fetchPagodas({ pageNum: page });
         setFormData({
           pagodaName: '',
           location: '',
-          price: '',
-          discount: '',
           startDate: '',
           endDate: '',
           description: '',
@@ -402,23 +371,13 @@ function HistoryOfPagodas() {
       }
     } catch (err) {
       console.error('Update Error:', err);
-      if (err.response) {
-        alert(`Error ${err.response.status}: ${err.response.data?.message || err.response.data?.error || 'Server error'}`);
-      } else {
-        alert('Error updating pagoda. Please try again.');
-      }
+      alert('Error updating pagoda. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredPagodas = pagodas.filter(pagoda =>
-    pagoda.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    pagoda.nameEn?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    pagoda.location?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (pagoda.tags && pagoda.tags.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
-
+  // ----- Render Helpers -----
   const renderStars = (rating) => {
     const fullStars = Math.floor(rating);
     const hasHalfStar = rating % 1 !== 0;
@@ -482,6 +441,7 @@ function HistoryOfPagodas() {
     );
   };
 
+  // ----- Loading State -----
   if (loading && pagodas.length === 0) {
     return (
       <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
@@ -496,20 +456,56 @@ function HistoryOfPagodas() {
     );
   }
 
+  // ----- Main Render -----
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Bagan Pagodas History Management" onThemeChange={handleThemeChange} />
 
-      <div className="search-actions-row">
-        <div className="search-bar-wrapper">
+      {/* Search + Filter Row */}
+      <div className="search-actions-row" style={{ flexWrap: 'wrap', gap: '10px' }}>
+        <div className="search-bar-wrapper" style={{ flex: '1 1 250px' }}>
           <i className="bi bi-search search-icon"></i>
           <input
             type="text"
-            placeholder="Search by pagoda name, location or tags..."
+            placeholder="Search by name, location or tags..."
             className="search-input-full"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={handleSearch}
           />
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <input
+            type="text"
+            placeholder="Filter by name"
+            value={filterName}
+            onChange={(e) => setFilterName(e.target.value)}
+            style={{
+              padding: '8px 12px',
+              border: '1px solid #ced4da',
+              borderRadius: '6px',
+              fontSize: '14px',
+              minWidth: '150px'
+            }}
+          />
+          <button
+            className="action-btn"
+            onClick={handleFilter}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#6f42c1',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer'
+            }}
+          >
+            <i className="bi bi-funnel"></i> Filter
+          </button>
+        </div>
+
+        <div style={{ marginLeft: 'auto', fontSize: '14px', color: '#6c757d' }}>
+          Total: {totalItems} items
         </div>
       </div>
 
@@ -519,7 +515,9 @@ function HistoryOfPagodas() {
         </div>
       )}
 
+      {/* Two Columns Layout */}
       <div className="hotels-two-columns">
+        {/* Left: Add Form */}
         <div className="add-form-column">
           <div className="add-form-card">
             <div className="image-gallery-top">
@@ -562,7 +560,6 @@ function HistoryOfPagodas() {
                   onChange={handleInputChange}
                 />
               </div>
-
               <div className="add-form-group">
                 <label>Location *</label>
                 <input
@@ -573,75 +570,46 @@ function HistoryOfPagodas() {
                   onChange={handleInputChange}
                 />
               </div>
-
-              <div className="add-form-row">
-                <div className="add-form-group half">
-                  <label>Tags (comma separated)</label>
-                  <input
-                    type="text"
-                    name="tags"
-                    placeholder="e.g., Buddhist, Temple"
-                    value={formData.tags}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="add-form-group half">
-                  <label>Entry Fee (MMK)</label>
-                  <input
-                    type="number"
-                    name="price"
-                    placeholder="e.g., 10000"
-                    value={formData.price}
-                    onChange={handleInputChange}
-                  />
-                </div>
+              <div className="add-form-group">
+                <label>Tags (comma separated)</label>
+                <input
+                  type="text"
+                  name="tags"
+                  placeholder="e.g., Buddhist, Temple"
+                  value={formData.tags}
+                  onChange={handleInputChange}
+                />
               </div>
-
-              <div className="add-form-row">
-                <div className="add-form-group half">
-                  <label>Visit Date / Best Time</label>
-                  <input
-                    type="text"
-                    name="startDate"
-                    placeholder="e.g., Jan to May"
-                    value={formData.startDate}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="add-form-group half">
-                  <label>Discount (%)</label>
-                  <input
-                    type="number"
-                    name="discount"
-                    placeholder="e.g., 5"
-                    value={formData.discount}
-                    onChange={handleInputChange}
-                  />
-                </div>
+              <div className="add-form-group">
+                <label>Visit Date / Best Time</label>
+                <input
+                  type="text"
+                  name="startDate"
+                  placeholder="e.g., Jan to May"
+                  value={formData.startDate}
+                  onChange={handleInputChange}
+                />
               </div>
-
               <div className="add-form-group">
                 <label>Description</label>
                 <textarea
                   name="description"
                   rows="2"
-                  placeholder="Enter a brief description of the pagoda..."
+                  placeholder="Enter a brief description..."
                   value={formData.description}
                   onChange={handleInputChange}
-                ></textarea>
+                />
               </div>
-
               <div className="add-form-group">
                 <label>History</label>
                 <textarea
                   name="history"
                   rows="4"
-                  placeholder="Enter the history of the pagoda..."
+                  placeholder="Enter the history..."
                   value={formData.history}
                   onChange={handleInputChange}
-                ></textarea>
+                />
               </div>
-
               <button className="add-item-btn-full" onClick={handleAddPagoda} disabled={loading}>
                 {loading ? 'Adding...' : 'Add Pagoda'}
               </button>
@@ -649,18 +617,19 @@ function HistoryOfPagodas() {
           </div>
         </div>
 
+        {/* Right: Cards */}
         <div className="hotels-cards-column">
           <div className="hotels-scroll-area">
             <div className="hotels-grid-2cols">
-              {filteredPagodas.length > 0 ? (
-                filteredPagodas.map((pagoda) => (
+              {pagodas.length > 0 ? (
+                pagodas.map((pagoda) => (
                   <div key={pagoda.id} className="hotel-card-vertical">
                     <div className="hotel-card-image">
                       <div className="image-slider">
                         {pagoda.images && pagoda.images[0] && pagoda.images[0].startsWith('http') ? (
-                          <img 
-                            src={pagoda.images[0]} 
-                            alt={pagoda.name} 
+                          <img
+                            src={pagoda.images[0]}
+                            alt={pagoda.name}
                             style={{ objectFit: 'cover', width: '100%', height: '100%' }}
                             onError={(e) => {
                               e.target.onerror = null;
@@ -676,15 +645,17 @@ function HistoryOfPagodas() {
                             }}
                           />
                         ) : (
-                          <div style={{ 
-                            fontSize: '60px', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            height: '100%', 
-                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                            color: 'white'
-                          }}>
+                          <div
+                            style={{
+                              fontSize: '60px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              height: '100%',
+                              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                              color: 'white'
+                            }}
+                          >
                             🛕
                           </div>
                         )}
@@ -701,17 +672,9 @@ function HistoryOfPagodas() {
                           <i className="bi bi-tag-fill"></i> {pagoda.tags}
                         </div>
                       )}
-                      <p className="hotel-price">
-                        {pagoda.price === 'Free' ? 'Free' : `Fee: ${pagoda.price}`}
-                      </p>
                       {pagoda.bestTimeToVisit && (
                         <p className="best-time">
                           <i className="bi bi-calendar-check"></i> Visit: {pagoda.bestTimeToVisit}
-                        </p>
-                      )}
-                      {pagoda.total_fee && pagoda.total_fee > 0 && pagoda.total_fee !== pagoda.fee && (
-                        <p className="total-fee" style={{ color: '#28a745', fontSize: '13px', fontWeight: '500' }}>
-                          <i className="bi bi-tag"></i> After Discount: {pagoda.total_fee} MMK
                         </p>
                       )}
                       <div className="hotel-rating">
@@ -720,7 +683,9 @@ function HistoryOfPagodas() {
                       </div>
                       {pagoda.descriptionMm && (
                         <p className="pagoda-description">
-                          {pagoda.descriptionMm.length > 80 ? `${pagoda.descriptionMm.substring(0, 80)}...` : pagoda.descriptionMm}
+                          {pagoda.descriptionMm.length > 80
+                            ? `${pagoda.descriptionMm.substring(0, 80)}...`
+                            : pagoda.descriptionMm}
                         </p>
                       )}
                       {pagoda.created_at && (
@@ -732,21 +697,91 @@ function HistoryOfPagodas() {
                   </div>
                 ))
               ) : (
-                <div style={{ 
-                  gridColumn: '1 / -1', 
-                  textAlign: 'center', 
-                  padding: '50px',
-                  color: '#999'
-                }}>
+                <div
+                  style={{
+                    gridColumn: '1 / -1',
+                    textAlign: 'center',
+                    padding: '50px',
+                    color: '#999'
+                  }}
+                >
                   <i className="bi bi-inbox" style={{ fontSize: '48px', display: 'block', marginBottom: '10px' }}></i>
-                  <p>No pagodas found. Add your first pagoda!</p>
+                  <p>No pagodas found.</p>
                 </div>
               )}
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginTop: '20px',
+                  padding: '10px 0',
+                  flexWrap: 'wrap'
+                }}
+              >
+                <button
+                  className="pagination-btn"
+                  onClick={() => handlePageChange(page - 1)}
+                  disabled={page === 1}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '4px',
+                    border: '1px solid #ced4da',
+                    backgroundColor: page === 1 ? '#e9ecef' : 'white',
+                    cursor: page === 1 ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  <i className="bi bi-chevron-left"></i> Prev
+                </button>
+
+                {[...Array(totalPages).keys()].map((num) => (
+                  <button
+                    key={num + 1}
+                    onClick={() => handlePageChange(num + 1)}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '4px',
+                      border: '1px solid #ced4da',
+                      backgroundColor: page === num + 1 ? '#0d6efd' : 'white',
+                      color: page === num + 1 ? 'white' : '#212529',
+                      cursor: 'pointer',
+                      fontWeight: page === num + 1 ? 'bold' : 'normal'
+                    }}
+                  >
+                    {num + 1}
+                  </button>
+                ))}
+
+                <button
+                  className="pagination-btn"
+                  onClick={() => handlePageChange(page + 1)}
+                  disabled={page === totalPages}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '4px',
+                    border: '1px solid #ced4da',
+                    backgroundColor: page === totalPages ? '#e9ecef' : 'white',
+                    cursor: page === totalPages ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  Next <i className="bi bi-chevron-right"></i>
+                </button>
+
+                <span style={{ fontSize: '14px', color: '#6c757d', marginLeft: '10px' }}>
+                  Page {page} of {totalPages}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
+      {/* Edit Modal (price/discount removed) */}
       {showEditModal && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -775,45 +810,23 @@ function HistoryOfPagodas() {
                   onChange={handleInputChange}
                 />
               </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Tags (comma separated)</label>
-                  <input
-                    type="text"
-                    name="tags"
-                    value={formData.tags}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Entry Fee (MMK)</label>
-                  <input
-                    type="number"
-                    name="price"
-                    value={formData.price}
-                    onChange={handleInputChange}
-                  />
-                </div>
+              <div className="form-group">
+                <label>Tags (comma separated)</label>
+                <input
+                  type="text"
+                  name="tags"
+                  value={formData.tags}
+                  onChange={handleInputChange}
+                />
               </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Visit Date / Best Time</label>
-                  <input
-                    type="text"
-                    name="startDate"
-                    value={formData.startDate}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Discount (%)</label>
-                  <input
-                    type="number"
-                    name="discount"
-                    value={formData.discount}
-                    onChange={handleInputChange}
-                  />
-                </div>
+              <div className="form-group">
+                <label>Visit Date / Best Time</label>
+                <input
+                  type="text"
+                  name="startDate"
+                  value={formData.startDate}
+                  onChange={handleInputChange}
+                />
               </div>
               <div className="form-group">
                 <label>Description</label>
@@ -822,7 +835,7 @@ function HistoryOfPagodas() {
                   rows="2"
                   value={formData.description}
                   onChange={handleInputChange}
-                ></textarea>
+                />
               </div>
               <div className="form-group">
                 <label>History</label>
@@ -831,7 +844,7 @@ function HistoryOfPagodas() {
                   rows="4"
                   value={formData.history}
                   onChange={handleInputChange}
-                ></textarea>
+                />
               </div>
             </div>
             <div className="modal-footer">

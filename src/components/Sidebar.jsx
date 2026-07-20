@@ -16,6 +16,8 @@ function Sidebar() {
     { name: 'Hot Air Balloons', icon: 'bi-balloon', path: '/hotairballoons' },
     { name: 'Tricycles', icon: 'bi-truck', path: '/tricycles' },
     { name: 'Horse Carts', icon: 'bi-truck', path: '/horsecarts' },
+    // New Banner item added here
+    { name: 'Banner', icon: 'bi-image', path: '/banner' },
   ];
 
   const isActive = (path) => {
@@ -64,7 +66,6 @@ function Sidebar() {
             </Link>
           </li>
 
-       
           {/* Users Link */}
           <li className={`nav-item ${isActive('/users') ? 'active' : ''}`}>
             <Link to="/users" className="nav-link">
@@ -117,8 +118,6 @@ function Sidebar() {
               </div>
             </Link>
           </li>
-
-         
 
           {/* Settings Link */}
           <li className={`nav-item ${isActive('/settings') ? 'active' : ''}`}>
