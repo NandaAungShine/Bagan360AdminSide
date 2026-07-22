@@ -3,43 +3,47 @@ import Header from './Header';
 import axios from 'axios';
 
 function HistoryOfPagodas() {
+  // ==================== THEME ====================
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
     return savedTheme === 'dark';
   });
 
-  // ----- Search / Filter / Pagination States -----
+  // ==================== UI STATES ====================
   const [searchTerm, setSearchTerm] = useState('');
   const [filterName, setFilterName] = useState('');
   const [page, setPage] = useState(1);
-  const [limit] = useState(10); // 10 per page
+  const [limit] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
 
-  // ----- Other States -----
   const [selectedPagodaForEdit, setSelectedPagodaForEdit] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // Add Form Images
   const [images, setImages] = useState([]);
   const [imageFiles, setImageFiles] = useState([]);
+
+  // Edit Modal Images
+  const [editImages, setEditImages] = useState([]);
+  const [editImageFiles, setEditImageFiles] = useState([]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [pagodas, setPagodas] = useState([]);
 
+  // ==================== FORM STATE ====================
   const [formData, setFormData] = useState({
     pagodaName: '',
     location: '',
-    // price & discount removed
     startDate: '',
-    endDate: '',
     description: '',
     history: '',
     tags: '',
-    facilities: '',
     images: []
   });
 
-  const [pagodas, setPagodas] = useState([]);
-
-  // ----- Axios Setup -----
+  // ==================== AXIOS SETUP ====================
   const getToken = () => localStorage.getItem('token');
 
   const api = axios.create({
@@ -61,18 +65,13 @@ function HistoryOfPagodas() {
     (response) => response,
     (error) => {
       console.error('API Error:', error);
-      if (error.response) {
-        alert(`Error ${error.response.status}: ${error.response.data?.message || error.response.data?.error || 'Server error'}`);
-      } else if (error.request) {
-        alert('Cannot connect to server. Please check your connection.');
-      } else {
-        alert('An error occurred. Please try again.');
-      }
+      const msg = error.response?.data?.message || error.response?.data?.error || 'Server error';
+      alert(`Error ${error.response?.status || ''}: ${msg}`);
       return Promise.reject(error);
     }
   );
 
-  // ----- Main Fetch Function -----
+  // ==================== FETCH PAGODAS ====================
   const fetchPagodas = async ({
     pageNum = page,
     limitNum = limit,
@@ -92,40 +91,48 @@ function HistoryOfPagodas() {
         url = `/admin/pagoda/list?page=${pageNum}&limit=${limitNum}`;
       }
 
-      console.log('Fetching:', url);
+      console.log('📡 Fetching:', url);
       const response = await api.get(url);
-      console.log('Response:', response.data);
+      console.log('✅ API Response:', response.data);
 
       if (response.data && response.data.success && response.data.data) {
-        const formattedPagodas = response.data.data.map((item) => ({
-          id: item.id,
-          name: item.name || '',
-          nameEn: item.name || '',
-          location: item.location || '',
-          locationMm: item.location || '',
-          // price removed; we don't need fee now
-          rating: 4.5,
-          reviews: '0',
-          images: item.image ? [`http://130.94.21.185:8000/${item.image}`] : ['🛕'],
-          descriptionMm: item.description || '',
-          description: item.description || '',
-          historyMm: item.history || '',
-          history: item.history || '',
-          tags: Array.isArray(item.tags) ? item.tags.join(', ') : (item.tags || ''),
-          bestTimeToVisit: item.visit_date || '',
-          bestTimeToVisitMm: item.visit_date || '',
-          facilities: item.facilities || '',
-          startDate: item.visit_date || '',
-          endDate: item.visit_date || '',
-          created_at: item.created_at || '',
-        }));
+        const formatted = response.data.data.map((item) => {
+          // 🔥 API က image ရော images array ရော ပါနိုင်တယ်
+          let imageUrl = null;
+          let imagesArray = [];
 
-        setPagodas(formattedPagodas);
+          // ပထမ images array ကို ဦးစားပေးယူမယ်
+          if (item.images && Array.isArray(item.images) && item.images.length > 0) {
+            imagesArray = item.images.map(img => `http://130.94.21.185:8000/${img}`);
+            imageUrl = imagesArray[0];
+          } 
+          // images array မပါရင် image field ကိုယူမယ်
+          else if (item.image) {
+            imageUrl = `http://130.94.21.185:8000/${item.image}`;
+            imagesArray = [imageUrl];
+          }
 
-        // Pagination info
+          return {
+            id: item.id,
+            name: item.name || '',
+            location: item.location || '',
+            description: item.description || '',
+            history: item.history || '',
+            tags: Array.isArray(item.tags) ? item.tags.join(', ') : (item.tags || ''),
+            visit_date: item.visit_date || '',
+            image: imageUrl,
+            images: imagesArray,
+            created_at: item.created_at || '',
+            rating: item.rating || 4.5,
+            reviews: item.reviews || '0',
+          };
+        });
+
+        setPagodas(formatted);
+
         const pagination = response.data.pagination || response.data.meta || {};
         setTotalPages(pagination.totalPages || pagination.total_pages || 1);
-        setTotalItems(pagination.total || pagination.totalItems || formattedPagodas.length);
+        setTotalItems(pagination.total || pagination.totalItems || formatted.length);
         setPage(pageNum);
       } else {
         setPagodas([]);
@@ -133,62 +140,57 @@ function HistoryOfPagodas() {
         setTotalItems(0);
       }
     } catch (err) {
-      console.error('Fetch Error:', err);
+      console.error('❌ Fetch Error:', err);
       setError('Failed to fetch pagodas. Please try again.');
       setPagodas([]);
+      alert('Failed to fetch pagodas');
     } finally {
       setLoading(false);
     }
   };
 
-  // ----- Initial Load -----
+  // ==================== INITIAL LOAD ====================
   useEffect(() => {
     const token = getToken();
     if (!token) {
       setError('Please login first');
+      alert('Please login first');
       return;
     }
     fetchPagodas({ pageNum: 1 });
   }, []);
 
-  // ----- Theme -----
+  // ==================== THEME EFFECT ====================
   useEffect(() => {
-    if (isDarkMode) {
-      document.body.classList.add('dark-mode');
-      document.body.classList.remove('light-mode');
-    } else {
-      document.body.classList.add('light-mode');
-      document.body.classList.remove('dark-mode');
-    }
+    document.body.classList.add(isDarkMode ? 'dark-mode' : 'light-mode');
+    document.body.classList.remove(isDarkMode ? 'light-mode' : 'dark-mode');
   }, [isDarkMode]);
 
   const handleThemeChange = (isDark) => setIsDarkMode(isDark);
 
-  // ----- Search Handler -----
+  // ==================== SEARCH & FILTER ====================
   const handleSearch = (e) => {
     const value = e.target.value;
     setSearchTerm(value);
-    setFilterName(''); // Clear filter
+    setFilterName('');
     fetchPagodas({ search: value, filter: '', pageNum: 1 });
   };
 
-  // ----- Filter Handler -----
   const handleFilter = () => {
     if (!filterName.trim()) {
       alert('Please enter a name to filter.');
       return;
     }
-    setSearchTerm(''); // Clear search
+    setSearchTerm('');
     fetchPagodas({ filter: filterName, search: '', pageNum: 1 });
   };
 
-  // ----- Page Change -----
   const handlePageChange = (newPage) => {
     if (newPage < 1 || newPage > totalPages) return;
     fetchPagodas({ pageNum: newPage });
   };
 
-  // ----- Form Handlers (price/discount removed) -----
+  // ==================== ADD FORM HANDLERS ====================
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
@@ -215,30 +217,53 @@ function HistoryOfPagodas() {
     setFormData({ ...formData, images: newImages });
   };
 
-  // ----- Add Pagoda (price/discount removed) -----
+  // ==================== EDIT MODAL IMAGE HANDLERS ====================
+  const handleEditImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setEditImageFiles([...editImageFiles, file]);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditImages([...editImages, reader.result]);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleEditImageRemove = (index) => {
+    const newImages = editImages.filter((_, i) => i !== index);
+    const newFiles = editImageFiles.filter((_, i) => i !== index);
+    setEditImages(newImages);
+    setEditImageFiles(newFiles);
+  };
+
+  // ==================== ADD PAGODA ====================
   const handleAddPagoda = async () => {
     if (!formData.pagodaName || !formData.location) {
-      alert('Please fill in pagoda name and location.');
+      alert('Please fill in Pagoda Name and Location.');
       return;
     }
+
     const token = getToken();
     if (!token) {
       alert('Please login first');
       return;
     }
+
     setLoading(true);
     try {
       const formDataToSend = new FormData();
-      formDataToSend.append('name', formData.pagodaName);
-      formDataToSend.append('location', formData.location);
-      // fee and discount removed, so we don't append them
-      formDataToSend.append('visit_date', formData.startDate || '');
-      formDataToSend.append('description', formData.description || '');
-      formDataToSend.append('history', formData.history || '');
+      formDataToSend.append('name', formData.pagodaName.trim());
+      formDataToSend.append('location', formData.location.trim());
+      formDataToSend.append('visit_date', formData.startDate.trim() || '');
+      formDataToSend.append('description', formData.description.trim() || '');
+      formDataToSend.append('history', formData.history.trim() || '');
+
       if (formData.tags) {
         const tagsArray = formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag);
         formDataToSend.append('tags', JSON.stringify(tagsArray));
       }
+
       imageFiles.forEach((file) => formDataToSend.append('image', file));
 
       const response = await axios.post('/api/admin/pagoda/create', formDataToSend, {
@@ -246,17 +271,15 @@ function HistoryOfPagodas() {
       });
 
       if (response.data && response.data.success) {
-        alert('Pagoda added successfully!');
+        alert('✅ Pagoda added successfully!');
         await fetchPagodas({ pageNum: 1 });
         setFormData({
           pagodaName: '',
           location: '',
           startDate: '',
-          endDate: '',
           description: '',
           history: '',
           tags: '',
-          facilities: '',
           images: []
         });
         setImages([]);
@@ -265,103 +288,124 @@ function HistoryOfPagodas() {
         alert(response.data?.message || 'Failed to add pagoda.');
       }
     } catch (err) {
-      console.error('Create Error:', err);
+      console.error('❌ Create Error:', err);
       alert('Error adding pagoda. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // ----- Delete -----
+  // ==================== DELETE PAGODA ====================
   const handleDeletePagoda = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this pagoda?')) return;
+    if (!id) {
+      alert('Invalid pagoda ID.');
+      return;
+    }
+
+    if (!window.confirm('🗑️ Are you sure you want to delete this pagoda?')) return;
+
     const token = getToken();
     if (!token) {
       alert('Please login first');
       return;
     }
+
     setLoading(true);
     try {
+      console.log(`🗑️ Deleting pagoda with ID: ${id}`);
       const response = await api.delete(`/admin/pagoda/delete/${id}`);
+
+      console.log('Delete Response:', response.data);
+
       if (response.data && response.data.success) {
-        alert('Pagoda deleted successfully!');
+        alert('🗑️ Pagoda deleted successfully!');
         await fetchPagodas({ pageNum: page });
       } else {
         alert(response.data?.message || 'Failed to delete pagoda.');
       }
     } catch (err) {
-      console.error('Delete Error:', err);
-      alert('Error deleting pagoda. Please try again.');
+      console.error('❌ Delete Error:', err);
+      if (err.response && err.response.status === 404) {
+        alert('Delete endpoint not found. Please check the API URL.');
+      } else {
+        alert('Error deleting pagoda. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // ----- Edit (open modal) -----
+  // ==================== EDIT (Open Modal) ====================
   const handleEditPagoda = (id) => {
-    const pagodaToEdit = pagodas.find(pagoda => pagoda.id === id);
-    if (pagodaToEdit) {
-      setSelectedPagodaForEdit(pagodaToEdit);
-      setFormData({
-        pagodaName: pagodaToEdit.name || '',
-        location: pagodaToEdit.location || '',
-        startDate: pagodaToEdit.bestTimeToVisit || '',
-        endDate: pagodaToEdit.endDate || '',
-        description: pagodaToEdit.descriptionMm || '',
-        history: pagodaToEdit.historyMm || '',
-        tags: pagodaToEdit.tags || '',
-        facilities: pagodaToEdit.facilities || '',
-        images: pagodaToEdit.images || []
-      });
-      setImages(pagodaToEdit.images || []);
-      setImageFiles([]);
-      setShowEditModal(true);
+    const pagoda = pagodas.find(p => p.id === id);
+    if (!pagoda) {
+      alert('Pagoda not found');
+      return;
     }
+
+    setSelectedPagodaForEdit(pagoda);
+    setFormData({
+      pagodaName: pagoda.name || '',
+      location: pagoda.location || '',
+      startDate: pagoda.visit_date || '',
+      description: pagoda.description || '',
+      history: pagoda.history || '',
+      tags: pagoda.tags || '',
+      images: pagoda.images || []
+    });
+
+    setEditImages(pagoda.images || []);
+    setEditImageFiles([]);
+    setShowEditModal(true);
   };
 
-  // ----- Confirm Edit (price/discount removed) -----
+  // ==================== CONFIRM EDIT ====================
   const handleConfirmEdit = async () => {
     if (!selectedPagodaForEdit || !formData.pagodaName) {
       alert('Please fill in all required fields');
       return;
     }
+
     const token = getToken();
     if (!token) {
       alert('Please login first');
       return;
     }
+
     setLoading(true);
     try {
       const formDataToSend = new FormData();
-      formDataToSend.append('name', formData.pagodaName);
-      formDataToSend.append('location', formData.location);
-      formDataToSend.append('visit_date', formData.startDate || '');
-      formDataToSend.append('description', formData.description || '');
-      formDataToSend.append('history', formData.history || '');
+      formDataToSend.append('name', formData.pagodaName.trim());
+      formDataToSend.append('location', formData.location.trim());
+      formDataToSend.append('visit_date', formData.startDate.trim() || '');
+      formDataToSend.append('description', formData.description.trim() || '');
+      formDataToSend.append('history', formData.history.trim() || '');
+
       if (formData.tags) {
         const tagsArray = formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag);
         formDataToSend.append('tags', JSON.stringify(tagsArray));
       }
-      imageFiles.forEach((file) => formDataToSend.append('image', file));
+
+      editImageFiles.forEach((file) => formDataToSend.append('image', file));
 
       const response = await axios.put(`/api/admin/pagoda/update/${selectedPagodaForEdit.id}`, formDataToSend, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
       });
 
       if (response.data && response.data.success) {
-        alert('Pagoda updated successfully!');
+        alert('✅ Pagoda updated successfully!');
         setShowEditModal(false);
         setSelectedPagodaForEdit(null);
+        setEditImages([]);
+        setEditImageFiles([]);
         await fetchPagodas({ pageNum: page });
         setFormData({
           pagodaName: '',
           location: '',
           startDate: '',
-          endDate: '',
           description: '',
           history: '',
           tags: '',
-          facilities: '',
           images: []
         });
         setImages([]);
@@ -370,23 +414,23 @@ function HistoryOfPagodas() {
         alert(response.data?.message || 'Failed to update pagoda.');
       }
     } catch (err) {
-      console.error('Update Error:', err);
+      console.error('❌ Update Error:', err);
       alert('Error updating pagoda. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // ----- Render Helpers -----
+  // ==================== RENDER HELPERS ====================
   const renderStars = (rating) => {
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 !== 0;
+    const full = Math.floor(rating);
+    const half = rating % 1 !== 0;
     return (
       <>
-        {[...Array(fullStars)].map((_, i) => (
+        {[...Array(full)].map((_, i) => (
           <i key={i} className="bi bi-star-fill" style={{ color: '#ff8a00', fontSize: '12px' }}></i>
         ))}
-        {hasHalfStar && <i className="bi bi-star-half" style={{ color: '#ff8a00', fontSize: '12px' }}></i>}
+        {half && <i className="bi bi-star-half" style={{ color: '#ff8a00', fontSize: '12px' }}></i>}
         {[...Array(5 - Math.ceil(rating))].map((_, i) => (
           <i key={i} className="bi bi-star" style={{ color: '#ff8a00', fontSize: '12px' }}></i>
         ))}
@@ -394,6 +438,7 @@ function HistoryOfPagodas() {
     );
   };
 
+  // ==================== CardActions Component ====================
   const CardActions = ({ pagodaId }) => {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -441,7 +486,7 @@ function HistoryOfPagodas() {
     );
   };
 
-  // ----- Loading State -----
+  // ==================== LOADING STATE ====================
   if (loading && pagodas.length === 0) {
     return (
       <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
@@ -456,7 +501,7 @@ function HistoryOfPagodas() {
     );
   }
 
-  // ----- Main Render -----
+  // ==================== MAIN RENDER ====================
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Bagan Pagodas History Management" onThemeChange={handleThemeChange} />
@@ -521,7 +566,7 @@ function HistoryOfPagodas() {
         <div className="add-form-column">
           <div className="add-form-card">
             <div className="image-gallery-top">
-              <label className="gallery-label">Pagoda Images Gallery</label>
+              <label className="gallery-label">📸 Pagoda Images Gallery</label>
               <div className="image-gallery-wrapper">
                 <div className="image-upload-box">
                   <input
@@ -626,9 +671,9 @@ function HistoryOfPagodas() {
                   <div key={pagoda.id} className="hotel-card-vertical">
                     <div className="hotel-card-image">
                       <div className="image-slider">
-                        {pagoda.images && pagoda.images[0] && pagoda.images[0].startsWith('http') ? (
+                        {pagoda.image ? (
                           <img
-                            src={pagoda.images[0]}
+                            src={pagoda.image}
                             alt={pagoda.name}
                             style={{ objectFit: 'cover', width: '100%', height: '100%' }}
                             onError={(e) => {
@@ -672,20 +717,20 @@ function HistoryOfPagodas() {
                           <i className="bi bi-tag-fill"></i> {pagoda.tags}
                         </div>
                       )}
-                      {pagoda.bestTimeToVisit && (
+                      {pagoda.visit_date && (
                         <p className="best-time">
-                          <i className="bi bi-calendar-check"></i> Visit: {pagoda.bestTimeToVisit}
+                          <i className="bi bi-calendar-check"></i> Visit: {pagoda.visit_date}
                         </p>
                       )}
                       <div className="hotel-rating">
                         {renderStars(pagoda.rating || 4.5)}
                         <span className="rating-count">({pagoda.reviews || '0'} reviews)</span>
                       </div>
-                      {pagoda.descriptionMm && (
+                      {pagoda.description && (
                         <p className="pagoda-description">
-                          {pagoda.descriptionMm.length > 80
-                            ? `${pagoda.descriptionMm.substring(0, 80)}...`
-                            : pagoda.descriptionMm}
+                          {pagoda.description.length > 80
+                            ? `${pagoda.description.substring(0, 80)}...`
+                            : pagoda.description}
                         </p>
                       )}
                       {pagoda.created_at && (
@@ -781,17 +826,51 @@ function HistoryOfPagodas() {
         </div>
       </div>
 
-      {/* Edit Modal (price/discount removed) */}
+      {/* ==================== EDIT MODAL ==================== */}
       {showEditModal && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Edit Pagoda Information</h2>
+              <h2>✏️ Edit Pagoda Information</h2>
               <button className="close-btn" onClick={() => setShowEditModal(false)}>
                 <i className="bi bi-x-lg"></i>
               </button>
             </div>
             <div className="modal-body">
+              {/* ===== EDIT MODAL IMAGE GALLERY - TOP ===== */}
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label style={{ fontWeight: 'bold' }}>📸 Edit Images</label>
+                <div className="image-gallery-wrapper" style={{ marginTop: '10px' }}>
+                  <div className="image-upload-box">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEditImageUpload}
+                      style={{ display: 'none' }}
+                      id="edit-image-upload"
+                    />
+                    <label htmlFor="edit-image-upload" className="upload-box">
+                      <i className="bi bi-plus-lg"></i>
+                      <span>Add Image</span>
+                    </label>
+                  </div>
+                  <div className="image-scroll-container-horizontal">
+                    {editImages.map((img, index) => (
+                      <div key={index} className="image-item">
+                        <img src={img} alt={`Edit Preview ${index}`} />
+                        <button className="remove-image-btn" onClick={() => handleEditImageRemove(index)}>
+                          <i className="bi bi-x-lg"></i>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <small style={{ color: '#6c757d', display: 'block', marginTop: '5px' }}>
+                  💡 Add new images or remove existing ones. Existing images will be kept unless removed.
+                </small>
+              </div>
+
+              {/* Edit Form Fields */}
               <div className="form-group">
                 <label>Pagoda Name *</label>
                 <input

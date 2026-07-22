@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import Header from './Header';
 
 function Restaurants() {
+  // Theme
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
     return savedTheme === 'dark';
   });
 
+  // UI States
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRestaurantId, setSelectedRestaurantId] = useState(null);
   const [selectedRestaurantForEdit, setSelectedRestaurantForEdit] = useState(null);
@@ -14,10 +16,15 @@ function Restaurants() {
   const [showAllDropdown, setShowAllDropdown] = useState(false);
   const [images, setImages] = useState([]);
 
+  // API States
+  const [restaurants, setRestaurants] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Form State
   const [formData, setFormData] = useState({
     restaurantName: '',
     cuisine: '',
-    priceRange: '',
     discount: '',
     description: '',
     openingHours: '',
@@ -26,101 +33,63 @@ function Restaurants() {
     images: []
   });
 
-  const [restaurants, setRestaurants] = useState([
-    {
-      id: 1,
-      name: 'Shan Kitchen',
-      cuisine: 'Shan',
-      priceRange: '15,000',
-      rating: 4.6,
-      reviews: '850',
-      images: ['🍜', '🍜', '🍜'],
-      description: 'Authentic Shan noodles and traditional Shan dishes',
-      openingHours: '9:00 AM - 9:00 PM',
-      location: 'Nyaung U, Bagan',
-      phone: '09-123456789'
-    },
-    {
-      id: 2,
-      name: 'Green Elephant Restaurant',
-      cuisine: 'Burmese, Asian',
-      priceRange: '25,000',
-      rating: 4.8,
-      reviews: '1.2K',
-      images: ['🐘', '🐘', '🐘'],
-      description: 'Fine dining Burmese cuisine in a garden setting',
-      openingHours: '11:00 AM - 10:00 PM',
-      location: 'New Bagan',
-      phone: '09-987654321'
-    },
-    {
-      id: 3,
-      name: 'The Moon Vegetarian',
-      cuisine: 'Vegetarian, Asian',
-      priceRange: '12,000',
-      rating: 4.7,
-      reviews: '2.1K',
-      images: ['🌙', '🌙', '🌙'],
-      description: 'Popular vegetarian restaurant with authentic Burmese flavors',
-      openingHours: '8:00 AM - 8:30 PM',
-      location: 'Old Bagan',
-      phone: '09-456789123'
-    },
-    {
-      id: 4,
-      name: 'La Terrasse',
-      cuisine: 'French, Asian Fusion',
-      priceRange: '45,000',
-      rating: 4.9,
-      reviews: '650',
-      images: ['🍽️', '🍽️', '🍽️'],
-      description: 'Elegant French-Asian fusion with river views',
-      openingHours: '12:00 PM - 10:30 PM',
-      location: 'Irrawaddy Riverside',
-      phone: '09-789123456'
-    },
-    {
-      id: 5,
-      name: 'Weather Spoon\'s Bagan',
-      cuisine: 'International, Bar',
-      priceRange: '20,000',
-      rating: 4.5,
-      reviews: '980',
-      images: ['🥄', '🥄', '🥄'],
-      description: 'Casual dining with international menu and craft beers',
-      openingHours: '10:00 AM - 11:00 PM',
-      location: 'New Bagan',
-      phone: '09-234567891'
-    },
-    {
-      id: 6,
-      name: 'Star Beam Bagan',
-      cuisine: 'Burmese, Chinese',
-      priceRange: '18,000',
-      rating: 4.4,
-      reviews: '720',
-      images: ['⭐', '⭐', '⭐'],
-      description: 'Rooftop restaurant with panoramic views',
-      openingHours: '4:00 PM - 10:00 PM',
-      location: 'Old Bagan',
-      phone: '09-345678912'
-    }
-  ]);
+  // ✅ Proxy သုံးထားတဲ့အတွက် Relative Path
+  const API_BASE = '/api/admin/restaurant';
 
-  const handleThemeChange = (isDark) => {
-    setIsDarkMode(isDark);
+  const getHeaders = () => ({
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  });
+
+  // ========== FETCH ==========
+  const fetchRestaurants = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/list`, {
+        method: 'GET',
+        headers: getHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const result = await response.json();
+      console.log('✅ API Response:', result);
+
+      let list = [];
+      if (result.success && Array.isArray(result.data)) {
+        list = result.data.map(item => ({
+          ...item,
+          images: item.images ? item.images.map(img => `http://130.94.21.185:8000/${img}`) : [],
+          image: item.image ? `http://130.94.21.185:8000/${item.image}` : null,
+        }));
+      } else if (Array.isArray(result)) {
+        list = result;
+      } else {
+        list = [];
+      }
+
+      setRestaurants(list);
+    } catch (err) {
+      setError(err.message);
+      console.error('❌ Fetch Error:', err);
+      alert('❌ Failed to fetch restaurants: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    if (isDarkMode) {
-      document.body.classList.add('dark-mode');
-      document.body.classList.remove('light-mode');
-    } else {
-      document.body.classList.add('light-mode');
-      document.body.classList.remove('dark-mode');
-    }
+    fetchRestaurants();
+  }, []);
+
+  // ========== THEME ==========
+  useEffect(() => {
+    document.body.classList.add(isDarkMode ? 'dark-mode' : 'light-mode');
+    document.body.classList.remove(isDarkMode ? 'light-mode' : 'dark-mode');
   }, [isDarkMode]);
 
+  // ========== FORM HANDLERS ==========
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
@@ -131,39 +100,51 @@ function Restaurants() {
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImages([...images, reader.result]);
-        setFormData({ ...formData, images: [...formData.images, reader.result] });
+        setImages(prev => [...prev, reader.result]);
+        setFormData(prev => ({ ...prev, images: [...prev.images, reader.result] }));
       };
       reader.readAsDataURL(file);
     }
   };
 
   const removeImage = (index) => {
-    const newImages = images.filter((_, i) => i !== index);
-    setImages(newImages);
-    setFormData({ ...formData, images: newImages });
+    setImages(prev => prev.filter((_, i) => i !== index));
+    setFormData(prev => ({ ...prev, images: prev.images.filter((_, i) => i !== index) }));
   };
 
-  const handleAddRestaurant = () => {
-    if (formData.restaurantName && formData.priceRange) {
-      const newRestaurant = {
-        id: restaurants.length + 1,
-        name: formData.restaurantName,
-        cuisine: formData.cuisine || 'Various',
-        priceRange: formData.priceRange.replace(/[^0-9]/g, ''),
-        rating: 4.5,
-        reviews: '0',
-        images: formData.images.length > 0 ? formData.images : ['🍽️'],
-        description: formData.description,
-        openingHours: formData.openingHours,
-        location: formData.location,
-        phone: formData.phone
-      };
-      setRestaurants([newRestaurant, ...restaurants]);
+  // ========== ADD ==========
+  const handleAddRestaurant = async () => {
+    if (!formData.restaurantName || !formData.location) {
+      alert('⚠️ Please fill in Restaurant Name and Location.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    
+    const payload = {
+      name: formData.restaurantName.trim(),
+      cuisine: formData.cuisine.trim() || 'Various',
+      price_range: '0',
+      discount: formData.discount.replace(/[^0-9]/g, '') || '0',
+      description: formData.description.trim() || '',
+      opening_hours: formData.openingHours.trim() || '',
+      location: formData.location.trim() || '',
+      phone: formData.phone.trim() || '',
+      images: formData.images.length ? formData.images : ['🍽️']
+    };
+    
+    try {
+      const response = await fetch(`${API_BASE}/create`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || 'Create failed');
+      await fetchRestaurants();
       setFormData({
         restaurantName: '',
         cuisine: '',
-        priceRange: '',
         discount: '',
         description: '',
         openingHours: '',
@@ -172,73 +153,134 @@ function Restaurants() {
         images: []
       });
       setImages([]);
-      alert('Restaurant added successfully!');
-    } else {
-      alert('Please fill in restaurant name and price range');
+      alert('✅ Restaurant added successfully!');
+    } catch (err) {
+      setError(err.message);
+      alert('❌ Error: ' + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleDeleteSelected = () => {
-    if (!selectedRestaurantId) {
-      alert('Please select a restaurant to delete');
+  // ========== DELETE (from top bar) ==========
+  const handleDeleteSelected = async () => {
+    if (!selectedRestaurantId || selectedRestaurantId === 'all') {
+      alert('⚠️ Please select a single restaurant.');
       return;
     }
-    if (window.confirm('Are you sure you want to delete this restaurant?')) {
-      setRestaurants(restaurants.filter(restaurant => restaurant.id !== selectedRestaurantId));
+    if (!window.confirm('🗑️ Delete this restaurant?')) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/delete/${selectedRestaurantId}`, {
+        method: 'DELETE',
+        headers: getHeaders(),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || 'Delete failed');
+      await fetchRestaurants();
       setSelectedRestaurantId(null);
-      alert('Restaurant deleted successfully!');
+      alert('🗑️ Restaurant deleted successfully!');
+    } catch (err) {
+      setError(err.message);
+      alert('❌ Error: ' + err.message);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  // ========== DELETE (from card) ==========
+  const handleDeleteFromCard = async (id) => {
+    if (!window.confirm('🗑️ Delete this restaurant?')) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/delete/${id}`, {
+        method: 'DELETE',
+        headers: getHeaders(),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || 'Delete failed');
+      await fetchRestaurants();
+      alert('🗑️ Restaurant deleted successfully!');
+    } catch (err) {
+      setError(err.message);
+      alert('❌ Error: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ========== EDIT (open modal) ==========
+  const openEditModal = (restaurant) => {
+    setSelectedRestaurantForEdit(restaurant);
+    setFormData({
+      restaurantName: restaurant.name || '',
+      cuisine: restaurant.cuisine || '',
+      discount: restaurant.discount || '',
+      description: restaurant.description || '',
+      openingHours: restaurant.opening_hours || '',
+      location: restaurant.location || '',
+      phone: restaurant.phone || '',
+      images: restaurant.images || []
+    });
+    setImages(restaurant.images || []);
+    setShowEditModal(true);
   };
 
   const handleEditSelected = () => {
-    if (!selectedRestaurantId) {
-      alert('Please select a restaurant to edit');
+    if (!selectedRestaurantId || selectedRestaurantId === 'all') {
+      alert('⚠️ Please select a single restaurant.');
       return;
     }
-    const restaurantToEdit = restaurants.find(restaurant => restaurant.id === selectedRestaurantId);
-    if (restaurantToEdit) {
-      setSelectedRestaurantForEdit(restaurantToEdit);
-      setFormData({
-        restaurantName: restaurantToEdit.name,
-        cuisine: restaurantToEdit.cuisine || '',
-        priceRange: restaurantToEdit.priceRange,
-        discount: '',
-        description: restaurantToEdit.description || '',
-        openingHours: restaurantToEdit.openingHours || '',
-        location: restaurantToEdit.location || '',
-        phone: restaurantToEdit.phone || '',
-        images: restaurantToEdit.images || []
-      });
-      setImages(restaurantToEdit.images || []);
-      setShowEditModal(true);
+    const restaurant = restaurants.find(r => r.id === selectedRestaurantId);
+    if (restaurant) openEditModal(restaurant);
+  };
+
+  const handleEditFromCard = (id) => {
+    const restaurant = restaurants.find(r => r.id === id);
+    if (restaurant) {
+      openEditModal(restaurant);
     }
   };
 
-  const handleConfirmEdit = () => {
-    if (selectedRestaurantForEdit && formData.restaurantName) {
-      const updatedRestaurants = restaurants.map(restaurant =>
-        restaurant.id === selectedRestaurantForEdit.id
-          ? {
-              ...restaurant,
-              name: formData.restaurantName,
-              cuisine: formData.cuisine || restaurant.cuisine,
-              priceRange: formData.priceRange.replace(/[^0-9]/g, ''),
-              description: formData.description,
-              openingHours: formData.openingHours,
-              location: formData.location,
-              phone: formData.phone,
-              images: formData.images.length > 0 ? formData.images : restaurant.images
-            }
-          : restaurant
-      );
-      setRestaurants(updatedRestaurants);
+  // ========== CONFIRM EDIT ==========
+  const handleConfirmEdit = async () => {
+    if (!selectedRestaurantForEdit) return;
+    if (!formData.restaurantName) {
+      alert('⚠️ Name is required.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    
+    const payload = {
+      name: formData.restaurantName.trim(),
+      cuisine: formData.cuisine.trim() || selectedRestaurantForEdit.cuisine,
+      price_range: '0',
+      discount: formData.discount.replace(/[^0-9]/g, '') || '0',
+      description: formData.description.trim() || '',
+      opening_hours: formData.openingHours.trim() || '',
+      location: formData.location.trim() || '',
+      phone: formData.phone.trim() || '',
+      images: formData.images.length ? formData.images : selectedRestaurantForEdit.images
+    };
+    
+    try {
+      const response = await fetch(`${API_BASE}/update/${selectedRestaurantForEdit.id}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || 'Update failed');
+      await fetchRestaurants();
       setShowEditModal(false);
       setSelectedRestaurantId(null);
       setSelectedRestaurantForEdit(null);
       setFormData({
         restaurantName: '',
         cuisine: '',
-        priceRange: '',
         discount: '',
         description: '',
         openingHours: '',
@@ -247,54 +289,111 @@ function Restaurants() {
         images: []
       });
       setImages([]);
-      alert('Restaurant updated successfully!');
+      alert('✅ Restaurant updated successfully!');
+    } catch (err) {
+      setError(err.message);
+      alert('❌ Error: ' + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
+  // ========== SELECT ALL ==========
   const handleSelectAll = () => {
-    if (selectedRestaurantId === 'all') {
-      setSelectedRestaurantId(null);
-    } else {
-      setSelectedRestaurantId('all');
-    }
+    setSelectedRestaurantId(prev => prev === 'all' ? null : 'all');
     setShowAllDropdown(false);
   };
 
   const toggleRestaurantSelection = (id) => {
-    if (selectedRestaurantId === id) {
-      setSelectedRestaurantId(null);
-    } else {
-      setSelectedRestaurantId(id);
-    }
+    setSelectedRestaurantId(prev => prev === id ? null : id);
   };
 
-  const filteredRestaurants = restaurants.filter(restaurant =>
-    restaurant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    restaurant.cuisine.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    restaurant.location.toLowerCase().includes(searchTerm.toLowerCase())
+  // ========== FILTER ==========
+  const filteredRestaurants = restaurants.filter(r =>
+    (r.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (r.cuisine || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (r.location || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const renderStars = (rating) => {
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 !== 0;
+    const num = parseFloat(rating) || 0;
+    const full = Math.floor(num);
+    const half = num % 1 !== 0;
     return (
       <>
-        {[...Array(fullStars)].map((_, i) => (
+        {[...Array(full)].map((_, i) => (
           <i key={i} className="bi bi-star-fill" style={{ color: '#ff8a00', fontSize: '12px' }}></i>
         ))}
-        {hasHalfStar && <i className="bi bi-star-half" style={{ color: '#ff8a00', fontSize: '12px' }}></i>}
-        {[...Array(5 - Math.ceil(rating))].map((_, i) => (
+        {half && <i className="bi bi-star-half" style={{ color: '#ff8a00', fontSize: '12px' }}></i>}
+        {[...Array(5 - Math.ceil(num))].map((_, i) => (
           <i key={i} className="bi bi-star" style={{ color: '#ff8a00', fontSize: '12px' }}></i>
         ))}
       </>
     );
   };
 
+  // ==================== CardActions Component ====================
+  const CardActions = ({ restaurantId }) => {
+    const [isOpen, setIsOpen] = useState(false);
+
+    const handleToggle = (e) => {
+      e.stopPropagation();
+      setIsOpen(!isOpen);
+    };
+
+    const handleEdit = (e) => {
+      e.stopPropagation();
+      setIsOpen(false);
+      handleEditFromCard(restaurantId);
+    };
+
+    const handleDelete = (e) => {
+      e.stopPropagation();
+      setIsOpen(false);
+      handleDeleteFromCard(restaurantId);
+    };
+
+    useEffect(() => {
+      const handleClickOutside = (event) => {
+        if (isOpen && !event.target.closest('.card-actions-wrapper')) {
+          setIsOpen(false);
+        }
+      };
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }, [isOpen]);
+
+    return (
+      <div className="card-actions-wrapper">
+        <button className="card-actions-btn" onClick={handleToggle}>
+          <i className="bi bi-three-dots-vertical"></i>
+        </button>
+        <div className={`card-actions-dropdown ${isOpen ? 'show' : ''}`}>
+          <button className="edit-btn" onClick={handleEdit}>
+            <i className="bi bi-pencil-square"></i> Edit
+          </button>
+          <button className="delete-btn" onClick={handleDelete}>
+            <i className="bi bi-trash"></i> Delete
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // ========== RENDER ==========
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
-      <Header title="Restaurants Management" onThemeChange={handleThemeChange} />
+      <Header title="Restaurants Management" onThemeChange={setIsDarkMode} />
 
-      {/* Search and Action Buttons Row */}
+      {loading && <div style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '10px', textAlign: 'center' }}>⏳ Loading...</div>}
+      {error && (
+        <div style={{ background: '#f8d7da', color: '#721c24', padding: '10px', margin: '10px', borderRadius: '5px' }}>
+          ❌ {error}
+          <button onClick={() => setError(null)} style={{ marginLeft: '10px', background: 'none', border: 'none', fontWeight: 'bold' }}>✕</button>
+        </div>
+      )}
+
+      {/* Search and Bulk Actions */}
       <div className="search-actions-row">
         <div className="search-bar-wrapper">
           <i className="bi bi-search search-icon"></i>
@@ -303,204 +402,139 @@ function Restaurants() {
             placeholder="Search restaurant..."
             className="search-input-full"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={e => setSearchTerm(e.target.value)}
           />
         </div>
-        
-        <button className="action-btn delete-btn" onClick={handleDeleteSelected}>
+        <button className="action-btn delete-btn" onClick={handleDeleteSelected} disabled={loading}>
           <i className="bi bi-trash"></i> Delete
         </button>
-        
-        <button className="action-btn edit-btn-action" onClick={handleEditSelected}>
+        <button className="action-btn edit-btn-action" onClick={handleEditSelected} disabled={loading}>
           <i className="bi bi-pencil-square"></i> Edit
         </button>
-        
         <div className="dropdown-wrapper">
           <button className="action-btn all-btn" onClick={() => setShowAllDropdown(!showAllDropdown)}>
             <i className="bi bi-check-all"></i> All <i className="bi bi-chevron-down"></i>
           </button>
           {showAllDropdown && (
             <div className="dropdown-menu">
-              <button onClick={() => { setSelectedRestaurantId('all'); setShowAllDropdown(false); }}>Select All</button>
+              <button onClick={handleSelectAll}>Select All</button>
               <button onClick={() => { setSelectedRestaurantId(null); setShowAllDropdown(false); }}>Deselect All</button>
             </div>
           )}
         </div>
       </div>
 
-      {/* Main Content: Add Form (Left) + Restaurant Cards (Right) */}
+      {/* Two Columns */}
       <div className="hotels-two-columns">
-        {/* Left Column - Add Form with Image Gallery on Top */}
+        {/* Left Column - Add Form */}
         <div className="add-form-column">
           <div className="add-form-card">
-            {/* Image Gallery Section - ON TOP */}
             <div className="image-gallery-top">
               <label className="gallery-label">Images Gallery</label>
               <div className="image-gallery-wrapper">
                 <div className="image-upload-box">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    style={{ display: 'none' }}
-                    id="image-upload-gallery"
-                  />
+                  <input type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} id="image-upload-gallery" />
                   <label htmlFor="image-upload-gallery" className="upload-box">
-                    <i className="bi bi-plus-lg"></i>
-                    <span>Add Image</span>
+                    <i className="bi bi-plus-lg"></i> <span>Add Image</span>
                   </label>
                 </div>
                 <div className="image-scroll-container-horizontal">
-                  {images.map((img, index) => (
-                    <div key={index} className="image-item">
-                      <img src={img} alt={`Preview ${index}`} />
-                      <button className="remove-image-btn" onClick={() => removeImage(index)}>
-                        <i className="bi bi-x-lg"></i>
-                      </button>
+                  {images.map((img, idx) => (
+                    <div key={idx} className="image-item">
+                      <img src={img} alt="preview" />
+                      <button className="remove-image-btn" onClick={() => removeImage(idx)}><i className="bi bi-x-lg"></i></button>
                     </div>
                   ))}
                 </div>
               </div>
             </div>
 
-            {/* Form Fields - BELOW Image Gallery */}
             <div className="form-fields-section">
               <div className="add-form-group">
-                <label>Restaurant Name</label>
-                <input
-                  type="text"
-                  name="restaurantName"
-                  placeholder="eg. Shan Kitchen"
-                  value={formData.restaurantName}
-                  onChange={handleInputChange}
-                />
+                <label>Restaurant Name *</label>
+                <input type="text" name="restaurantName" placeholder="eg. Bagan Golden" value={formData.restaurantName} onChange={handleInputChange} />
               </div>
-
               <div className="add-form-group">
                 <label>Cuisine Type</label>
-                <input
-                  type="text"
-                  name="cuisine"
-                  placeholder="eg. Burmese, Shan, Chinese, International"
-                  value={formData.cuisine}
-                  onChange={handleInputChange}
-                />
+                <input type="text" name="cuisine" placeholder="eg. Burmese, Shan" value={formData.cuisine} onChange={handleInputChange} />
               </div>
-
-              <div className="add-form-row">
-                <div className="add-form-group half">
-                  <label>Price Range (MMK)</label>
-                  <input
-                    type="text"
-                    name="priceRange"
-                    placeholder="eg. 25000"
-                    value={formData.priceRange}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="add-form-group half">
-                  <label>Discount %</label>
-                  <input
-                    type="text"
-                    name="discount"
-                    placeholder="eg. 10"
-                    value={formData.discount}
-                    onChange={handleInputChange}
-                  />
-                </div>
-              </div>
-
               <div className="add-form-group">
-                <label>Location</label>
-                <input
-                  type="text"
-                  name="location"
-                  placeholder="eg. New Bagan, Old Bagan"
-                  value={formData.location}
-                  onChange={handleInputChange}
-                />
+                <label>Discount % (Optional)</label>
+                <input type="text" name="discount" placeholder="10 (optional)" value={formData.discount} onChange={handleInputChange} />
               </div>
-
+              <div className="add-form-group">
+                <label>Location *</label>
+                <input type="text" name="location" placeholder="Old Bagan" value={formData.location} onChange={handleInputChange} />
+              </div>
               <div className="add-form-group">
                 <label>Opening Hours</label>
-                <input
-                  type="text"
-                  name="openingHours"
-                  placeholder="eg. 9:00 AM - 9:00 PM"
-                  value={formData.openingHours}
-                  onChange={handleInputChange}
-                />
+                <input type="text" name="openingHours" placeholder="9:00 AM - 9:00 PM" value={formData.openingHours} onChange={handleInputChange} />
               </div>
-
               <div className="add-form-group">
-                <label>Phone Number</label>
-                <input
-                  type="text"
-                  name="phone"
-                  placeholder="eg. 09-123456789"
-                  value={formData.phone}
-                  onChange={handleInputChange}
-                />
+                <label>Phone</label>
+                <input type="text" name="phone" placeholder="09-123456789" value={formData.phone} onChange={handleInputChange} />
               </div>
-
               <div className="add-form-group">
                 <label>Description</label>
-                <textarea
-                  name="description"
-                  rows="3"
-                  placeholder="Describe the restaurant, signature dishes, ambiance..."
-                  value={formData.description}
-                  onChange={handleInputChange}
-                ></textarea>
+                <textarea name="description" rows="3" placeholder="Describe..." value={formData.description} onChange={handleInputChange}></textarea>
               </div>
-
-              <button className="add-item-btn-full" onClick={handleAddRestaurant}>
-                Add Restaurant
+              <button className="add-item-btn-full" onClick={handleAddRestaurant} disabled={loading}>
+                {loading ? 'Adding...' : 'Add Restaurant'}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Right Column - Restaurant Cards (2 per row) */}
+        {/* Right Column - Cards */}
         <div className="hotels-cards-column">
           <div className="hotels-scroll-area">
-            <div className="hotels-grid-2cols">
-              {filteredRestaurants.map((restaurant) => (
-                <div 
-                  key={restaurant.id} 
-                  className={`hotel-card-vertical ${selectedRestaurantId === restaurant.id ? 'selected' : ''}`}
-                  onClick={() => toggleRestaurantSelection(restaurant.id)}
-                >
-                  <div className="hotel-card-image">
-                    <div className="image-slider">
-                      <img src={restaurant.images[0]} alt={restaurant.name} />
+            {!loading && restaurants.length === 0 && !error ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>
+                <i className="bi bi-emoji-frown" style={{ fontSize: '40px' }}></i>
+                <p>No restaurants found.</p>
+              </div>
+            ) : (
+              <div className="hotels-grid-2cols">
+                {filteredRestaurants.map(r => {
+                  const imageUrl = r.images && r.images.length > 0 
+                    ? r.images[0] 
+                    : (r.image || 'https://via.placeholder.com/300x200?text=No+Image');
+                  return (
+                    <div
+                      key={r.id}
+                      className={`hotel-card-vertical ${selectedRestaurantId === r.id ? 'selected' : ''}`}
+                      onClick={() => toggleRestaurantSelection(r.id)}
+                    >
+                      <div className="hotel-card-image">
+                        <div className="image-slider">
+                          <img
+                            src={imageUrl}
+                            alt={r.name}
+                            onError={e => e.target.src = 'https://via.placeholder.com/300x200?text=Error'}
+                          />
+                        </div>
+                        <div className="selection-check">
+                          {selectedRestaurantId === r.id && <i className="bi bi-check-circle-fill"></i>}
+                        </div>
+                        <CardActions restaurantId={r.id} />
+                      </div>
+                      <div className="hotel-card-info">
+                        <h3 className="hotel-name">{r.name}</h3>
+                        <p className="hotel-location"><i className="bi bi-geo-alt-fill"></i> {r.location || 'N/A'}</p>
+                        <div className="cuisine-type"><i className="bi bi-egg-fried"></i> {r.cuisine || 'Various'}</div>
+                        <div className="hotel-rating">
+                          {renderStars(r.rating || 4.0)}
+                          <span className="rating-count">({r.reviews || '0'})</span>
+                        </div>
+                        {r.opening_hours && (
+                          <p className="opening-hours"><i className="bi bi-clock"></i> {r.opening_hours}</p>
+                        )}
+                      </div>
                     </div>
-                    <div className="selection-check">
-                      {selectedRestaurantId === restaurant.id && <i className="bi bi-check-circle-fill"></i>}
-                    </div>
-                  </div>
-                  <div className="hotel-card-info">
-                    <h3 className="hotel-name">{restaurant.name}</h3>
-                    <p className="hotel-location">
-                      <i className="bi bi-geo-alt-fill"></i> {restaurant.location}
-                    </p>
-                    <div className="cuisine-type">
-                      <i className="bi bi-egg-fried"></i> {restaurant.cuisine}
-                    </div>
-                    <p className="hotel-price">Avg. Price <span>MMK {restaurant.priceRange}</span></p>
-                    <div className="hotel-rating">
-                      {renderStars(restaurant.rating)}
-                      <span className="rating-count">({restaurant.reviews})</span>
-                    </div>
-                    {restaurant.openingHours && (
-                      <p className="opening-hours">
-                        <i className="bi bi-clock"></i> {restaurant.openingHours}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -508,95 +542,45 @@ function Restaurants() {
       {/* Edit Modal */}
       {showEditModal && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Edit Restaurant</h2>
-              <button className="close-btn" onClick={() => setShowEditModal(false)}>
-                <i className="bi bi-x-lg"></i>
-              </button>
+              <button className="close-btn" onClick={() => setShowEditModal(false)}><i className="bi bi-x-lg"></i></button>
             </div>
             <div className="modal-body">
               <div className="form-group">
-                <label>Restaurant Name</label>
-                <input
-                  type="text"
-                  name="restaurantName"
-                  value={formData.restaurantName}
-                  onChange={handleInputChange}
-                />
+                <label>Restaurant Name *</label>
+                <input type="text" name="restaurantName" value={formData.restaurantName} onChange={handleInputChange} />
               </div>
               <div className="form-group">
-                <label>Cuisine Type</label>
-                <input
-                  type="text"
-                  name="cuisine"
-                  value={formData.cuisine}
-                  onChange={handleInputChange}
-                />
+                <label>Cuisine</label>
+                <input type="text" name="cuisine" value={formData.cuisine} onChange={handleInputChange} />
               </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Price Range (MMK)</label>
-                  <input
-                    type="text"
-                    name="priceRange"
-                    value={formData.priceRange}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Discount %</label>
-                  <input
-                    type="text"
-                    name="discount"
-                    value={formData.discount}
-                    onChange={handleInputChange}
-                  />
-                </div>
+              <div className="form-group">
+                <label>Discount % (Optional)</label>
+                <input type="text" name="discount" value={formData.discount} onChange={handleInputChange} />
               </div>
               <div className="form-group">
                 <label>Location</label>
-                <input
-                  type="text"
-                  name="location"
-                  value={formData.location}
-                  onChange={handleInputChange}
-                />
+                <input type="text" name="location" value={formData.location} onChange={handleInputChange} />
               </div>
               <div className="form-group">
                 <label>Opening Hours</label>
-                <input
-                  type="text"
-                  name="openingHours"
-                  value={formData.openingHours}
-                  onChange={handleInputChange}
-                />
+                <input type="text" name="openingHours" value={formData.openingHours} onChange={handleInputChange} />
               </div>
               <div className="form-group">
-                <label>Phone Number</label>
-                <input
-                  type="text"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleInputChange}
-                />
+                <label>Phone</label>
+                <input type="text" name="phone" value={formData.phone} onChange={handleInputChange} />
               </div>
               <div className="form-group">
                 <label>Description</label>
-                <textarea
-                  name="description"
-                  rows="3"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                ></textarea>
+                <textarea name="description" rows="3" value={formData.description} onChange={handleInputChange}></textarea>
               </div>
             </div>
             <div className="modal-footer">
-              <button className="discard-btn" onClick={() => setShowEditModal(false)}>
-                Cancel
-              </button>
-              <button className="add-item-btn" onClick={handleConfirmEdit}>
-                Confirm Edit
+              <button className="discard-btn" onClick={() => setShowEditModal(false)}>Cancel</button>
+              <button className="add-item-btn" onClick={handleConfirmEdit} disabled={loading}>
+                {loading ? 'Saving...' : 'Confirm Edit'}
               </button>
             </div>
           </div>
