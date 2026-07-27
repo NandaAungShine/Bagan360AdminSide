@@ -92,19 +92,15 @@ function Hotels() {
     }
   );
 
-  // ===== Helper: Get Image URL (image/ လမ်းကြောင်းအတိုင်း) =====
+  // ===== Helper: Get Image URL =====
   const getImageUrl = (imagePath) => {
     if (!imagePath) return null;
-    // Full URL ဖြစ်ရင် ပြန်ပေးမယ်
     if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
       return imagePath;
     }
-    // / နဲ့စရင် backend URL နဲ့ ပေါင်းမယ်
     if (imagePath.startsWith('/')) {
       return `${BACKEND_URL}${imagePath}`;
     }
-    // ကျန်တဲ့ဟာတွေကို backend URL ရှေ့ဆက်ထည့်မယ် (image/ ပါပြီးသားဖြစ်မယ်)
-    // ဥပမာ: image/hotel/xxx.webp သို့မဟုတ် images/hotel/xxx.webp
     return `${BACKEND_URL}/${imagePath}`;
   };
 
@@ -180,7 +176,6 @@ function Hotels() {
 
   // ===== ADD HOTEL =====
   const handleAddHotel = async () => {
-    // Validation
     if (!formData.name || !formData.type || !formData.location || !formData.price ||
         !formData.start_date || !formData.end_date || !formData.description ||
         !formData.facilities) {
@@ -210,7 +205,7 @@ function Hotels() {
       form.append('start_date', formData.start_date);
       form.append('end_date', formData.end_date);
       form.append('description', formData.description);
-      form.append('facilities', formData.facilities); // plain string
+      form.append('facilities', formData.facilities);
       form.append('image', imageFile);
 
       const response = await axios.post(`${API_BASE}/create`, form, {
@@ -265,6 +260,33 @@ function Hotels() {
     }
   };
 
+  // ===== Helper: Format date for input =====
+    // ===== Helper: Format date for input (Supports any format) =====
+  const formatDateForInput = (dateStr) => {
+    if (!dateStr) return '';
+    
+    // 1. YYYY-MM-DD ဖြစ်ရင် ပြန်ပေး
+    const yyyymmddMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (yyyymmddMatch) return yyyymmddMatch[0];
+    
+    // 2. YYYY/MM/DD ဖြစ်ရင် -> YYYY-MM-DD ပြောင်း
+    const yyyyslashMatch = dateStr.match(/^(\d{4})\/(\d{2})\/(\d{2})/);
+    if (yyyyslashMatch) return `${yyyyslashMatch[1]}-${yyyyslashMatch[2]}-${yyyyslashMatch[3]}`;
+    
+    // 3. DD-MM-YYYY ဖြစ်ရင် -> YYYY-MM-DD ပြောင်း
+    const ddmmyyyyMatch = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})/);
+    if (ddmmyyyyMatch) return `${ddmmyyyyMatch[3]}-${ddmmyyyyMatch[2]}-${ddmmyyyyMatch[1]}`;
+    
+    // 4. ISO String (2026-07-27T00:00:00.000Z) ဖြစ်ရင်
+    const isoMatch = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) return isoMatch[0];
+    
+    // 5. Fallback: Date Object သုံးမယ်
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '';
+    return date.toISOString().split('T')[0];
+  };
+
   // ===== EDIT (Open Modal) =====
   const handleEditHotel = (id) => {
     const hotelToEdit = hotels.find((h) => h.id === id);
@@ -280,8 +302,8 @@ function Hotels() {
       location: hotelToEdit.location || '',
       price: hotelToEdit.price || '',
       discount: hotelToEdit.discount || '',
-      start_date: hotelToEdit.start_date || '',
-      end_date: hotelToEdit.end_date || '',
+      start_date: formatDateForInput(hotelToEdit.start_date),
+      end_date: formatDateForInput(hotelToEdit.end_date),
       description: hotelToEdit.description || '',
       facilities: hotelToEdit.facilities || '',
     });
@@ -291,6 +313,7 @@ function Hotels() {
   };
 
   // ===== CONFIRM EDIT =====
+    // ===== CONFIRM EDIT =====
   const handleConfirmEdit = async () => {
     if (!formData.name || !formData.type || !formData.location || !formData.price ||
         !formData.description || !formData.facilities) {
@@ -312,8 +335,11 @@ function Hotels() {
       form.append('location', formData.location);
       form.append('price', formData.price);
       form.append('discount', formData.discount || '0');
+      
+      // ===== မူလအတိုင်း YYYY-MM-DD ပုံစံပဲ ပို့ပါ (ISO မပြောင်းပါနဲ့) =====
       form.append('start_date', formData.start_date);
       form.append('end_date', formData.end_date);
+      
       form.append('description', formData.description);
       form.append('facilities', formData.facilities);
       
@@ -436,7 +462,6 @@ function Hotels() {
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Hotels Management" onThemeChange={handleThemeChange} />
 
-      {/* Search Bar Only */}
       <div className="search-actions-row">
         <div className="search-bar-wrapper">
           <i className="bi bi-search search-icon"></i>
@@ -456,12 +481,9 @@ function Hotels() {
         </div>
       )}
 
-      {/* Two Columns */}
       <div className="hotels-two-columns">
-        {/* Left: Add Form */}
         <div className="add-form-column">
           <div className="add-form-card">
-            {/* Image Gallery */}
             <div className="image-gallery-top">
               <label className="gallery-label">Image *</label>
               <div className="image-gallery-wrapper">
@@ -491,7 +513,6 @@ function Hotels() {
               </div>
             </div>
 
-            {/* Form Fields */}
             <div className="form-fields-section">
               <div className="add-form-group">
                 <label>Hotel Name *</label>
@@ -599,7 +620,6 @@ function Hotels() {
           </div>
         </div>
 
-        {/* Right: Hotel Cards */}
         <div className="hotels-cards-column">
           <div className="hotels-scroll-area">
             <div className="hotels-grid-2cols">
@@ -654,7 +674,6 @@ function Hotels() {
         </div>
       </div>
 
-      {/* Edit Modal */}
       {showEditModal && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>

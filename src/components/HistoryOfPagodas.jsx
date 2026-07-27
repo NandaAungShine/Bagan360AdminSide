@@ -97,17 +97,13 @@ function HistoryOfPagodas() {
 
       if (response.data && response.data.success && response.data.data) {
         const formatted = response.data.data.map((item) => {
-          // 🔥 API က image ရော images array ရော ပါနိုင်တယ်
           let imageUrl = null;
           let imagesArray = [];
 
-          // ပထမ images array ကို ဦးစားပေးယူမယ်
           if (item.images && Array.isArray(item.images) && item.images.length > 0) {
             imagesArray = item.images.map(img => `http://130.94.21.185:8000/${img}`);
             imageUrl = imagesArray[0];
-          } 
-          // images array မပါရင် image field ကိုယူမယ်
-          else if (item.image) {
+          } else if (item.image) {
             imageUrl = `http://130.94.21.185:8000/${item.image}`;
             imagesArray = [imageUrl];
           }
@@ -237,7 +233,7 @@ function HistoryOfPagodas() {
     setEditImageFiles(newFiles);
   };
 
-  // ==================== ADD PAGODA ====================
+  // ==================== ADD PAGODA (FIXED - Field name 'images') ====================
   const handleAddPagoda = async () => {
     if (!formData.pagodaName || !formData.location) {
       alert('Please fill in Pagoda Name and Location.');
@@ -264,10 +260,11 @@ function HistoryOfPagodas() {
         formDataToSend.append('tags', JSON.stringify(tagsArray));
       }
 
-      imageFiles.forEach((file) => formDataToSend.append('image', file));
+      // ✅ ဒီနေရာကို 'image' ကနေ 'images' ပြောင်းပါ
+      imageFiles.forEach((file) => formDataToSend.append('images', file));
 
-      const response = await axios.post('/api/admin/pagoda/create', formDataToSend, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+      const response = await api.post('/admin/pagoda/create', formDataToSend, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
 
       if (response.data && response.data.success) {
@@ -289,7 +286,9 @@ function HistoryOfPagodas() {
       }
     } catch (err) {
       console.error('❌ Create Error:', err);
-      alert('Error adding pagoda. Please try again.');
+      console.error('📦 Response Data:', err.response?.data);
+      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message || 'Unknown error';
+      alert(`❌ Error: ${errorMsg}`);
     } finally {
       setLoading(false);
     }
@@ -359,7 +358,7 @@ function HistoryOfPagodas() {
     setShowEditModal(true);
   };
 
-  // ==================== CONFIRM EDIT ====================
+  // ==================== CONFIRM EDIT (FIXED - Field name 'images') ====================
   const handleConfirmEdit = async () => {
     if (!selectedPagodaForEdit || !formData.pagodaName) {
       alert('Please fill in all required fields');
@@ -386,10 +385,11 @@ function HistoryOfPagodas() {
         formDataToSend.append('tags', JSON.stringify(tagsArray));
       }
 
-      editImageFiles.forEach((file) => formDataToSend.append('image', file));
+      // ✅ ဒီနေရာကိုလည်း 'image' ကနေ 'images' ပြောင်းပါ
+      editImageFiles.forEach((file) => formDataToSend.append('images', file));
 
-      const response = await axios.put(`/api/admin/pagoda/update/${selectedPagodaForEdit.id}`, formDataToSend, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+      const response = await api.put(`/admin/pagoda/update/${selectedPagodaForEdit.id}`, formDataToSend, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
 
       if (response.data && response.data.success) {
@@ -415,7 +415,9 @@ function HistoryOfPagodas() {
       }
     } catch (err) {
       console.error('❌ Update Error:', err);
-      alert('Error updating pagoda. Please try again.');
+      console.error('📦 Response Data:', err.response?.data);
+      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message || 'Unknown error';
+      alert(`❌ Error: ${errorMsg}`);
     } finally {
       setLoading(false);
     }
