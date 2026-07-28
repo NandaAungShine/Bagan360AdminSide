@@ -15,10 +15,9 @@ function Restaurants() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAllDropdown, setShowAllDropdown] = useState(false);
 
-  // ===== Image States =====
-  const [imageFile, setImageFile] = useState(null);        // For preview only
-  const [imagePreview, setImagePreview] = useState(null);  // Preview URL
-  const [imageBase64, setImageBase64] = useState(null);    // Base64 for API
+  // ===== Image States (File-based) =====
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
 
   // ===== API States =====
   const [restaurants, setRestaurants] = useState([]);
@@ -28,12 +27,13 @@ function Restaurants() {
   // ===== Form State =====
   const [formData, setFormData] = useState({
     restaurantName: '',
-    cuisine: '',
-    discount: '',
-    description: '',
-    openingHours: '',
     location: '',
+    address: '',
     phone: '',
+    dishes: '',
+    discount: '',
+    openingHours: '',
+    description: '',
   });
 
   // ===== API Base URL =====
@@ -43,51 +43,12 @@ function Restaurants() {
   // ===== Get Token =====
   const getToken = () => localStorage.getItem('token');
 
-  // ===== Get Headers with Token =====
+  // ===== Get Headers =====
   const getHeaders = () => {
     const token = getToken();
     return {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
       'Authorization': token ? `Bearer ${token}` : '',
     };
-  };
-
-  // ========== IMAGE COMPRESSION ==========
-  const compressImage = (file, maxWidth = 800, maxHeight = 800, quality = 0.7) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (e) => {
-        const img = new Image();
-        img.src = e.target.result;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-
-          if (width > height) {
-            if (width > maxWidth) {
-              height = Math.round((height * maxWidth) / width);
-              width = maxWidth;
-            }
-          } else {
-            if (height > maxHeight) {
-              width = Math.round((width * maxHeight) / height);
-              height = maxHeight;
-            }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', quality));
-        };
-        img.onerror = reject;
-      };
-      reader.onerror = reject;
-    });
   };
 
   // ========== FETCH RESTAURANTS ==========
@@ -97,7 +58,10 @@ function Restaurants() {
     try {
       const response = await fetch(`${API_BASE}/list`, {
         method: 'GET',
-        headers: getHeaders(),
+        headers: {
+          'Authorization': `Bearer ${getToken()}`,
+          'Content-Type': 'application/json',
+        },
       });
 
       if (!response.ok) {
@@ -112,14 +76,10 @@ function Restaurants() {
       if (result.success && Array.isArray(result.data)) {
         list = result.data.map(item => ({
           ...item,
-          images: item.images 
-            ? item.images.map(img => 
-                img.startsWith('http') ? img : `${BACKEND_URL}/${img}`
-              ) 
-            : [],
           image: item.image 
             ? (item.image.startsWith('http') ? item.image : `${BACKEND_URL}/${item.image}`)
             : null,
+          dishes: Array.isArray(item.dishes) ? item.dishes.join(', ') : (item.dishes || ''),
         }));
       } else if (Array.isArray(result)) {
         list = result;
@@ -131,7 +91,6 @@ function Restaurants() {
     } catch (err) {
       setError(err.message);
       console.error('❌ Fetch Error:', err);
-      alert('❌ Failed to fetch restaurants: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -158,50 +117,38 @@ function Restaurants() {
     setFormData({ ...formData, [name]: value });
   };
 
-  // ========== IMAGE HANDLERS (with compression) ==========
-  const handleImageUpload = async (e) => {
+  // ========== IMAGE HANDLERS ==========
+  const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Preview
     const previewUrl = URL.createObjectURL(file);
     setImagePreview(previewUrl);
     setImageFile(file);
-
-    // Compress and convert to Base64
-    try {
-      const compressed = await compressImage(file, 600, 600, 0.7);
-      setImageBase64(compressed);
-      console.log('✅ Image compressed, size:', Math.round(compressed.length / 1024), 'KB');
-    } catch (err) {
-      console.error('❌ Compression error:', err);
-      alert('Failed to compress image. Please try another image.');
-    }
   };
 
   const removeImage = () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
     setImagePreview(null);
     setImageFile(null);
-    setImageBase64(null);
   };
 
   // ========== RESET FORM ==========
   const resetForm = () => {
     setFormData({
       restaurantName: '',
-      cuisine: '',
-      discount: '',
-      description: '',
-      openingHours: '',
       location: '',
+      address: '',
       phone: '',
+      dishes: '',
+      discount: '',
+      openingHours: '',
+      description: '',
     });
-    setImagePreview(null);
-    setImageFile(null);
-    setImageBase64(null);
+    removeImage();
   };
 
-  // ========== ADD RESTAURANT ==========
+  // ========== ADD RESTAURANT (FormData) ==========
   const handleAddRestaurant = async () => {
     if (!formData.restaurantName || !formData.location) {
       alert('⚠️ Please fill in Restaurant Name and Location.');
@@ -218,23 +165,29 @@ function Restaurants() {
     setError(null);
     
     try {
-      const payload = {
-        name: formData.restaurantName.trim(),
-        cuisine: formData.cuisine.trim() || 'Various',
-        price_range: '0',
-        discount: formData.discount.replace(/[^0-9]/g, '') || '0',
-        description: formData.description.trim() || '',
-        opening_hours: formData.openingHours.trim() || '',
-        location: formData.location.trim() || '',
-        phone: formData.phone.trim() || '',
-        // Send single image (not array) to avoid large payload
-        image: imageBase64 || '🍽️'
-      };
+      const form = new FormData();
+      form.append('name', formData.restaurantName.trim());
+      form.append('location', formData.location.trim());
+      form.append('address', formData.address?.trim() || '');
+      form.append('phone', formData.phone?.trim() || '');
+      form.append('discount', String(formData.discount || '').replace(/[^0-9]/g, '') || '0');
+      form.append('description', formData.description?.trim() || '');
+      form.append('dishes', formData.dishes?.trim() || '');
+      form.append('opening_hours', formData.openingHours?.trim() || '');
+      
+      // ===== Image file ကို တိုက်ရိုက် append လုပ်ပါ =====
+      if (imageFile) {
+        form.append('image', imageFile);
+      }
+
+      console.log('📤 Sending FormData...');
 
       const response = await fetch(`${API_BASE}/create`, {
         method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify(payload),
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: form,
       });
 
       if (!response.ok) {
@@ -261,7 +214,7 @@ function Restaurants() {
     }
   };
 
-  // ========== DELETE (from top bar) ==========
+  // ========== DELETE ==========
   const handleDeleteSelected = async () => {
     if (!selectedRestaurantId || selectedRestaurantId === 'all') {
       alert('⚠️ Please select a single restaurant.');
@@ -276,35 +229,27 @@ function Restaurants() {
     }
 
     setLoading(true);
-    setError(null);
     try {
       const response = await fetch(`${API_BASE}/delete/${selectedRestaurantId}`, {
         method: 'DELETE',
-        headers: getHeaders(),
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       });
 
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
-      }
-
-      const result = await response.json();
-      if (result.success === false) {
-        throw new Error(result.message || 'Delete failed');
-      }
+      if (!response.ok) throw new Error('Delete failed');
       
       await fetchRestaurants();
       setSelectedRestaurantId(null);
       alert('🗑️ Restaurant deleted successfully!');
     } catch (err) {
-      setError(err.message);
       alert('❌ Error: ' + err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // ========== DELETE (from card) ==========
   const handleDeleteFromCard = async (id) => {
     if (!window.confirm('🗑️ Delete this restaurant?')) return;
     
@@ -315,27 +260,20 @@ function Restaurants() {
     }
 
     setLoading(true);
-    setError(null);
     try {
       const response = await fetch(`${API_BASE}/delete/${id}`, {
         method: 'DELETE',
-        headers: getHeaders(),
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       });
 
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
-      }
-
-      const result = await response.json();
-      if (result.success === false) {
-        throw new Error(result.message || 'Delete failed');
-      }
+      if (!response.ok) throw new Error('Delete failed');
       
       await fetchRestaurants();
       alert('🗑️ Restaurant deleted successfully!');
     } catch (err) {
-      setError(err.message);
       alert('❌ Error: ' + err.message);
     } finally {
       setLoading(false);
@@ -347,19 +285,20 @@ function Restaurants() {
     setSelectedRestaurantForEdit(restaurant);
     setFormData({
       restaurantName: restaurant.name || '',
-      cuisine: restaurant.cuisine || '',
-      discount: restaurant.discount || '',
-      description: restaurant.description || '',
-      openingHours: restaurant.opening_hours || '',
       location: restaurant.location || '',
+      address: restaurant.address || '',
       phone: restaurant.phone || '',
+      dishes: restaurant.dishes || '',
+      discount: restaurant.discount || '',
+      openingHours: restaurant.opening_hours || '',
+      description: restaurant.description || '',
     });
     
-    // Set existing image as preview
-    const existingImage = restaurant.image ? `${BACKEND_URL}/${restaurant.image}` : null;
+    const existingImage = restaurant.image 
+      ? (restaurant.image.startsWith('http') ? restaurant.image : `${BACKEND_URL}/${restaurant.image}`)
+      : null;
     setImagePreview(existingImage);
     setImageFile(null);
-    setImageBase64(null);
     
     setShowEditModal(true);
   };
@@ -375,12 +314,10 @@ function Restaurants() {
 
   const handleEditFromCard = (id) => {
     const restaurant = restaurants.find(r => r.id === id);
-    if (restaurant) {
-      openEditModal(restaurant);
-    }
+    if (restaurant) openEditModal(restaurant);
   };
 
-  // ========== CONFIRM EDIT ==========
+  // ========== CONFIRM EDIT (FormData) ==========
   const handleConfirmEdit = async () => {
     if (!selectedRestaurantForEdit) return;
     if (!formData.restaurantName) {
@@ -398,23 +335,33 @@ function Restaurants() {
     setError(null);
     
     try {
-      const payload = {
-        name: formData.restaurantName.trim(),
-        cuisine: formData.cuisine.trim() || selectedRestaurantForEdit.cuisine,
-        price_range: '0',
-        discount: formData.discount.replace(/[^0-9]/g, '') || '0',
-        description: formData.description.trim() || '',
-        opening_hours: formData.openingHours.trim() || '',
-        location: formData.location.trim() || '',
-        phone: formData.phone.trim() || '',
-        // If new image uploaded, send it; otherwise keep existing
-        image: imageBase64 || selectedRestaurantForEdit.image || '🍽️'
-      };
+      const form = new FormData();
+      form.append('name', formData.restaurantName.trim());
+      form.append('location', formData.location.trim());
+      form.append('address', formData.address?.trim() || '');
+      form.append('phone', formData.phone?.trim() || '');
+      form.append('discount', String(formData.discount || '').replace(/[^0-9]/g, '') || '0');
+      form.append('description', formData.description?.trim() || '');
+      form.append('dishes', formData.dishes?.trim() || '');
+      form.append('opening_hours', formData.openingHours?.trim() || '');
+      
+      // ===== Image ရှိရင်သာ append လုပ်ပါ =====
+      if (imageFile) {
+        form.append('image', imageFile);
+      }
+console.log("Image File:", imageFile);
+
+for (const pair of form.entries()) {
+    console.log(pair[0], pair[1]);
+}
+      console.log('📤 Updating with FormData...');
 
       const response = await fetch(`${API_BASE}/update/${selectedRestaurantForEdit.id}`, {
         method: 'PUT',
-        headers: getHeaders(),
-        body: JSON.stringify(payload),
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: form,
       });
 
       if (!response.ok) {
@@ -428,7 +375,9 @@ function Restaurants() {
       if (result.success === false) {
         throw new Error(result.message || 'Update failed');
       }
-      
+      for (const pair of form.entries()) {
+  console.log(pair[0], pair[1]);
+}
       await fetchRestaurants();
       setShowEditModal(false);
       setSelectedRestaurantId(null);
@@ -437,8 +386,8 @@ function Restaurants() {
       alert('✅ Restaurant updated successfully!');
     } catch (err) {
       setError(err.message);
-      console.error('❌ Update Error:', err);
-      alert('❌ Error: ' + err.message);
+      console.error(' Update Error:', err);
+      alert(' Error: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -457,8 +406,8 @@ function Restaurants() {
   // ========== FILTER ==========
   const filteredRestaurants = restaurants.filter(r =>
     (r.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (r.cuisine || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (r.location || '').toLowerCase().includes(searchTerm.toLowerCase())
+    (r.location || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (r.dishes || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const renderStars = (rating) => {
@@ -624,26 +573,6 @@ function Restaurants() {
                 />
               </div>
               <div className="add-form-group">
-                <label>Cuisine Type</label>
-                <input 
-                  type="text" 
-                  name="cuisine" 
-                  placeholder="eg. Burmese, Shan" 
-                  value={formData.cuisine} 
-                  onChange={handleInputChange} 
-                />
-              </div>
-              <div className="add-form-group">
-                <label>Discount % (Optional)</label>
-                <input 
-                  type="text" 
-                  name="discount" 
-                  placeholder="10 (optional)" 
-                  value={formData.discount} 
-                  onChange={handleInputChange} 
-                />
-              </div>
-              <div className="add-form-group">
                 <label>Location *</label>
                 <input 
                   type="text" 
@@ -654,12 +583,12 @@ function Restaurants() {
                 />
               </div>
               <div className="add-form-group">
-                <label>Opening Hours</label>
+                <label>Address</label>
                 <input 
                   type="text" 
-                  name="openingHours" 
-                  placeholder="9:00 AM - 9:00 PM" 
-                  value={formData.openingHours} 
+                  name="address" 
+                  placeholder="Near Ananda Temple, Bagan" 
+                  value={formData.address} 
                   onChange={handleInputChange} 
                 />
               </div>
@@ -670,6 +599,36 @@ function Restaurants() {
                   name="phone" 
                   placeholder="09-123456789" 
                   value={formData.phone} 
+                  onChange={handleInputChange} 
+                />
+              </div>
+              <div className="add-form-group">
+                <label>Dishes (comma separated)</label>
+                <input 
+                  type="text" 
+                  name="dishes" 
+                  placeholder="Mohinga, Shan Noodle, Myanmar Curry" 
+                  value={formData.dishes} 
+                  onChange={handleInputChange} 
+                />
+              </div>
+              <div className="add-form-group">
+                <label>Discount %</label>
+                <input 
+                  type="text" 
+                  name="discount" 
+                  placeholder="10" 
+                  value={formData.discount} 
+                  onChange={handleInputChange} 
+                />
+              </div>
+              <div className="add-form-group">
+                <label>Opening Hours</label>
+                <input 
+                  type="text" 
+                  name="openingHours" 
+                  placeholder="9:00 AM - 9:00 PM" 
+                  value={formData.openingHours} 
                   onChange={handleInputChange} 
                 />
               </div>
@@ -703,7 +662,7 @@ function Restaurants() {
                 {filteredRestaurants.map(r => {
                   const imageUrl = r.image 
                     ? (r.image.startsWith('http') ? r.image : `${BACKEND_URL}/${r.image}`)
-                    : (r.images && r.images.length > 0 ? r.images[0] : "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='200'%3E%3Crect width='300' height='200' fill='%23f0f0f0'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='14' fill='%23999' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E");
+                    : "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='200'%3E%3Crect width='300' height='200' fill='%23f0f0f0'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='14' fill='%23999' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E";
                   return (
                     <div
                       key={r.id}
@@ -729,7 +688,12 @@ function Restaurants() {
                       <div className="hotel-card-info">
                         <h3 className="hotel-name">{r.name}</h3>
                         <p className="hotel-location"><i className="bi bi-geo-alt-fill"></i> {r.location || 'N/A'}</p>
-                        <div className="cuisine-type"><i className="bi bi-egg-fried"></i> {r.cuisine || 'Various'}</div>
+                        {r.address && (
+                          <p className="address"><i className="bi bi-house-door"></i> {r.address}</p>
+                        )}
+                        {r.dishes && (
+                          <p className="dishes"><i className="bi bi-egg-fried"></i> {r.dishes}</p>
+                        )}
                         <div className="hotel-rating">
                           {renderStars(r.rating || 4.0)}
                           <span className="rating-count">({r.reviews || '0'})</span>
@@ -797,25 +761,7 @@ function Restaurants() {
                 />
               </div>
               <div className="form-group">
-                <label>Cuisine</label>
-                <input 
-                  type="text" 
-                  name="cuisine" 
-                  value={formData.cuisine} 
-                  onChange={handleInputChange} 
-                />
-              </div>
-              <div className="form-group">
-                <label>Discount % (Optional)</label>
-                <input 
-                  type="text" 
-                  name="discount" 
-                  value={formData.discount} 
-                  onChange={handleInputChange} 
-                />
-              </div>
-              <div className="form-group">
-                <label>Location</label>
+                <label>Location *</label>
                 <input 
                   type="text" 
                   name="location" 
@@ -824,11 +770,11 @@ function Restaurants() {
                 />
               </div>
               <div className="form-group">
-                <label>Opening Hours</label>
+                <label>Address</label>
                 <input 
                   type="text" 
-                  name="openingHours" 
-                  value={formData.openingHours} 
+                  name="address" 
+                  value={formData.address} 
                   onChange={handleInputChange} 
                 />
               </div>
@@ -838,6 +784,33 @@ function Restaurants() {
                   type="text" 
                   name="phone" 
                   value={formData.phone} 
+                  onChange={handleInputChange} 
+                />
+              </div>
+              <div className="form-group">
+                <label>Dishes (comma separated)</label>
+                <input 
+                  type="text" 
+                  name="dishes" 
+                  value={formData.dishes} 
+                  onChange={handleInputChange} 
+                />
+              </div>
+              <div className="form-group">
+                <label>Discount %</label>
+                <input 
+                  type="text" 
+                  name="discount" 
+                  value={formData.discount} 
+                  onChange={handleInputChange} 
+                />
+              </div>
+              <div className="form-group">
+                <label>Opening Hours</label>
+                <input 
+                  type="text" 
+                  name="openingHours" 
+                  value={formData.openingHours} 
                   onChange={handleInputChange} 
                 />
               </div>

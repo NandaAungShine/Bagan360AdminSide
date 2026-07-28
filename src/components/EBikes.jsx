@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Header from './Header';
 
 const API_BASE = 'http://130.94.21.185:8000/api/admin';
+const IMAGE_BASE = 'http://130.94.21.185:8000'; // 👈 (၁) ပုံအတွက် သီးသန့် Base URL ထည့်ထားတယ်။
 
 // Helper to get token and create fetch options with Authorization
 const getAuthHeaders = () => {
@@ -351,7 +352,8 @@ function EBikes() {
       phone_holder: bike.phone_holder || 'Yes',
     });
     if (bike.image) {
-      const fullImageUrl = `${API_BASE}/../${bike.image}`;
+      // 👈 (၃) Edit Modal မှာ ပုံကြိုပြဖို့ IMAGE_BASE သုံးထားတယ်။
+      const fullImageUrl = `${IMAGE_BASE}/${bike.image}`;
       setImagePreview(fullImageUrl);
       setImageFile(null);
     } else {
@@ -825,8 +827,9 @@ function EBikes() {
             ) : (
               <div className="hotels-grid-2cols">
                 {filteredEBikes.map((ebike) => {
+                  // 👈 (၂) ကတ်ပြားပေါ်မှာ ပုံပြဖို့ IMAGE_BASE သုံးထားတယ်။
                   const imageUrl = ebike.image
-                    ? `${API_BASE}/../${ebike.image}`
+                    ? `${IMAGE_BASE}/${ebike.image}`
                     : '🛵';
                   const bikePrices = pricesByBike[ebike.id] || [];
 
