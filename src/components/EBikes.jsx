@@ -1,6 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import Header from './Header';
 
+const API_BASE = 'http://130.94.21.185:8000/api/admin';
+
+// Helper to get token and create fetch options with Authorization
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': token ? `Bearer ${token}` : '',
+  };
+};
+
+const fetchWithAuth = async (url, options = {}) => {
+  const headers = getAuthHeaders();
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      ...headers,
+      ...(options.headers || {}),
+    },
+  });
+  return response;
+};
+
 function EBikes() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -12,133 +35,116 @@ function EBikes() {
   const [selectedEBikeForEdit, setSelectedEBikeForEdit] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAllDropdown, setShowAllDropdown] = useState(false);
-  const [images, setImages] = useState([]);
 
+  // Data states
+  const [eBikeTypes, setEBikeTypes] = useState([]);
+  const [eBikes, setEBikes] = useState([]);
+  const [allPrices, setAllPrices] = useState([]); // raw from API
+  const [pricesByBike, setPricesByBike] = useState({}); // grouped by e_bike_id
+  const [loading, setLoading] = useState(false);
+  const [loadingTypes, setLoadingTypes] = useState(false);
+
+  // Form states for adding/editing E-Bike
   const [formData, setFormData] = useState({
-    ebikeName: '',
+    type_id: '',
+    name: '',
+    code: '',
     brand: '',
-    model: '',
-    batteryCapacity: '',
-    range: '',
-    pricePerDay: '',
-    discount: '',
-    description: '',
-    maxSpeed: '',
-    weight: '',
     color: '',
     location: '',
-    images: []
+    price: '',
+    discount: '',
+    description: '',
+    battery_voltage: '',
+    battery_capacity: '',
+    passenger_count: '',
+    helmet: 'Yes',
+    phone_holder: 'Yes',
   });
 
-  const [eBikes, setEBikes] = useState([
-    {
-      id: 1,
-      name: 'Yadea C1S',
-      brand: 'Yadea',
-      model: 'C1S',
-      batteryCapacity: '48V 20Ah',
-      range: '60-70 km',
-      pricePerDay: '15,000',
-      rating: 4.8,
-      reviews: '342',
-      images: ['🛵', '🛵', '🛵'],
-      description: 'Powerful electric scooter with long battery life, perfect for city tours',
-      maxSpeed: '45 km/h',
-      weight: '65 kg',
-      color: 'Red',
-      location: 'Old Bagan'
-    },
-    {
-      id: 2,
-      name: 'Gogoro 2 Plus',
-      brand: 'Gogoro',
-      model: '2 Plus',
-      batteryCapacity: '30Ah',
-      range: '85-100 km',
-      pricePerDay: '20,000',
-      rating: 4.9,
-      reviews: '456',
-      images: ['🛵', '🛵', '🛵'],
-      description: 'Smart electric scooter with swappable batteries and app connectivity',
-      maxSpeed: '88 km/h',
-      weight: '103 kg',
-      color: 'White',
-      location: 'New Bagan'
-    },
-    {
-      id: 3,
-      name: 'Niu NQi Sport',
-      brand: 'Niu',
-      model: 'NQi Sport',
-      batteryCapacity: '48V 26Ah',
-      range: '65-80 km',
-      pricePerDay: '18,000',
-      rating: 4.7,
-      reviews: '289',
-      images: ['🛵', '🛵', '🛵'],
-      description: 'Stylish and eco-friendly electric scooter with LED lighting',
-      maxSpeed: '45 km/h',
-      weight: '72 kg',
-      color: 'Black',
-      location: 'Mandalay'
-    },
-    {
-      id: 4,
-      name: 'Yadea G5',
-      brand: 'Yadea',
-      model: 'G5',
-      batteryCapacity: '72V 20Ah',
-      range: '80-100 km',
-      pricePerDay: '25,000',
-      rating: 4.9,
-      reviews: '567',
-      images: ['🛵', '🛵', '🛵'],
-      description: 'High-performance electric scooter with dual disc brakes',
-      maxSpeed: '70 km/h',
-      weight: '85 kg',
-      color: 'Blue',
-      location: 'Inle Lake'
-    },
-    {
-      id: 5,
-      name: 'E-Flo E2S',
-      brand: 'E-Flo',
-      model: 'E2S',
-      batteryCapacity: '48V 15Ah',
-      range: '45-55 km',
-      pricePerDay: '12,000',
-      rating: 4.5,
-      reviews: '178',
-      images: ['🛵', '🛵', '🛵'],
-      description: 'Compact and lightweight e-bike ideal for short trips',
-      maxSpeed: '40 km/h',
-      weight: '48 kg',
-      color: 'Yellow',
-      location: 'Yangon'
-    },
-    {
-      id: 6,
-      name: 'Vespa Elettrica',
-      brand: 'Vespa',
-      model: 'Elettrica',
-      batteryCapacity: '4.2 kWh',
-      range: '100 km',
-      pricePerDay: '35,000',
-      rating: 4.9,
-      reviews: '234',
-      images: ['🛵', '🛵', '🛵'],
-      description: 'Luxury Italian electric scooter with premium design',
-      maxSpeed: '70 km/h',
-      weight: '110 kg',
-      color: 'Green',
-      location: 'Bagan'
-    }
-  ]);
+  // Image state
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
 
-  const handleThemeChange = (isDark) => {
-    setIsDarkMode(isDark);
+  // Price modal states
+  const [showPriceModal, setShowPriceModal] = useState(false);
+  const [priceModalMode, setPriceModalMode] = useState('add'); // 'add' or 'edit'
+  const [currentPriceId, setCurrentPriceId] = useState(null);
+  const [currentBikeIdForPrice, setCurrentBikeIdForPrice] = useState(null);
+  const [priceFormData, setPriceFormData] = useState({
+    price_type: 'full_day',
+    start_time: '07:00',
+    end_time: '14:00',
+    price: '',
+  });
+
+  // ----- Fetch Functions -----
+  const fetchEBikeTypes = async () => {
+    setLoadingTypes(true);
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/e-bike/type/list`);
+      const data = await response.json();
+      if (data.success) {
+        setEBikeTypes(data.data);
+      } else {
+        alert(data.message || 'Failed to load types');
+      }
+    } catch (error) {
+      console.error('Error fetching types:', error);
+      alert('Network error while loading types.');
+    } finally {
+      setLoadingTypes(false);
+    }
   };
 
+  const fetchEBikes = async () => {
+    setLoading(true);
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/e-bike/list`);
+      const data = await response.json();
+      if (data.success) {
+        setEBikes(data.data);
+      } else {
+        alert(data.message || 'Failed to load e-bikes');
+      }
+    } catch (error) {
+      console.error('Error fetching e-bikes:', error);
+      alert('Network error while loading e-bikes.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAllPrices = async () => {
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/e-bike/price/list`);
+      const data = await response.json();
+      if (data.success) {
+        setAllPrices(data.data);
+        // Group by e_bike_id
+        const grouped = {};
+        data.data.forEach((price) => {
+          const id = price.e_bike_id;
+          if (!grouped[id]) grouped[id] = [];
+          grouped[id].push(price);
+        });
+        setPricesByBike(grouped);
+      } else {
+        console.warn('Failed to load prices:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching prices:', error);
+    }
+  };
+
+  // Initial data load
+  useEffect(() => {
+    fetchEBikeTypes();
+    fetchEBikes();
+    fetchAllPrices();
+  }, []);
+
+  // Theme effect
   useEffect(() => {
     if (isDarkMode) {
       document.body.classList.add('dark-mode');
@@ -149,6 +155,11 @@ function EBikes() {
     }
   }, [isDarkMode]);
 
+  const handleThemeChange = (isDark) => {
+    setIsDarkMode(isDark);
+  };
+
+  // ----- E-Bike CRUD -----
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
@@ -157,146 +168,324 @@ function EBikes() {
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
+      setImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImages([...images, reader.result]);
-        setFormData({ ...formData, images: [...formData.images, reader.result] });
+        setImagePreview(reader.result);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const removeImage = (index) => {
-    const newImages = images.filter((_, i) => i !== index);
-    setImages(newImages);
-    setFormData({ ...formData, images: newImages });
+  const removeImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
   };
 
-  const handleAddEBike = () => {
-    if (formData.ebikeName && formData.pricePerDay) {
-      const newEBike = {
-        id: eBikes.length + 1,
-        name: formData.ebikeName,
-        brand: formData.brand || 'Various',
-        model: formData.model || 'Standard',
-        batteryCapacity: formData.batteryCapacity || 'N/A',
-        range: formData.range || 'N/A',
-        pricePerDay: formData.pricePerDay.replace(/[^0-9]/g, ''),
-        rating: 4.5,
-        reviews: '0',
-        images: formData.images.length > 0 ? formData.images : ['🛵'],
-        description: formData.description,
-        maxSpeed: formData.maxSpeed,
-        weight: formData.weight,
-        color: formData.color,
-        location: formData.location
-      };
-      setEBikes([newEBike, ...eBikes]);
-      setFormData({
-        ebikeName: '',
-        brand: '',
-        model: '',
-        batteryCapacity: '',
-        range: '',
-        pricePerDay: '',
-        discount: '',
-        description: '',
-        maxSpeed: '',
-        weight: '',
-        color: '',
-        location: '',
-        images: []
+  const handleAddEBike = async () => {
+    if (!formData.type_id || !formData.name || !formData.price) {
+      alert('Please fill in required fields: Type, Name, Price.');
+      return;
+    }
+
+    const form = new FormData();
+    form.append('type_id', formData.type_id);
+    form.append('name', formData.name);
+    form.append('code', formData.code || '');
+    form.append('brand', formData.brand || '');
+    form.append('color', formData.color || '');
+    form.append('location', formData.location || '');
+    form.append('price', formData.price);
+    form.append('discount', formData.discount || 0);
+    form.append('description', formData.description || '');
+    form.append('battery_voltage', formData.battery_voltage || '');
+    form.append('battery_capacity', formData.battery_capacity || '');
+    form.append('passenger_count', formData.passenger_count || 1);
+    form.append('helmet', formData.helmet === 'Yes' ? 'Yes' : 'No');
+    form.append('phone_holder', formData.phone_holder === 'Yes' ? 'Yes' : 'No');
+    if (imageFile) {
+      form.append('image', imageFile);
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE}/e-bike/create`, {
+        method: 'POST',
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+        body: form,
       });
-      setImages([]);
-      alert('E-Bike added successfully!');
-    } else {
-      alert('Please fill in e-bike name and price per day');
+      const data = await response.json();
+      if (data.success) {
+        alert('E-Bike added successfully!');
+        resetForm();
+        fetchEBikes();
+        fetchAllPrices(); // refresh prices as new bike may appear
+      } else {
+        alert(data.message || 'Failed to add e-bike.');
+      }
+    } catch (error) {
+      console.error('Error adding:', error);
+      alert('Network error.');
     }
   };
 
-  const handleDeleteSelected = () => {
+  const resetForm = () => {
+    setFormData({
+      type_id: '',
+      name: '',
+      code: '',
+      brand: '',
+      color: '',
+      location: '',
+      price: '',
+      discount: '',
+      description: '',
+      battery_voltage: '',
+      battery_capacity: '',
+      passenger_count: '',
+      helmet: 'Yes',
+      phone_holder: 'Yes',
+    });
+    setImageFile(null);
+    setImagePreview(null);
+  };
+
+  const handleDeleteSelected = async () => {
     if (!selectedEBikeId) {
       alert('Please select an e-bike to delete');
       return;
     }
-    if (window.confirm('Are you sure you want to delete this e-bike?')) {
-      setEBikes(eBikes.filter(ebike => ebike.id !== selectedEBikeId));
-      setSelectedEBikeId(null);
-      alert('E-Bike deleted successfully!');
+    if (!window.confirm('Are you sure you want to delete this e-bike?')) return;
+
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/e-bike/delete/${selectedEBikeId}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert('E-Bike deleted successfully!');
+        setSelectedEBikeId(null);
+        fetchEBikes();
+        fetchAllPrices();
+      } else {
+        alert(data.message || 'Failed to delete.');
+      }
+    } catch (error) {
+      console.error('Error deleting:', error);
+      alert('Network error.');
     }
   };
 
+  // Edit E-Bike
   const handleEditSelected = () => {
     if (!selectedEBikeId) {
       alert('Please select an e-bike to edit');
       return;
     }
-    const ebikeToEdit = eBikes.find(ebike => ebike.id === selectedEBikeId);
+    const ebikeToEdit = eBikes.find((ebike) => ebike.id === selectedEBikeId);
     if (ebikeToEdit) {
       setSelectedEBikeForEdit(ebikeToEdit);
       setFormData({
-        ebikeName: ebikeToEdit.name,
+        type_id: ebikeToEdit.type_id || '',
+        name: ebikeToEdit.name || '',
+        code: ebikeToEdit.code || '',
         brand: ebikeToEdit.brand || '',
-        model: ebikeToEdit.model || '',
-        batteryCapacity: ebikeToEdit.batteryCapacity || '',
-        range: ebikeToEdit.range || '',
-        pricePerDay: ebikeToEdit.pricePerDay,
-        discount: '',
-        description: ebikeToEdit.description || '',
-        maxSpeed: ebikeToEdit.maxSpeed || '',
-        weight: ebikeToEdit.weight || '',
         color: ebikeToEdit.color || '',
         location: ebikeToEdit.location || '',
-        images: ebikeToEdit.images || []
+        price: ebikeToEdit.price || '',
+        discount: ebikeToEdit.discount || 0,
+        description: ebikeToEdit.description || '',
+        battery_voltage: ebikeToEdit.battery_voltage || '',
+        battery_capacity: ebikeToEdit.battery_capacity || '',
+        passenger_count: ebikeToEdit.passenger_count || '',
+        helmet: ebikeToEdit.helmet || 'Yes',
+        phone_holder: ebikeToEdit.phone_holder || 'Yes',
       });
-      setImages(ebikeToEdit.images || []);
+      if (ebikeToEdit.image) {
+        const fullImageUrl = `${API_BASE}/../${ebikeToEdit.image}`;
+        setImagePreview(fullImageUrl);
+        setImageFile(null);
+      } else {
+        setImagePreview(null);
+        setImageFile(null);
+      }
       setShowEditModal(true);
     }
   };
 
-  const handleConfirmEdit = () => {
-    if (selectedEBikeForEdit && formData.ebikeName) {
-      const updatedEBikes = eBikes.map(ebike =>
-        ebike.id === selectedEBikeForEdit.id
-          ? {
-              ...ebike,
-              name: formData.ebikeName,
-              brand: formData.brand || ebike.brand,
-              model: formData.model || ebike.model,
-              batteryCapacity: formData.batteryCapacity || ebike.batteryCapacity,
-              range: formData.range || ebike.range,
-              pricePerDay: formData.pricePerDay.replace(/[^0-9]/g, ''),
-              description: formData.description,
-              maxSpeed: formData.maxSpeed,
-              weight: formData.weight,
-              color: formData.color,
-              location: formData.location,
-              images: formData.images.length > 0 ? formData.images : ebike.images
-            }
-          : ebike
-      );
-      setEBikes(updatedEBikes);
-      setShowEditModal(false);
-      setSelectedEBikeId(null);
-      setSelectedEBikeForEdit(null);
-      setFormData({
-        ebikeName: '',
-        brand: '',
-        model: '',
-        batteryCapacity: '',
-        range: '',
-        pricePerDay: '',
-        discount: '',
-        description: '',
-        maxSpeed: '',
-        weight: '',
-        color: '',
-        location: '',
-        images: []
-      });
-      setImages([]);
-      alert('E-Bike updated successfully!');
+  const handleConfirmEdit = async () => {
+    if (!selectedEBikeForEdit) return;
+    if (!formData.type_id || !formData.name || !formData.price) {
+      alert('Please fill in required fields (Type, Name, Price).');
+      return;
     }
+
+    const form = new FormData();
+    form.append('type_id', formData.type_id);
+    form.append('name', formData.name);
+    form.append('code', formData.code || '');
+    form.append('brand', formData.brand || '');
+    form.append('color', formData.color || '');
+    form.append('location', formData.location || '');
+    form.append('price', formData.price);
+    form.append('discount', formData.discount || 0);
+    form.append('description', formData.description || '');
+    form.append('battery_voltage', formData.battery_voltage || '');
+    form.append('battery_capacity', formData.battery_capacity || '');
+    form.append('passenger_count', formData.passenger_count || 1);
+    form.append('helmet', formData.helmet === 'Yes' ? 'Yes' : 'No');
+    form.append('phone_holder', formData.phone_holder === 'Yes' ? 'Yes' : 'No');
+    if (imageFile) {
+      form.append('image', imageFile);
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE}/e-bike/update/${selectedEBikeForEdit.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+        body: form,
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert('E-Bike updated successfully!');
+        setShowEditModal(false);
+        setSelectedEBikeId(null);
+        setSelectedEBikeForEdit(null);
+        resetForm();
+        fetchEBikes();
+        fetchAllPrices();
+      } else {
+        alert(data.message || 'Failed to update.');
+      }
+    } catch (error) {
+      console.error('Error updating:', error);
+      alert('Network error.');
+    }
+  };
+
+  // ----- Price CRUD -----
+  const handleOpenAddPriceModal = (bikeId) => {
+    setCurrentBikeIdForPrice(bikeId);
+    setPriceModalMode('add');
+    setCurrentPriceId(null);
+    setPriceFormData({
+      price_type: 'full_day',
+      start_time: '07:00',
+      end_time: '14:00',
+      price: '',
+    });
+    setShowPriceModal(true);
+  };
+
+  const handleOpenEditPriceModal = (price) => {
+    setCurrentBikeIdForPrice(price.e_bike_id);
+    setPriceModalMode('edit');
+    setCurrentPriceId(price.id);
+    setPriceFormData({
+      price_type: price.price_type || 'full_day',
+      start_time: price.start_time ? price.start_time.slice(0, 5) : '07:00',
+      end_time: price.end_time ? price.end_time.slice(0, 5) : '14:00',
+      price: price.price || '',
+    });
+    setShowPriceModal(true);
+  };
+
+  const handlePriceInputChange = (e) => {
+    const { name, value } = e.target;
+    setPriceFormData({ ...priceFormData, [name]: value });
+  };
+
+  const handleSavePrice = async () => {
+    if (!priceFormData.price || !priceFormData.start_time || !priceFormData.end_time) {
+      alert('Please fill in all fields.');
+      return;
+    }
+
+    const payload = {
+      e_bike_id: currentBikeIdForPrice,
+      price_type: priceFormData.price_type,
+      start_time: priceFormData.start_time + ':00',
+      end_time: priceFormData.end_time + ':00',
+      price: parseFloat(priceFormData.price),
+    };
+
+    let url, method;
+    if (priceModalMode === 'add') {
+      url = `${API_BASE}/e-bike/price/create`;
+      method = 'POST';
+    } else {
+      url = `${API_BASE}/e-bike/price/update/${currentPriceId}`;
+      method = 'PUT';
+    }
+
+    try {
+      const response = await fetchWithAuth(url, {
+        method: method,
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert(priceModalMode === 'add' ? 'Price added successfully!' : 'Price updated successfully!');
+        setShowPriceModal(false);
+        fetchAllPrices(); // refresh prices
+      } else {
+        alert(data.message || 'Failed to save price.');
+      }
+    } catch (error) {
+      console.error('Error saving price:', error);
+      alert('Network error.');
+    }
+  };
+
+  const handleDeletePrice = async (priceId) => {
+    if (!window.confirm('Are you sure you want to delete this price?')) return;
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/e-bike/price/delete/${priceId}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert('Price deleted successfully!');
+        fetchAllPrices();
+      } else {
+        alert(data.message || 'Failed to delete price.');
+      }
+    } catch (error) {
+      console.error('Error deleting price:', error);
+      alert('Network error.');
+    }
+  };
+
+  // ----- UI Helpers -----
+  const getPriceTypeLabel = (type) => {
+    const map = {
+      'full_day': 'Full Day',
+      'hourly': 'Hourly',
+      'half_day_1': 'Half Day (AM)',
+      'half_day_2': 'Half Day (PM)',
+    };
+    return map[type] || type;
+  };
+
+  const renderStars = (rating = 4.5) => {
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating % 1 !== 0;
+    return (
+      <>
+        {[...Array(fullStars)].map((_, i) => (
+          <i key={i} className="bi bi-star-fill" style={{ color: '#ff8a00', fontSize: '12px' }} />
+        ))}
+        {hasHalfStar && <i className="bi bi-star-half" style={{ color: '#ff8a00', fontSize: '12px' }} />}
+        {[...Array(5 - Math.ceil(rating))].map((_, i) => (
+          <i key={i} className="bi bi-star" style={{ color: '#ff8a00', fontSize: '12px' }} />
+        ))}
+      </>
+    );
   };
 
   const handleSelectAll = () => {
@@ -316,34 +505,18 @@ function EBikes() {
     }
   };
 
-  const filteredEBikes = eBikes.filter(ebike =>
-    ebike.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ebike.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ebike.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ebike.location.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredEBikes = eBikes.filter((ebike) =>
+    ebike.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    ebike.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    ebike.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    ebike.location?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const renderStars = (rating) => {
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 !== 0;
-    return (
-      <>
-        {[...Array(fullStars)].map((_, i) => (
-          <i key={i} className="bi bi-star-fill" style={{ color: '#ff8a00', fontSize: '12px' }}></i>
-        ))}
-        {hasHalfStar && <i className="bi bi-star-half" style={{ color: '#ff8a00', fontSize: '12px' }}></i>}
-        {[...Array(5 - Math.ceil(rating))].map((_, i) => (
-          <i key={i} className="bi bi-star" style={{ color: '#ff8a00', fontSize: '12px' }}></i>
-        ))}
-      </>
-    );
-  };
-
+  // ----- Render -----
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="E-Bikes Management" onThemeChange={handleThemeChange} />
 
-      {/* Search and Action Buttons Row */}
       <div className="search-actions-row">
         <div className="search-bar-wrapper">
           <i className="bi bi-search search-icon"></i>
@@ -355,15 +528,12 @@ function EBikes() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
         <button className="action-btn delete-btn" onClick={handleDeleteSelected}>
           <i className="bi bi-trash"></i> Delete
         </button>
-        
         <button className="action-btn edit-btn-action" onClick={handleEditSelected}>
           <i className="bi bi-pencil-square"></i> Edit
         </button>
-        
         <div className="dropdown-wrapper">
           <button className="action-btn all-btn" onClick={() => setShowAllDropdown(!showAllDropdown)}>
             <i className="bi bi-check-all"></i> All <i className="bi bi-chevron-down"></i>
@@ -377,14 +547,13 @@ function EBikes() {
         </div>
       </div>
 
-      {/* Main Content: Add Form (Left) + E-Bike Cards (Right) */}
       <div className="hotels-two-columns">
-        {/* Left Column - Add Form with Image Gallery on Top */}
+        {/* Left Column - Add Form */}
         <div className="add-form-column">
           <div className="add-form-card">
-            {/* Image Gallery Section - ON TOP */}
+            {/* Image Upload */}
             <div className="image-gallery-top">
-              <label className="gallery-label">Images Gallery</label>
+              <label className="gallery-label">Image</label>
               <div className="image-gallery-wrapper">
                 <div className="image-upload-box">
                   <input
@@ -396,122 +565,74 @@ function EBikes() {
                   />
                   <label htmlFor="image-upload-gallery" className="upload-box">
                     <i className="bi bi-plus-lg"></i>
-                    <span>Add Image</span>
+                    <span>Upload Image</span>
                   </label>
                 </div>
                 <div className="image-scroll-container-horizontal">
-                  {images.map((img, index) => (
-                    <div key={index} className="image-item">
-                      <img src={img} alt={`Preview ${index}`} />
-                      <button className="remove-image-btn" onClick={() => removeImage(index)}>
+                  {imagePreview && (
+                    <div className="image-item">
+                      <img src={imagePreview} alt="Preview" />
+                      <button className="remove-image-btn" onClick={removeImage}>
                         <i className="bi bi-x-lg"></i>
                       </button>
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Form Fields - BELOW Image Gallery */}
+            {/* Form Fields */}
             <div className="form-fields-section">
               <div className="add-form-group">
-                <label>E-Bike Name</label>
+                <label>E-Bike Type <span style={{ color: 'red' }}>*</span></label>
+                {loadingTypes ? (
+                  <div>Loading types...</div>
+                ) : (
+                  <select
+                    name="type_id"
+                    value={formData.type_id}
+                    onChange={handleInputChange}
+                    className="form-select"
+                  >
+                    <option value="">-- Select Type --</option>
+                    {eBikeTypes.map((type) => (
+                      <option key={type.id} value={type.id}>
+                        {type.name} ({type.distance})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="add-form-group">
+                <label>E-Bike Name <span style={{ color: 'red' }}>*</span></label>
                 <input
                   type="text"
-                  name="ebikeName"
-                  placeholder="eg. Yadea C1S"
-                  value={formData.ebikeName}
+                  name="name"
+                  placeholder="eg. Honor Fit"
+                  value={formData.name}
                   onChange={handleInputChange}
                 />
               </div>
 
               <div className="add-form-row">
                 <div className="add-form-group half">
+                  <label>Code</label>
+                  <input
+                    type="text"
+                    name="code"
+                    placeholder="eg. 5K-1234 (unique)"
+                    value={formData.code}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="add-form-group half">
                   <label>Brand</label>
                   <input
                     type="text"
                     name="brand"
-                    placeholder="eg. Yadea, Gogoro, Niu"
+                    placeholder="eg. Honor"
                     value={formData.brand}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="add-form-group half">
-                  <label>Model</label>
-                  <input
-                    type="text"
-                    name="model"
-                    placeholder="eg. C1S, 2 Plus, NQi"
-                    value={formData.model}
-                    onChange={handleInputChange}
-                  />
-                </div>
-              </div>
-
-              <div className="add-form-row">
-                <div className="add-form-group half">
-                  <label>Battery Capacity</label>
-                  <input
-                    type="text"
-                    name="batteryCapacity"
-                    placeholder="eg. 48V 20Ah"
-                    value={formData.batteryCapacity}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="add-form-group half">
-                  <label>Range (per charge)</label>
-                  <input
-                    type="text"
-                    name="range"
-                    placeholder="eg. 60-70 km"
-                    value={formData.range}
-                    onChange={handleInputChange}
-                  />
-                </div>
-              </div>
-
-              <div className="add-form-row">
-                <div className="add-form-group half">
-                  <label>Price Per Day (MMK)</label>
-                  <input
-                    type="text"
-                    name="pricePerDay"
-                    placeholder="eg. 15000"
-                    value={formData.pricePerDay}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="add-form-group half">
-                  <label>Discount %</label>
-                  <input
-                    type="text"
-                    name="discount"
-                    placeholder="eg. 10"
-                    value={formData.discount}
-                    onChange={handleInputChange}
-                  />
-                </div>
-              </div>
-
-              <div className="add-form-row">
-                <div className="add-form-group half">
-                  <label>Max Speed</label>
-                  <input
-                    type="text"
-                    name="maxSpeed"
-                    placeholder="eg. 45 km/h"
-                    value={formData.maxSpeed}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="add-form-group half">
-                  <label>Weight</label>
-                  <input
-                    type="text"
-                    name="weight"
-                    placeholder="eg. 65 kg"
-                    value={formData.weight}
                     onChange={handleInputChange}
                   />
                 </div>
@@ -523,7 +644,7 @@ function EBikes() {
                   <input
                     type="text"
                     name="color"
-                    placeholder="eg. Red, Black, White"
+                    placeholder="eg. Green"
                     value={formData.color}
                     onChange={handleInputChange}
                   />
@@ -533,11 +654,98 @@ function EBikes() {
                   <input
                     type="text"
                     name="location"
-                    placeholder="eg. Old Bagan, New Bagan"
+                    placeholder="eg. Bagan"
                     value={formData.location}
                     onChange={handleInputChange}
                   />
                 </div>
+              </div>
+
+              <div className="add-form-row">
+                <div className="add-form-group half">
+                  <label>Price (MMK) <span style={{ color: 'red' }}>*</span></label>
+                  <input
+                    type="number"
+                    name="price"
+                    placeholder="eg. 3000"
+                    value={formData.price}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="add-form-group half">
+                  <label>Discount (%)</label>
+                  <input
+                    type="number"
+                    name="discount"
+                    placeholder="eg. 5"
+                    value={formData.discount}
+                    onChange={handleInputChange}
+                  />
+                </div>
+              </div>
+
+              <div className="add-form-row">
+                <div className="add-form-group half">
+                  <label>Battery Voltage</label>
+                  <input
+                    type="text"
+                    name="battery_voltage"
+                    placeholder="eg. 48V"
+                    value={formData.battery_voltage}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="add-form-group half">
+                  <label>Battery Capacity</label>
+                  <input
+                    type="text"
+                    name="battery_capacity"
+                    placeholder="eg. 12Ah"
+                    value={formData.battery_capacity}
+                    onChange={handleInputChange}
+                  />
+                </div>
+              </div>
+
+              <div className="add-form-row">
+                <div className="add-form-group half">
+                  <label>Passenger Count</label>
+                  <input
+                    type="number"
+                    name="passenger_count"
+                    placeholder="eg. 2"
+                    value={formData.passenger_count}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="add-form-group half">
+                  <label>Helmet</label>
+                  <select
+                    name="helmet"
+                    value={formData.helmet}
+                    onChange={handleInputChange}
+                    className="form-select"
+                  >
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="add-form-row">
+                <div className="add-form-group half">
+                  <label>Phone Holder</label>
+                  <select
+                    name="phone_holder"
+                    value={formData.phone_holder}
+                    onChange={handleInputChange}
+                    className="form-select"
+                  >
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                <div className="add-form-group half"></div>
               </div>
 
               <div className="add-form-group">
@@ -545,7 +753,7 @@ function EBikes() {
                 <textarea
                   name="description"
                   rows="3"
-                  placeholder="Describe the e-bike features, condition, included accessories..."
+                  placeholder="Describe the e-bike features..."
                   value={formData.description}
                   onChange={handleInputChange}
                 ></textarea>
@@ -558,54 +766,139 @@ function EBikes() {
           </div>
         </div>
 
-        {/* Right Column - E-Bike Cards (2 per row) */}
+        {/* Right Column - E-Bike Cards */}
         <div className="hotels-cards-column">
           <div className="hotels-scroll-area">
-            <div className="hotels-grid-2cols">
-              {filteredEBikes.map((ebike) => (
-                <div 
-                  key={ebike.id} 
-                  className={`hotel-card-vertical ${selectedEBikeId === ebike.id ? 'selected' : ''}`}
-                  onClick={() => toggleEBikeSelection(ebike.id)}
-                >
-                  <div className="hotel-card-image">
-                    <div className="image-slider">
-                      <img src={ebike.images[0]} alt={ebike.name} />
+            {loading ? (
+              <div className="loading-text">Loading e-bikes...</div>
+            ) : (
+              <div className="hotels-grid-2cols">
+                {filteredEBikes.map((ebike) => {
+                  const imageUrl = ebike.image
+                    ? `${API_BASE}/../${ebike.image}`
+                    : '🛵';
+                  const bikePrices = pricesByBike[ebike.id] || [];
+                  return (
+                    <div
+                      key={ebike.id}
+                      className={`hotel-card-vertical ${selectedEBikeId === ebike.id ? 'selected' : ''}`}
+                      onClick={() => toggleEBikeSelection(ebike.id)}
+                    >
+                      <div className="hotel-card-image">
+                        <div className="image-slider">
+                          {typeof imageUrl === 'string' && imageUrl.startsWith('http') ? (
+                            <img src={imageUrl} alt={ebike.name} />
+                          ) : (
+                            <span style={{ fontSize: '48px' }}>{imageUrl}</span>
+                          )}
+                        </div>
+                        <div className="selection-check">
+                          {selectedEBikeId === ebike.id && <i className="bi bi-check-circle-fill"></i>}
+                        </div>
+                      </div>
+                      <div className="hotel-card-info">
+                        <h3 className="hotel-name">{ebike.name}</h3>
+                        <p className="hotel-location">
+                          <i className="bi bi-geo-alt-fill"></i> {ebike.location || 'N/A'}
+                        </p>
+                        <div className="ebike-details">
+                          <span className="ebike-brand">{ebike.brand} {ebike.code ? `(${ebike.code})` : ''}</span>
+                        </div>
+                        <div className="ebike-specs">
+                          <span><i className="bi bi-battery-charging"></i> {ebike.battery_capacity || 'N/A'}</span>
+                          <span><i className="bi bi-speedometer2"></i> {ebike.type_name || 'Type'}</span>
+                        </div>
+                        <div className="ebike-specs">
+                          <span><i className="bi bi-map"></i> Range: {ebike.distance || 'N/A'}</span>
+                          <span><i className="bi bi-palette"></i> {ebike.color || 'N/A'}</span>
+                        </div>
+                        <p className="hotel-price">
+                          Per Day <span>MMK {ebike.total_price ?? ebike.price}</span>
+                          {ebike.discount > 0 && (
+                            <span style={{ fontSize: '12px', marginLeft: '8px', textDecoration: 'line-through', color: '#999' }}>
+                              MMK {ebike.price}
+                            </span>
+                          )}
+                        </p>
+
+                        {/* ----- Price Section ----- */}
+                        <div className="price-section" style={{ marginTop: '12px', borderTop: '1px solid #ddd', paddingTop: '10px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <strong style={{ fontSize: '14px' }}>Prices</strong>
+                            <button
+                              className="add-price-btn"
+                              style={{
+                                background: '#28a745',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '4px 10px',
+                                fontSize: '12px',
+                                cursor: 'pointer',
+                              }}
+                              onClick={(e) => { e.stopPropagation(); handleOpenAddPriceModal(ebike.id); }}
+                            >
+                              <i className="bi bi-plus-circle"></i> Add Price
+                            </button>
+                          </div>
+                          {bikePrices.length === 0 ? (
+                            <div style={{ fontSize: '13px', color: '#888' }}>No prices set</div>
+                          ) : (
+                            <div style={{ maxHeight: '150px', overflowY: 'auto' }}>
+                              {bikePrices.map((price) => (
+                                <div key={price.id} style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  fontSize: '13px',
+                                  padding: '4px 0',
+                                  borderBottom: '1px solid #eee',
+                                }}>
+                                  <div>
+                                    <strong>{getPriceTypeLabel(price.price_type)}</strong>
+                                    <span style={{ marginLeft: '8px', color: '#555' }}>
+                                      {price.start_time.slice(0,5)} - {price.end_time.slice(0,5)}
+                                    </span>
+                                    <span style={{ marginLeft: '8px', fontWeight: 'bold', color: '#28a745' }}>
+                                      MMK {price.price}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <button
+                                      style={{ background: 'transparent', border: 'none', color: '#007bff', cursor: 'pointer', marginRight: '4px' }}
+                                      onClick={(e) => { e.stopPropagation(); handleOpenEditPriceModal(price); }}
+                                    >
+                                      <i className="bi bi-pencil-square"></i>
+                                    </button>
+                                    <button
+                                      style={{ background: 'transparent', border: 'none', color: '#dc3545', cursor: 'pointer' }}
+                                      onClick={(e) => { e.stopPropagation(); handleDeletePrice(price.id); }}
+                                    >
+                                      <i className="bi bi-trash"></i>
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {/* ----- End Price Section ----- */}
+
+                        <div className="hotel-rating" style={{ marginTop: '8px' }}>
+                          {renderStars(4.5)}
+                          <span className="rating-count">(0)</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="selection-check">
-                      {selectedEBikeId === ebike.id && <i className="bi bi-check-circle-fill"></i>}
-                    </div>
-                  </div>
-                  <div className="hotel-card-info">
-                    <h3 className="hotel-name">{ebike.name}</h3>
-                    <p className="hotel-location">
-                      <i className="bi bi-geo-alt-fill"></i> {ebike.location}
-                    </p>
-                    <div className="ebike-details">
-                      <span className="ebike-brand">{ebike.brand} {ebike.model}</span>
-                    </div>
-                    <div className="ebike-specs">
-                      <span><i className="bi bi-battery-charging"></i> {ebike.batteryCapacity}</span>
-                      <span><i className="bi bi-speedometer2"></i> {ebike.maxSpeed}</span>
-                    </div>
-                    <div className="ebike-specs">
-                      <span><i className="bi bi-map"></i> Range: {ebike.range}</span>
-                      <span><i className="bi bi-palette"></i> {ebike.color}</span>
-                    </div>
-                    <p className="hotel-price">Per Day <span>MMK {ebike.pricePerDay}</span></p>
-                    <div className="hotel-rating">
-                      {renderStars(ebike.rating)}
-                      <span className="rating-count">({ebike.reviews})</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Edit Modal */}
+      {/* ----- Edit E-Bike Modal ----- */}
       {showEditModal && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -617,90 +910,46 @@ function EBikes() {
             </div>
             <div className="modal-body">
               <div className="form-group">
-                <label>E-Bike Name</label>
+                <label>E-Bike Type <span style={{ color: 'red' }}>*</span></label>
+                <select
+                  name="type_id"
+                  value={formData.type_id}
+                  onChange={handleInputChange}
+                  className="form-select"
+                >
+                  <option value="">-- Select Type --</option>
+                  {eBikeTypes.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name} ({type.distance})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>E-Bike Name <span style={{ color: 'red' }}>*</span></label>
                 <input
                   type="text"
-                  name="ebikeName"
-                  value={formData.ebikeName}
+                  name="name"
+                  value={formData.name}
                   onChange={handleInputChange}
                 />
               </div>
               <div className="form-row">
+                <div className="form-group">
+                  <label>Code</label>
+                  <input
+                    type="text"
+                    name="code"
+                    value={formData.code}
+                    onChange={handleInputChange}
+                  />
+                </div>
                 <div className="form-group">
                   <label>Brand</label>
                   <input
                     type="text"
                     name="brand"
                     value={formData.brand}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Model</label>
-                  <input
-                    type="text"
-                    name="model"
-                    value={formData.model}
-                    onChange={handleInputChange}
-                  />
-                </div>
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Battery Capacity</label>
-                  <input
-                    type="text"
-                    name="batteryCapacity"
-                    value={formData.batteryCapacity}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Range (per charge)</label>
-                  <input
-                    type="text"
-                    name="range"
-                    value={formData.range}
-                    onChange={handleInputChange}
-                  />
-                </div>
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Price Per Day (MMK)</label>
-                  <input
-                    type="text"
-                    name="pricePerDay"
-                    value={formData.pricePerDay}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Discount %</label>
-                  <input
-                    type="text"
-                    name="discount"
-                    value={formData.discount}
-                    onChange={handleInputChange}
-                  />
-                </div>
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Max Speed</label>
-                  <input
-                    type="text"
-                    name="maxSpeed"
-                    value={formData.maxSpeed}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Weight</label>
-                  <input
-                    type="text"
-                    name="weight"
-                    value={formData.weight}
                     onChange={handleInputChange}
                   />
                 </div>
@@ -723,6 +972,114 @@ function EBikes() {
                     value={formData.location}
                     onChange={handleInputChange}
                   />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Price (MMK) <span style={{ color: 'red' }}>*</span></label>
+                  <input
+                    type="number"
+                    name="price"
+                    value={formData.price}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Discount (%)</label>
+                  <input
+                    type="number"
+                    name="discount"
+                    value={formData.discount}
+                    onChange={handleInputChange}
+                  />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Battery Voltage</label>
+                  <input
+                    type="text"
+                    name="battery_voltage"
+                    value={formData.battery_voltage}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Battery Capacity</label>
+                  <input
+                    type="text"
+                    name="battery_capacity"
+                    value={formData.battery_capacity}
+                    onChange={handleInputChange}
+                  />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Passenger Count</label>
+                  <input
+                    type="number"
+                    name="passenger_count"
+                    value={formData.passenger_count}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Helmet</label>
+                  <select
+                    name="helmet"
+                    value={formData.helmet}
+                    onChange={handleInputChange}
+                    className="form-select"
+                  >
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Phone Holder</label>
+                  <select
+                    name="phone_holder"
+                    value={formData.phone_holder}
+                    onChange={handleInputChange}
+                    className="form-select"
+                  >
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Image</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    style={{ display: 'block', marginTop: '4px' }}
+                  />
+                  {imagePreview && (
+                    <div style={{ marginTop: '8px', position: 'relative', display: 'inline-block' }}>
+                      <img src={imagePreview} alt="Preview" style={{ maxWidth: '100px', maxHeight: '100px' }} />
+                      <button
+                        onClick={removeImage}
+                        style={{
+                          position: 'absolute',
+                          top: '-8px',
+                          right: '-8px',
+                          background: 'red',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: '20px',
+                          height: '20px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <i className="bi bi-x"></i>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="form-group">
@@ -741,6 +1098,74 @@ function EBikes() {
               </button>
               <button className="add-item-btn" onClick={handleConfirmEdit}>
                 Confirm Edit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ----- Price Modal (Add / Edit) ----- */}
+      {showPriceModal && (
+        <div className="modal-overlay" onClick={() => setShowPriceModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h2>{priceModalMode === 'add' ? 'Add Price' : 'Edit Price'}</h2>
+              <button className="close-btn" onClick={() => setShowPriceModal(false)}>
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Price Type</label>
+                <select
+                  name="price_type"
+                  value={priceFormData.price_type}
+                  onChange={handlePriceInputChange}
+                  className="form-select"
+                >
+                  <option value="full_day">Full Day</option>
+                  <option value="hourly">Hourly</option>
+                  <option value="half_day_1">Half Day (AM)</option>
+                  <option value="half_day_2">Half Day (PM)</option>
+                </select>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Start Time</label>
+                  <input
+                    type="time"
+                    name="start_time"
+                    value={priceFormData.start_time}
+                    onChange={handlePriceInputChange}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>End Time</label>
+                  <input
+                    type="time"
+                    name="end_time"
+                    value={priceFormData.end_time}
+                    onChange={handlePriceInputChange}
+                  />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Price (MMK)</label>
+                <input
+                  type="number"
+                  name="price"
+                  placeholder="Enter price"
+                  value={priceFormData.price}
+                  onChange={handlePriceInputChange}
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="discard-btn" onClick={() => setShowPriceModal(false)}>
+                Cancel
+              </button>
+              <button className="add-item-btn" onClick={handleSavePrice}>
+                {priceModalMode === 'add' ? 'Add Price' : 'Update Price'}
               </button>
             </div>
           </div>

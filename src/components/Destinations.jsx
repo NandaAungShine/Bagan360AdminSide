@@ -12,8 +12,15 @@ function Destinations() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDestinationForEdit, setSelectedDestinationForEdit] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  
+  // Add Form Images
   const [images, setImages] = useState([]);
   const [imageFiles, setImageFiles] = useState([]);
+  
+  // Edit Modal Images (Separate from Add Form)
+  const [editImages, setEditImages] = useState([]);
+  const [editImageFiles, setEditImageFiles] = useState([]);
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -48,11 +55,9 @@ function Destinations() {
   // Helper function for image URL
   const getImageUrl = (imagePath) => {
     if (!imagePath) return null;
-    // If image path starts with 'image/', use it directly with backend URL
     if (imagePath.startsWith('image/')) {
       return `http://130.94.21.185:8000/${imagePath}`;
     }
-    // Otherwise, just prepend the backend URL
     return `http://130.94.21.185:8000/${imagePath}`;
   };
 
@@ -62,35 +67,20 @@ function Destinations() {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
-      console.log('=== API Request ===');
-      console.log('Method:', config.method.toUpperCase());
-      console.log('URL:', config.baseURL + config.url);
       return config;
     },
-    (error) => {
-      console.error('Request Error:', error);
-      return Promise.reject(error);
-    }
+    (error) => Promise.reject(error)
   );
 
   api.interceptors.response.use(
-    (response) => {
-      console.log('=== API Response ===');
-      console.log('Status:', response.status);
-      console.log('Data:', response.data);
-      return response;
-    },
+    (response) => response,
     (error) => {
-      console.error('=== API Error ===');
+      console.error('API Error:', error);
       if (error.response) {
-        console.error('Status:', error.response.status);
-        console.error('Data:', error.response.data);
         alert(`Error ${error.response.status}: ${error.response.data?.message || error.response.data?.error || 'Server error'}`);
       } else if (error.request) {
-        console.error('No response received');
         alert('Cannot connect to server. Please check your connection.');
       } else {
-        console.error('Error:', error.message);
         alert('An error occurred. Please try again.');
       }
       return Promise.reject(error);
@@ -102,7 +92,6 @@ function Destinations() {
     setError(null);
     try {
       const response = await api.get('/admin/destination/list');
-      console.log('GET Response:', response.data);
       
       if (response.data && response.data.success && response.data.data) {
         const formattedDestinations = response.data.data.map((item) => ({
@@ -121,7 +110,6 @@ function Destinations() {
         }));
         
         setDestinations(formattedDestinations);
-        console.log('Formatted Destinations:', formattedDestinations);
       } else {
         setDestinations([]);
       }
@@ -157,6 +145,7 @@ function Destinations() {
     }
   }, [isDarkMode]);
 
+  // ==================== ADD FORM HANDLERS ====================
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
@@ -165,10 +154,7 @@ function Destinations() {
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Store file for FormData
       setImageFiles([...imageFiles, file]);
-      
-      // Preview
       const reader = new FileReader();
       reader.onloadend = () => {
         setImages([...images, reader.result]);
@@ -186,7 +172,27 @@ function Destinations() {
     setFormData({ ...formData, images: newImages });
   };
 
-  // ✅ CORRECT: Using FormData for POST
+  // ==================== EDIT MODAL IMAGE HANDLERS ====================
+  const handleEditImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setEditImageFiles([...editImageFiles, file]);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditImages([...editImages, reader.result]);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleEditImageRemove = (index) => {
+    const newImages = editImages.filter((_, i) => i !== index);
+    const newFiles = editImageFiles.filter((_, i) => i !== index);
+    setEditImages(newImages);
+    setEditImageFiles(newFiles);
+  };
+
+  // ==================== ADD DESTINATION ====================
   const handleAddDestination = async () => {
     if (!formData.destinationName || !formData.price) {
       alert('Please fill in destination name and price.');
@@ -201,10 +207,7 @@ function Destinations() {
 
     setLoading(true);
     try {
-      // Create FormData
       const formDataToSend = new FormData();
-      
-      // Add text fields
       formDataToSend.append('name', formData.destinationName);
       formDataToSend.append('location', formData.location || '');
       formDataToSend.append('price', formData.price.replace(/[^0-9]/g, '') || '0');
@@ -215,22 +218,16 @@ function Destinations() {
       formDataToSend.append('start_date', formData.startDate || '');
       formDataToSend.append('end_date', formData.endDate || '');
 
-      // Add image files
       imageFiles.forEach((file) => {
         formDataToSend.append('image', file);
       });
 
-      console.log('Creating destination with FormData');
-      
-      // Use axios with FormData
       const response = await axios.post('/api/admin/destination/create', formDataToSend, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'multipart/form-data',
         },
       });
-      
-      console.log('POST Response:', response.data);
       
       if (response.data && response.data.success) {
         alert('Destination added successfully!');
@@ -254,21 +251,15 @@ function Destinations() {
       }
     } catch (err) {
       console.error('Create Error:', err);
-      if (err.response) {
-        console.error('Error Response Data:', err.response.data);
-        alert(`Error ${err.response.status}: ${err.response.data?.message || err.response.data?.error || 'Server error'}`);
-      } else {
-        alert('Error adding destination. Please try again.');
-      }
+      alert('Error adding destination. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  // ==================== DELETE ====================
   const handleDeleteDestination = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this destination?')) {
-      return;
-    }
+    if (!window.confirm('Are you sure you want to delete this destination?')) return;
 
     const token = getToken();
     if (!token) {
@@ -278,9 +269,7 @@ function Destinations() {
 
     setLoading(true);
     try {
-      console.log('Deleting destination ID:', id);
       const response = await api.delete(`/admin/destination/delete/${id}`);
-      console.log('DELETE Response:', response.data);
       
       if (response.data && response.data.success) {
         alert('Destination deleted successfully!');
@@ -290,16 +279,13 @@ function Destinations() {
       }
     } catch (err) {
       console.error('Delete Error:', err);
-      if (err.response) {
-        alert(`Error ${err.response.status}: ${err.response.data?.message || err.response.data?.error || 'Server error'}`);
-      } else {
-        alert('Error deleting destination. Please try again.');
-      }
+      alert('Error deleting destination. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  // ==================== EDIT (Open Modal) ====================
   const handleEditDestination = (id) => {
     const destinationToEdit = destinations.find(destination => destination.id === id);
     if (destinationToEdit) {
@@ -316,13 +302,15 @@ function Destinations() {
         bestTimeToVisit: destinationToEdit.bestTimeToVisit || '',
         images: destinationToEdit.images || []
       });
-      setImages(destinationToEdit.images || []);
-      setImageFiles([]);
+      
+      // Set edit images (separate from add form)
+      setEditImages(destinationToEdit.images || []);
+      setEditImageFiles([]);
       setShowEditModal(true);
     }
   };
 
-  // ✅ CORRECT: Using FormData for PUT
+  // ==================== CONFIRM EDIT ====================
   const handleConfirmEdit = async () => {
     if (!selectedDestinationForEdit || !formData.destinationName) {
       alert('Please fill in all required fields');
@@ -337,7 +325,6 @@ function Destinations() {
 
     setLoading(true);
     try {
-      // Create FormData
       const formDataToSend = new FormData();
       
       formDataToSend.append('name', formData.destinationName);
@@ -350,12 +337,11 @@ function Destinations() {
       formDataToSend.append('start_date', formData.startDate || '');
       formDataToSend.append('end_date', formData.endDate || '');
 
-      imageFiles.forEach((file) => {
+      // Use editImageFiles for new images
+      editImageFiles.forEach((file) => {
         formDataToSend.append('image', file);
       });
 
-      console.log('Updating destination ID:', selectedDestinationForEdit.id);
-      
       const response = await axios.put(`/api/admin/destination/update/${selectedDestinationForEdit.id}`, formDataToSend, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -363,12 +349,12 @@ function Destinations() {
         },
       });
       
-      console.log('PUT Response:', response.data);
-      
       if (response.data && response.data.success) {
         alert('Destination updated successfully!');
         setShowEditModal(false);
         setSelectedDestinationForEdit(null);
+        setEditImages([]);
+        setEditImageFiles([]);
         await fetchDestinations();
         setFormData({
           destinationName: '',
@@ -389,11 +375,7 @@ function Destinations() {
       }
     } catch (err) {
       console.error('Update Error:', err);
-      if (err.response) {
-        alert(`Error ${err.response.status}: ${err.response.data?.message || err.response.data?.error || 'Server error'}`);
-      } else {
-        alert('Error updating destination. Please try again.');
-      }
+      alert('Error updating destination. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -731,16 +713,51 @@ function Destinations() {
         </div>
       </div>
 
+      {/* ==================== EDIT MODAL ==================== */}
       {showEditModal && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Edit Destination</h2>
+              <h2>✏️ Edit Destination</h2>
               <button className="close-btn" onClick={() => setShowEditModal(false)}>
                 <i className="bi bi-x-lg"></i>
               </button>
             </div>
             <div className="modal-body">
+              {/* ===== EDIT MODAL IMAGE GALLERY - TOP ===== */}
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label style={{ fontWeight: 'bold' }}>📸 Edit Images</label>
+                <div className="image-gallery-wrapper" style={{ marginTop: '10px' }}>
+                  <div className="image-upload-box">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEditImageUpload}
+                      style={{ display: 'none' }}
+                      id="edit-image-upload"
+                    />
+                    <label htmlFor="edit-image-upload" className="upload-box">
+                      <i className="bi bi-plus-lg"></i>
+                      <span>Add Image</span>
+                    </label>
+                  </div>
+                  <div className="image-scroll-container-horizontal">
+                    {editImages.map((img, index) => (
+                      <div key={index} className="image-item">
+                        <img src={img} alt={`Edit Preview ${index}`} />
+                        <button className="remove-image-btn" onClick={() => handleEditImageRemove(index)}>
+                          <i className="bi bi-x-lg"></i>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <small style={{ color: '#6c757d', display: 'block', marginTop: '5px' }}>
+                  💡 Add new images or remove existing ones. Existing images will be kept unless removed.
+                </small>
+              </div>
+
+              {/* Edit Form Fields */}
               <div className="form-group">
                 <label>Destination Name *</label>
                 <input
