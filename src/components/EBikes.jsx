@@ -36,6 +36,9 @@ function EBikes() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAllDropdown, setShowAllDropdown] = useState(false);
 
+  // State for card kebab menu
+  const [cardMenuBikeId, setCardMenuBikeId] = useState(null);
+
   // Data states
   const [eBikeTypes, setEBikeTypes] = useState([]);
   const [eBikes, setEBikes] = useState([]);
@@ -77,6 +80,15 @@ function EBikes() {
     end_time: '14:00',
     price: '',
   });
+
+  // Close card menu on outside click
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (cardMenuBikeId) setCardMenuBikeId(null);
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [cardMenuBikeId]);
 
   // ----- Fetch Functions -----
   const fetchEBikeTypes = async () => {
@@ -221,7 +233,7 @@ function EBikes() {
         alert('E-Bike added successfully!');
         resetForm();
         fetchEBikes();
-        fetchAllPrices(); // refresh prices as new bike may appear
+        fetchAllPrices();
       } else {
         alert(data.message || 'Failed to add e-bike.');
       }
@@ -252,6 +264,7 @@ function EBikes() {
     setImagePreview(null);
   };
 
+  // ---- Global Delete/Edit (used by top buttons) ----
   const handleDeleteSelected = async () => {
     if (!selectedEBikeId) {
       alert('Please select an e-bike to delete');
@@ -278,7 +291,6 @@ function EBikes() {
     }
   };
 
-  // Edit E-Bike
   const handleEditSelected = () => {
     if (!selectedEBikeId) {
       alert('Please select an e-bike to edit');
@@ -286,33 +298,67 @@ function EBikes() {
     }
     const ebikeToEdit = eBikes.find((ebike) => ebike.id === selectedEBikeId);
     if (ebikeToEdit) {
-      setSelectedEBikeForEdit(ebikeToEdit);
-      setFormData({
-        type_id: ebikeToEdit.type_id || '',
-        name: ebikeToEdit.name || '',
-        code: ebikeToEdit.code || '',
-        brand: ebikeToEdit.brand || '',
-        color: ebikeToEdit.color || '',
-        location: ebikeToEdit.location || '',
-        price: ebikeToEdit.price || '',
-        discount: ebikeToEdit.discount || 0,
-        description: ebikeToEdit.description || '',
-        battery_voltage: ebikeToEdit.battery_voltage || '',
-        battery_capacity: ebikeToEdit.battery_capacity || '',
-        passenger_count: ebikeToEdit.passenger_count || '',
-        helmet: ebikeToEdit.helmet || 'Yes',
-        phone_holder: ebikeToEdit.phone_holder || 'Yes',
-      });
-      if (ebikeToEdit.image) {
-        const fullImageUrl = `${API_BASE}/../${ebikeToEdit.image}`;
-        setImagePreview(fullImageUrl);
-        setImageFile(null);
-      } else {
-        setImagePreview(null);
-        setImageFile(null);
-      }
-      setShowEditModal(true);
+      openEditModal(ebikeToEdit);
     }
+  };
+
+  // ---- Card-specific Edit/Delete (used by kebab menu) ----
+  const handleCardEdit = (bike) => {
+    setCardMenuBikeId(null);
+    openEditModal(bike);
+  };
+
+  const handleCardDelete = async (id) => {
+    setCardMenuBikeId(null);
+    if (!window.confirm('Are you sure you want to delete this e-bike?')) return;
+
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/e-bike/delete/${id}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert('E-Bike deleted successfully!');
+        if (selectedEBikeId === id) setSelectedEBikeId(null);
+        fetchEBikes();
+        fetchAllPrices();
+      } else {
+        alert(data.message || 'Failed to delete.');
+      }
+    } catch (error) {
+      console.error('Error deleting:', error);
+      alert('Network error.');
+    }
+  };
+
+  // Shared function to open edit modal with bike data
+  const openEditModal = (bike) => {
+    setSelectedEBikeForEdit(bike);
+    setFormData({
+      type_id: bike.type_id || '',
+      name: bike.name || '',
+      code: bike.code || '',
+      brand: bike.brand || '',
+      color: bike.color || '',
+      location: bike.location || '',
+      price: bike.price || '',
+      discount: bike.discount || 0,
+      description: bike.description || '',
+      battery_voltage: bike.battery_voltage || '',
+      battery_capacity: bike.battery_capacity || '',
+      passenger_count: bike.passenger_count || '',
+      helmet: bike.helmet || 'Yes',
+      phone_holder: bike.phone_holder || 'Yes',
+    });
+    if (bike.image) {
+      const fullImageUrl = `${API_BASE}/../${bike.image}`;
+      setImagePreview(fullImageUrl);
+      setImageFile(null);
+    } else {
+      setImagePreview(null);
+      setImageFile(null);
+    }
+    setShowEditModal(true);
   };
 
   const handleConfirmEdit = async () => {
@@ -432,7 +478,7 @@ function EBikes() {
       if (data.success) {
         alert(priceModalMode === 'add' ? 'Price added successfully!' : 'Price updated successfully!');
         setShowPriceModal(false);
-        fetchAllPrices(); // refresh prices
+        fetchAllPrices();
       } else {
         alert(data.message || 'Failed to save price.');
       }
@@ -503,6 +549,11 @@ function EBikes() {
     } else {
       setSelectedEBikeId(id);
     }
+  };
+
+  const toggleCardMenu = (id, e) => {
+    e.stopPropagation();
+    setCardMenuBikeId(cardMenuBikeId === id ? null : id);
   };
 
   const filteredEBikes = eBikes.filter((ebike) =>
@@ -778,13 +829,14 @@ function EBikes() {
                     ? `${API_BASE}/../${ebike.image}`
                     : '🛵';
                   const bikePrices = pricesByBike[ebike.id] || [];
+
                   return (
                     <div
                       key={ebike.id}
                       className={`hotel-card-vertical ${selectedEBikeId === ebike.id ? 'selected' : ''}`}
                       onClick={() => toggleEBikeSelection(ebike.id)}
                     >
-                      <div className="hotel-card-image">
+                      <div className="hotel-card-image" style={{ position: 'relative' }}>
                         <div className="image-slider">
                           {typeof imageUrl === 'string' && imageUrl.startsWith('http') ? (
                             <img src={imageUrl} alt={ebike.name} />
@@ -795,7 +847,80 @@ function EBikes() {
                         <div className="selection-check">
                           {selectedEBikeId === ebike.id && <i className="bi bi-check-circle-fill"></i>}
                         </div>
+
+                        {/* ----- Kebab Menu (Top Right) ----- */}
+                        <div style={{ position: 'absolute', top: '8px', right: '8px', zIndex: 10 }}>
+                          <button
+                            onClick={(e) => toggleCardMenu(ebike.id, e)}
+                            style={{
+                              background: 'rgba(0,0,0,0.6)',
+                              border: 'none',
+                              borderRadius: '4px',
+                              color: '#fff',
+                              padding: '4px 8px',
+                              cursor: 'pointer',
+                              fontSize: '18px',
+                              lineHeight: '1',
+                            }}
+                          >
+                            <i className="bi bi-three-dots-vertical"></i>
+                          </button>
+                          {cardMenuBikeId === ebike.id && (
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: '30px',
+                                right: '0',
+                                background: isDarkMode ? '#2d2d2d' : '#fff',
+                                borderRadius: '4px',
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                                zIndex: 20,
+                                minWidth: '120px',
+                                padding: '4px 0',
+                                color: isDarkMode ? '#eee' : '#333',
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                onClick={() => handleCardEdit(ebike)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  width: '100%',
+                                  padding: '6px 12px',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  color: isDarkMode ? '#eee' : '#333',
+                                  fontSize: '14px',
+                                }}
+                              >
+                                <i className="bi bi-pencil-square"></i> Edit
+                              </button>
+                              <button
+                                onClick={() => handleCardDelete(ebike.id)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  width: '100%',
+                                  padding: '6px 12px',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  color: '#dc3545',
+                                  fontSize: '14px',
+                                }}
+                              >
+                                <i className="bi bi-trash"></i> Delete
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {/* ----- End Kebab Menu ----- */}
                       </div>
+
                       <div className="hotel-card-info">
                         <h3 className="hotel-name">{ebike.name}</h3>
                         <p className="hotel-location">
