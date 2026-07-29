@@ -13,18 +13,30 @@ import EBikes from './components/EBikes';
 import HotAirBalloons from './components/HotAirBalloons';
 import Tricycles from './components/Tricycles';
 import HorseCarts from './components/HorseCarts';
-import Banner from './components/Banner'; // Banner Component ကို import လုပ်ထားပြီးသား
+import Banner from './components/Banner';
 import Users from './components/Users';
+import Shop from './components/Shop';
 import Reviews from './components/Reviews';
 import Reports from './components/Reports';
 import Settings from './components/Settings';
 import Message from './components/Message';
+
+
+ import HotelsOrder from './components/HotelsOrder';
+ import DestinationsOrder from './components/DestinationsOrder';
+ import RestaurantsOrder from './components/RestaurantsOrder';
+// import CarsOrder from './components/CarsOrder';
+ import EBikesOrder from './components/EBikesOrder';
+// import HotAirBalloonsOrder from './components/HotAirBalloonsOrder';
+// import TricyclesOrder from './components/TricyclesOrder';
+// import HorseCartsOrder from './components/HorseCartsOrder';
+// import BannerOrder from './components/BannerOrder';
+
 import './index.css';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem('token');
-  // If no token, redirect to login
   if (!token) {
     return <Navigate to="/login" replace />;
   }
@@ -47,10 +59,8 @@ function App() {
   return (
     <Router>
       <Routes>
-        {/* Public Route - Login (No Sidebar) */}
         <Route path="/login" element={<Login />} />
 
-        {/* Root path - Check token and redirect accordingly */}
         <Route 
           path="/" 
           element={
@@ -65,7 +75,6 @@ function App() {
           } 
         />
 
-        {/* Protected Routes - Require Login, With Sidebar */}
         <Route 
           path="/dashboard" 
           element={
@@ -77,7 +86,15 @@ function App() {
           } 
         />
         
-        {/* Add Section Routes */}
+          <Route path="/shop" element={
+  <ProtectedRoute>
+    <MainLayout>
+      <Shop />
+    </MainLayout>
+  </ProtectedRoute>
+} />
+
+        {/* ===== Add Section Routes ===== */}
         <Route path="/historyofpagodas" element={
           <ProtectedRoute>
             <MainLayout>
@@ -85,7 +102,6 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-        
         <Route path="/hotels" element={
           <ProtectedRoute>
             <MainLayout>
@@ -93,7 +109,6 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-        
         <Route path="/destinations" element={
           <ProtectedRoute>
             <MainLayout>
@@ -101,7 +116,6 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-        
         <Route path="/restaurants" element={
           <ProtectedRoute>
             <MainLayout>
@@ -109,7 +123,6 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-        
         <Route path="/cars" element={
           <ProtectedRoute>
             <MainLayout>
@@ -117,7 +130,6 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-        
         <Route path="/ebikes" element={
           <ProtectedRoute>
             <MainLayout>
@@ -125,7 +137,6 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-        
         <Route path="/hotairballoons" element={
           <ProtectedRoute>
             <MainLayout>
@@ -133,7 +144,6 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-        
         <Route path="/tricycles" element={
           <ProtectedRoute>
             <MainLayout>
@@ -141,7 +151,6 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-        
         <Route path="/horsecarts" element={
           <ProtectedRoute>
             <MainLayout>
@@ -149,8 +158,6 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-
-        {/* 👇 New Banner Route added here (under Add section) */}
         <Route path="/banner" element={
           <ProtectedRoute>
             <MainLayout>
@@ -159,7 +166,78 @@ function App() {
           </ProtectedRoute>
         } />
         
-        {/* User Management Routes */}
+        {/* ===== Order Section Routes (Comment ထားတယ်) ===== */}
+        
+        <Route path="/hotelsorder" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <HotelsOrder />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+       
+        <Route path="/destinationsorder" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <DestinationsOrder />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+       
+        <Route path="/restaurantsorder" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <RestaurantsOrder />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+          {/*
+        <Route path="/carsorder" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <CarsOrder />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+         */}
+        <Route path="/ebikesorder" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <EBikesOrder />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+          {/*
+        <Route path="/hotairballoonsorder" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <HotAirBalloonsOrder />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/tricyclesorder" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <TricyclesOrder />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/horsecartsorder" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <HorseCartsOrder />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/bannerorder" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <BannerOrder />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+        */}
+        
         <Route path="/users" element={
           <ProtectedRoute>
             <MainLayout>
@@ -167,8 +245,6 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-        
-        {/* Review & Report Routes */}
         <Route path="/reviews" element={
           <ProtectedRoute>
             <MainLayout>
@@ -176,7 +252,6 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-        
         <Route path="/reports" element={
           <ProtectedRoute>
             <MainLayout>
@@ -184,8 +259,6 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-        
-        {/* Message Routes */}
         <Route path="/message" element={
           <ProtectedRoute>
             <MainLayout>
@@ -193,7 +266,6 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-        
         <Route path="/dashboard/messages" element={
           <ProtectedRoute>
             <MainLayout>
@@ -201,8 +273,6 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-        
-        {/* Settings Route */}
         <Route path="/settings" element={
           <ProtectedRoute>
             <MainLayout>
@@ -211,7 +281,6 @@ function App() {
           </ProtectedRoute>
         } />
 
-        {/* Catch all - redirect to login */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Router>

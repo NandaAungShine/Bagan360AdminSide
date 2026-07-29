@@ -3,10 +3,12 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 function Sidebar() {
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isOrderOpen, setIsOrderOpen] = useState(false); // Order dropdown state
   const location = useLocation();
   const navigate = useNavigate();
 
-  const subMenuItems = [
+  // Add ထဲမှာ ထည့်မယ့် စာရင်း (မူလအတိုင်း - History Of Pagodas အပါအဝင်)
+  const addMenuItems = [
     { name: 'History Of Pagodas', icon: 'bi-building', path: '/historyofpagodas' },
     { name: 'Hotels', icon: 'bi-building', path: '/hotels' },
     { name: 'Destinations', icon: 'bi-geo-alt', path: '/destinations' },
@@ -16,8 +18,20 @@ function Sidebar() {
     { name: 'Hot Air Balloons', icon: 'bi-balloon', path: '/hotairballoons' },
     { name: 'Tricycles', icon: 'bi-truck', path: '/tricycles' },
     { name: 'Horse Carts', icon: 'bi-truck', path: '/horsecarts' },
-    // New Banner item added here
     { name: 'Banner', icon: 'bi-image', path: '/banner' },
+  ];
+
+  // Order ထဲမှာ ထည့်မယ့် စာရင်း (ခင်ဗျား ပေးလိုက်တဲ့အတိုင်း တိကျစွာ သတ်မှတ်ထား)
+  const orderMenuItems = [
+    { name: 'Hotels Order', icon: 'bi-building', path: '/hotelsorder' },
+    { name: 'Destinations Order', icon: 'bi-geo-alt', path: '/destinationsorder' },
+    { name: 'Restaurants Order', icon: 'bi-egg-fried', path: '/restaurantsorder' },
+    { name: 'Cars Order', icon: 'bi-car-front', path: '/carsorder' },
+    { name: 'E-Bikes Order', icon: 'bi-bicycle', path: '/ebikesorder' },
+    { name: 'Hot Air Balloons Order', icon: 'bi-balloon', path: '/hotairballoonsorder' },
+    { name: 'Tricycles Order', icon: 'bi-truck', path: '/tricyclesorder' },
+    { name: 'Horse Carts Order', icon: 'bi-truck', path: '/horsecartsorder' },
+    { name: 'Banner Order', icon: 'bi-image', path: '/bannerorder' },
   ];
 
   const isActive = (path) => {
@@ -76,7 +90,17 @@ function Sidebar() {
             </Link>
           </li>
 
-          {/* Add Dropdown */}
+          {/* Shop Link */}
+          <li className={`nav-item ${isActive('/shop') ? 'active' : ''}`}>
+            <Link to="/shop" className="nav-link">
+              <div className="flex-items">
+                <i className="bi bi-shop icon"></i>
+                <span>Shop</span>
+              </div>
+            </Link>
+          </li>
+
+          {/* Add Dropdown (မူလအတိုင်း) */}
           <li className="nav-item">
             <div className="nav-link justify-between" onClick={() => setIsAddOpen(!isAddOpen)}>
               <div className="flex-items">
@@ -86,9 +110,30 @@ function Sidebar() {
               <i className={`bi bi-chevron-down arrow-icon ${isAddOpen ? 'rotate-180' : ''}`}></i>
             </div>
 
-            {/* Sub Menu Items */}
             <ul className={`submenu ${isAddOpen ? 'submenu-open' : 'submenu-closed'}`}>
-              {subMenuItems.map((item, index) => (
+              {addMenuItems.map((item, index) => (
+                <li key={index} className={`submenu-item ${isActive(item.path) ? 'active' : ''}`}>
+                  <Link to={item.path} className="submenu-link">
+                    <i className={`${item.icon} submenu-icon`}></i>
+                    <span>{item.name}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </li>
+
+          {/* Order Dropdown (ခင်ဗျား သတ်မှတ်ထားတဲ့ စာရင်းအတိုင်း) */}
+          <li className="nav-item">
+            <div className="nav-link justify-between" onClick={() => setIsOrderOpen(!isOrderOpen)}>
+              <div className="flex-items">
+                <i className="bi bi-box-seam icon"></i>
+                <span>Order</span>
+              </div>
+              <i className={`bi bi-chevron-down arrow-icon ${isOrderOpen ? 'rotate-180' : ''}`}></i>
+            </div>
+
+            <ul className={`submenu ${isOrderOpen ? 'submenu-open' : 'submenu-closed'}`}>
+              {orderMenuItems.map((item, index) => (
                 <li key={index} className={`submenu-item ${isActive(item.path) ? 'active' : ''}`}>
                   <Link to={item.path} className="submenu-link">
                     <i className={`${item.icon} submenu-icon`}></i>
