@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
 const API_BASE = 'http://130.94.21.185:8000/api/admin';
-const IMAGE_BASE = 'http://130.94.21.185:8000'; // 👈 (၁) ပုံအတွက် သီးသန့် Base URL ထည့်ထားတယ်။
+const IMAGE_BASE = 'http://130.94.21.185:8000'; 
 
-// Helper to get token and create fetch options with Authorization
+// Helper to get token
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
   return {
@@ -36,19 +36,48 @@ function EBikes() {
   const [selectedEBikeForEdit, setSelectedEBikeForEdit] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAllDropdown, setShowAllDropdown] = useState(false);
-
-  // State for card kebab menu
   const [cardMenuBikeId, setCardMenuBikeId] = useState(null);
+
+  // Toast notification state
+  const [toast, setToast] = useState({
+    visible: false,
+    type: 'success', 
+    message: '',
+  });
+  // Toast timeout reference (3s auto close အတွက်)
+  const toastTimeoutRef = useRef(null);
+
+  // 🎯 Toast ကို ခေါ်သုံးမယ့် Helper Function (Auto-close 3s ပါဝင်ပါတယ်)
+  const showToast = (type, message) => {
+    // မူလ Timer ရှိနေရင် ရှင်းပစ်မယ် (Toast အသစ်တစ်ခုခေါ်လိုက်ရင် အဟောင်းက မပျောက်အောင်)
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
+    setToast({ visible: true, type, message });
+    // 3 စက္ကန့် (3000ms) ကြာပြီးရင် အလိုအလျောက် ပျောက်သွားမယ်
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(prev => ({ ...prev, visible: false }));
+      toastTimeoutRef.current = null;
+    }, 3000);
+  };
+
+  // Confirm Dialog (Delete မေးတဲ့ Modal)
+  const [confirmDialog, setConfirmDialog] = useState({
+    visible: false,
+    message: '',
+    onConfirm: null, 
+  });
 
   // Data states
   const [eBikeTypes, setEBikeTypes] = useState([]);
   const [eBikes, setEBikes] = useState([]);
-  const [allPrices, setAllPrices] = useState([]); // raw from API
-  const [pricesByBike, setPricesByBike] = useState({}); // grouped by e_bike_id
+  const [allPrices, setAllPrices] = useState([]); 
+  const [pricesByBike, setPricesByBike] = useState({}); 
   const [loading, setLoading] = useState(false);
   const [loadingTypes, setLoadingTypes] = useState(false);
 
-  // Form states for adding/editing E-Bike
+  // Form states
   const [formData, setFormData] = useState({
     type_id: '',
     name: '',
@@ -66,13 +95,12 @@ function EBikes() {
     phone_holder: 'Yes',
   });
 
-  // Image state
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
 
   // Price modal states
   const [showPriceModal, setShowPriceModal] = useState(false);
-  const [priceModalMode, setPriceModalMode] = useState('add'); // 'add' or 'edit'
+  const [priceModalMode, setPriceModalMode] = useState('add');
   const [currentPriceId, setCurrentPriceId] = useState(null);
   const [currentBikeIdForPrice, setCurrentBikeIdForPrice] = useState(null);
   const [priceFormData, setPriceFormData] = useState({
@@ -91,20 +119,30 @@ function EBikes() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [cardMenuBikeId]);
 
+  // ----- Helper: Handle 401 Unauthorized (Token Expired) -----
+  const handle401Error = () => {
+    localStorage.removeItem('token');
+    showToast('error', 'Session expired. Please login again.');
+    setTimeout(() => {
+      window.location.href = '/login'; // Login Page ကို ပြန်ပို့မယ်
+    }, 1500);
+  };
+
   // ----- Fetch Functions -----
   const fetchEBikeTypes = async () => {
     setLoadingTypes(true);
     try {
       const response = await fetchWithAuth(`${API_BASE}/e-bike/type/list`);
+      if (response.status === 401) return handle401Error();
       const data = await response.json();
       if (data.success) {
         setEBikeTypes(data.data);
       } else {
-        alert(data.message || 'Failed to load types');
+        showToast('error', data.message || 'Failed to load types');
       }
     } catch (error) {
       console.error('Error fetching types:', error);
-      alert('Network error while loading types.');
+      showToast('error', 'Network error while loading types.');
     } finally {
       setLoadingTypes(false);
     }
@@ -114,15 +152,16 @@ function EBikes() {
     setLoading(true);
     try {
       const response = await fetchWithAuth(`${API_BASE}/e-bike/list`);
+      if (response.status === 401) return handle401Error();
       const data = await response.json();
       if (data.success) {
         setEBikes(data.data);
       } else {
-        alert(data.message || 'Failed to load e-bikes');
+        showToast('error', data.message || 'Failed to load e-bikes');
       }
     } catch (error) {
       console.error('Error fetching e-bikes:', error);
-      alert('Network error while loading e-bikes.');
+      showToast('error', 'Network error while loading e-bikes.');
     } finally {
       setLoading(false);
     }
@@ -131,10 +170,10 @@ function EBikes() {
   const fetchAllPrices = async () => {
     try {
       const response = await fetchWithAuth(`${API_BASE}/e-bike/price/list`);
+      if (response.status === 401) return handle401Error();
       const data = await response.json();
       if (data.success) {
         setAllPrices(data.data);
-        // Group by e_bike_id
         const grouped = {};
         data.data.forEach((price) => {
           const id = price.e_bike_id;
@@ -197,7 +236,7 @@ function EBikes() {
 
   const handleAddEBike = async () => {
     if (!formData.type_id || !formData.name || !formData.price) {
-      alert('Please fill in required fields: Type, Name, Price.');
+      showToast('warning', 'Please fill in required fields: Type, Name, Price.');
       return;
     }
 
@@ -229,18 +268,19 @@ function EBikes() {
         },
         body: form,
       });
+      if (response.status === 401) return handle401Error();
       const data = await response.json();
       if (data.success) {
-        alert('E-Bike added successfully!');
+        showToast('success', 'E-Bike added successfully!');
         resetForm();
         fetchEBikes();
         fetchAllPrices();
       } else {
-        alert(data.message || 'Failed to add e-bike.');
+        showToast('error', data.message || 'Failed to add e-bike.');
       }
     } catch (error) {
       console.error('Error adding:', error);
-      alert('Network error.');
+      showToast('error', 'Network error.');
     }
   };
 
@@ -265,36 +305,73 @@ function EBikes() {
     setImagePreview(null);
   };
 
-  // ---- Global Delete/Edit (used by top buttons) ----
-  const handleDeleteSelected = async () => {
-    if (!selectedEBikeId) {
-      alert('Please select an e-bike to delete');
-      return;
-    }
-    if (!window.confirm('Are you sure you want to delete this e-bike?')) return;
-
+  // ---- Delete Logic without window.confirm ----
+  const performDeleteSelected = async (id) => {
     try {
-      const response = await fetchWithAuth(`${API_BASE}/e-bike/delete/${selectedEBikeId}`, {
+      const response = await fetchWithAuth(`${API_BASE}/e-bike/delete/${id}`, {
         method: 'DELETE',
       });
+      if (response.status === 401) return handle401Error();
       const data = await response.json();
       if (data.success) {
-        alert('E-Bike deleted successfully!');
+        showToast('success', 'E-Bike deleted successfully!');
         setSelectedEBikeId(null);
         fetchEBikes();
         fetchAllPrices();
       } else {
-        alert(data.message || 'Failed to delete.');
+        showToast('error', data.message || 'Failed to delete.');
       }
     } catch (error) {
       console.error('Error deleting:', error);
-      alert('Network error.');
+      showToast('error', 'Network error.');
     }
+  };
+
+  const handleDeleteSelected = () => {
+    if (!selectedEBikeId) {
+      showToast('warning', 'Please select an e-bike to delete');
+      return;
+    }
+    setConfirmDialog({
+      visible: true,
+      message: 'Are you sure you want to delete this e-bike?',
+      onConfirm: () => performDeleteSelected(selectedEBikeId)
+    });
+  };
+
+  const performCardDelete = async (id) => {
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/e-bike/delete/${id}`, {
+        method: 'DELETE',
+      });
+      if (response.status === 401) return handle401Error();
+      const data = await response.json();
+      if (data.success) {
+        showToast('success', 'E-Bike deleted successfully!');
+        if (selectedEBikeId === id) setSelectedEBikeId(null);
+        fetchEBikes();
+        fetchAllPrices();
+      } else {
+        showToast('error', data.message || 'Failed to delete.');
+      }
+    } catch (error) {
+      console.error('Error deleting:', error);
+      showToast('error', 'Network error.');
+    }
+  };
+
+  const handleCardDelete = (id) => {
+    setCardMenuBikeId(null);
+    setConfirmDialog({
+      visible: true,
+      message: 'Are you sure you want to delete this e-bike?',
+      onConfirm: () => performCardDelete(id)
+    });
   };
 
   const handleEditSelected = () => {
     if (!selectedEBikeId) {
-      alert('Please select an e-bike to edit');
+      showToast('warning', 'Please select an e-bike to edit');
       return;
     }
     const ebikeToEdit = eBikes.find((ebike) => ebike.id === selectedEBikeId);
@@ -303,36 +380,11 @@ function EBikes() {
     }
   };
 
-  // ---- Card-specific Edit/Delete (used by kebab menu) ----
   const handleCardEdit = (bike) => {
     setCardMenuBikeId(null);
     openEditModal(bike);
   };
 
-  const handleCardDelete = async (id) => {
-    setCardMenuBikeId(null);
-    if (!window.confirm('Are you sure you want to delete this e-bike?')) return;
-
-    try {
-      const response = await fetchWithAuth(`${API_BASE}/e-bike/delete/${id}`, {
-        method: 'DELETE',
-      });
-      const data = await response.json();
-      if (data.success) {
-        alert('E-Bike deleted successfully!');
-        if (selectedEBikeId === id) setSelectedEBikeId(null);
-        fetchEBikes();
-        fetchAllPrices();
-      } else {
-        alert(data.message || 'Failed to delete.');
-      }
-    } catch (error) {
-      console.error('Error deleting:', error);
-      alert('Network error.');
-    }
-  };
-
-  // Shared function to open edit modal with bike data
   const openEditModal = (bike) => {
     setSelectedEBikeForEdit(bike);
     setFormData({
@@ -352,7 +404,6 @@ function EBikes() {
       phone_holder: bike.phone_holder || 'Yes',
     });
     if (bike.image) {
-      // 👈 (၃) Edit Modal မှာ ပုံကြိုပြဖို့ IMAGE_BASE သုံးထားတယ်။
       const fullImageUrl = `${IMAGE_BASE}/${bike.image}`;
       setImagePreview(fullImageUrl);
       setImageFile(null);
@@ -366,7 +417,7 @@ function EBikes() {
   const handleConfirmEdit = async () => {
     if (!selectedEBikeForEdit) return;
     if (!formData.type_id || !formData.name || !formData.price) {
-      alert('Please fill in required fields (Type, Name, Price).');
+      showToast('warning', 'Please fill in required fields (Type, Name, Price).');
       return;
     }
 
@@ -398,9 +449,10 @@ function EBikes() {
         },
         body: form,
       });
+      if (response.status === 401) return handle401Error();
       const data = await response.json();
       if (data.success) {
-        alert('E-Bike updated successfully!');
+        showToast('success', 'E-Bike updated successfully!');
         setShowEditModal(false);
         setSelectedEBikeId(null);
         setSelectedEBikeForEdit(null);
@@ -408,11 +460,11 @@ function EBikes() {
         fetchEBikes();
         fetchAllPrices();
       } else {
-        alert(data.message || 'Failed to update.');
+        showToast('error', data.message || 'Failed to update.');
       }
     } catch (error) {
       console.error('Error updating:', error);
-      alert('Network error.');
+      showToast('error', 'Network error.');
     }
   };
 
@@ -450,7 +502,7 @@ function EBikes() {
 
   const handleSavePrice = async () => {
     if (!priceFormData.price || !priceFormData.start_time || !priceFormData.end_time) {
-      alert('Please fill in all fields.');
+      showToast('warning', 'Please fill in all fields.');
       return;
     }
 
@@ -476,37 +528,46 @@ function EBikes() {
         method: method,
         body: JSON.stringify(payload),
       });
+      if (response.status === 401) return handle401Error();
       const data = await response.json();
       if (data.success) {
-        alert(priceModalMode === 'add' ? 'Price added successfully!' : 'Price updated successfully!');
+        showToast('success', priceModalMode === 'add' ? 'Price added successfully!' : 'Price updated successfully!');
         setShowPriceModal(false);
         fetchAllPrices();
       } else {
-        alert(data.message || 'Failed to save price.');
+        showToast('error', data.message || 'Failed to save price.');
       }
     } catch (error) {
       console.error('Error saving price:', error);
-      alert('Network error.');
+      showToast('error', 'Network error.');
     }
   };
 
-  const handleDeletePrice = async (priceId) => {
-    if (!window.confirm('Are you sure you want to delete this price?')) return;
+  const performDeletePrice = async (priceId) => {
     try {
       const response = await fetchWithAuth(`${API_BASE}/e-bike/price/delete/${priceId}`, {
         method: 'DELETE',
       });
+      if (response.status === 401) return handle401Error();
       const data = await response.json();
       if (data.success) {
-        alert('Price deleted successfully!');
+        showToast('success', 'Price deleted successfully!');
         fetchAllPrices();
       } else {
-        alert(data.message || 'Failed to delete price.');
+        showToast('error', data.message || 'Failed to delete price.');
       }
     } catch (error) {
       console.error('Error deleting price:', error);
-      alert('Network error.');
+      showToast('error', 'Network error.');
     }
+  };
+
+  const handleDeletePrice = (priceId) => {
+    setConfirmDialog({
+      visible: true,
+      message: 'Are you sure you want to delete this price?',
+      onConfirm: () => performDeletePrice(priceId)
+    });
   };
 
   // ----- UI Helpers -----
@@ -569,6 +630,97 @@ function EBikes() {
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="E-Bikes Management" onThemeChange={handleThemeChange} />
+
+      {/* 🟢 Screen အလယ် Toast Alert UI (အရောင် ခွဲခြားထားပြီး၊ 3s အကြာမှာ အလိုအလျောက် ပျောက်မယ်) */}
+      {toast.visible && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 999999,
+          width: '420px',
+          maxWidth: '90%',
+          borderRadius: '16px',
+          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+          padding: '0',
+          overflow: 'hidden',
+          // Action အလိုက် အရောင်တွေ ခွဲပေးထားပါတယ် (Success=Green, Error=Red, Warning=Yellow, Info=Blue)
+          backgroundColor: toast.type === 'success' ? (isDarkMode ? '#1e3a2e' : '#d4edda') : toast.type === 'error' ? (isDarkMode ? '#3e1f1f' : '#f8d7da') : toast.type === 'warning' ? (isDarkMode ? '#3d3512' : '#fff3cd') : (isDarkMode ? '#112b3c' : '#d1ecf1'),
+          color: toast.type === 'success' ? (isDarkMode ? '#b7eb8f' : '#155724') : toast.type === 'error' ? (isDarkMode ? '#ffa39e' : '#721c24') : toast.type === 'warning' ? (isDarkMode ? '#ffe58f' : '#856404') : (isDarkMode ? '#91d5ff' : '#0c5460'),
+          borderLeft: `5px solid ${toast.type === 'success' ? (isDarkMode ? '#52c41a' : '#28a745') : toast.type === 'error' ? (isDarkMode ? '#ff4d4f' : '#dc3545') : toast.type === 'warning' ? (isDarkMode ? '#faad14' : '#ffc107') : (isDarkMode ? '#1890ff' : '#17a2b8')}`
+        }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '16px 20px',
+            borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`
+          }}>
+            <div style={{ fontWeight: 'bold', fontSize: '16px' }}>
+              Bagan 360
+            </div>
+            <button
+              onClick={() => setToast({ ...toast, visible: false })}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'inherit',
+                fontSize: '18px',
+                cursor: 'pointer',
+                opacity: 0.7,
+                padding: '0 4px'
+              }}
+            >
+              <i className="bi bi-x-lg"></i>
+            </button>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '16px',
+            padding: '20px'
+          }}>
+            <div style={{ fontSize: '28px' }}>
+              {toast.type === 'success' && <i className="bi bi-check-circle-fill"></i>}
+              {toast.type === 'error' && <i className="bi bi-x-circle-fill"></i>}
+              {toast.type === 'warning' && <i className="bi bi-exclamation-triangle-fill"></i>}
+              {toast.type === 'info' && <i className="bi bi-info-circle-fill"></i>}
+            </div>
+            <div style={{ fontSize: '15px', lineHeight: '1.5' }}>
+              {toast.message}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🟢 Screen အလယ် Custom Confirm Modal (Delete အတွက်) */}
+      {confirmDialog.visible && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: isDarkMode ? '#2d2d2d' : '#fff', padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%', boxShadow: '0 15px 40px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ color: isDarkMode ? '#eee' : '#333', marginBottom: '12px' }}>Confirm Delete</h3>
+            <p style={{ color: isDarkMode ? '#ccc' : '#555' }}>{confirmDialog.message}</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+              <button 
+                onClick={() => setConfirmDialog({ ...confirmDialog, visible: false })}
+                style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', background: 'transparent', cursor: 'pointer', color: isDarkMode ? '#ccc' : '#333' }}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => { 
+                  if(confirmDialog.onConfirm) confirmDialog.onConfirm(); 
+                  setConfirmDialog({ ...confirmDialog, visible: false }); 
+                }}
+                style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc3545', color: '#fff', cursor: 'pointer' }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="search-actions-row">
         <div className="search-bar-wrapper">
@@ -827,7 +979,6 @@ function EBikes() {
             ) : (
               <div className="hotels-grid-2cols">
                 {filteredEBikes.map((ebike) => {
-                  // 👈 (၂) ကတ်ပြားပေါ်မှာ ပုံပြဖို့ IMAGE_BASE သုံးထားတယ်။
                   const imageUrl = ebike.image
                     ? `${IMAGE_BASE}/${ebike.image}`
                     : '🛵';
@@ -851,7 +1002,7 @@ function EBikes() {
                           {selectedEBikeId === ebike.id && <i className="bi bi-check-circle-fill"></i>}
                         </div>
 
-                        {/* ----- Kebab Menu (Top Right) ----- */}
+                        {/* Kebab Menu */}
                         <div style={{ position: 'absolute', top: '8px', right: '8px', zIndex: 10 }}>
                           <button
                             onClick={(e) => toggleCardMenu(ebike.id, e)}
@@ -921,7 +1072,6 @@ function EBikes() {
                             </div>
                           )}
                         </div>
-                        {/* ----- End Kebab Menu ----- */}
                       </div>
 
                       <div className="hotel-card-info">
@@ -949,7 +1099,7 @@ function EBikes() {
                           )}
                         </p>
 
-                        {/* ----- Price Section ----- */}
+                        {/* Price Section */}
                         <div className="price-section" style={{ marginTop: '12px', borderTop: '1px solid #ddd', paddingTop: '10px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                             <strong style={{ fontSize: '14px' }}>Prices</strong>
@@ -1010,7 +1160,6 @@ function EBikes() {
                             </div>
                           )}
                         </div>
-                        {/* ----- End Price Section ----- */}
 
                         <div className="hotel-rating" style={{ marginTop: '8px' }}>
                           {renderStars(4.5)}
