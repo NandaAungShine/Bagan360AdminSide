@@ -1,5 +1,5 @@
 // components/Hotels.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 import axios from 'axios';
 
@@ -40,6 +40,42 @@ function Hotels() {
     description: '',
     facilities: '',
   });
+
+  // ===== Toast & Confirm States (Alert အစားထိုးရန်) =====
+  const [toast, setToast] = useState({
+    visible: false,
+    type: 'success',
+    message: '',
+  });
+  const toastTimeoutRef = useRef(null);
+
+  const [confirmDialog, setConfirmDialog] = useState({
+    visible: false,
+    message: '',
+    onConfirm: null,
+  });
+
+  // ===== Toast Helper (3s အကြာမှာ အလိုအလျောက်ပျောက်မယ်) =====
+  const showToast = (type, message) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
+    setToast({ visible: true, type, message });
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(prev => ({ ...prev, visible: false }));
+      toastTimeoutRef.current = null;
+    }, 3000);
+  };
+
+  // ===== 401 Unauthorized Handler =====
+  const handle401Error = () => {
+    localStorage.removeItem('token');
+    showToast('error', 'Session expired. Please login again.');
+    setTimeout(() => {
+      window.location.href = '/login';
+    }, 1500);
+  };
 
   // ===== Theme Handler =====
   const handleThemeChange = (isDark) => {
@@ -87,21 +123,25 @@ function Hotels() {
       return response;
     },
     (error) => {
+      // 🔥 401 ရှိရင် အလိုအလျောက် Login ခေါ်သွားမယ်
+      if (error.response && error.response.status === 401) {
+        handle401Error();
+      }
       console.error('=== API Error ===', error.response?.status, error.response?.data);
       return Promise.reject(error);
     }
   );
 
-  // ===== Helper: Get Image URL =====
   const getImageUrl = (imagePath) => {
     if (!imagePath) return null;
-    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-      return imagePath;
+    const trimmed = imagePath.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
     }
-    if (imagePath.startsWith('/')) {
-      return `${BACKEND_URL}${imagePath}`;
+    if (trimmed.startsWith('/')) {
+      return `${BACKEND_URL}${trimmed}`;
     }
-    return `${BACKEND_URL}/${imagePath}`;
+    return `${BACKEND_URL}/${trimmed}`;
   };
 
   // ===== Fetch Hotels =====
@@ -121,6 +161,7 @@ function Hotels() {
       setHotels(hotelData);
     } catch (err) {
       console.error('Fetch Error:', err);
+      // 401 error ကို interceptor က handle လုပ်သွားမှာပါ။
       setError('Failed to fetch hotels. Please try again.');
     } finally {
       setLoading(false);
@@ -179,18 +220,18 @@ function Hotels() {
     if (!formData.name || !formData.type || !formData.location || !formData.price ||
         !formData.start_date || !formData.end_date || !formData.description ||
         !formData.facilities) {
-      alert('All fields are required!');
+      showToast('warning', 'All fields are required!');
       return;
     }
 
     if (!imageFile) {
-      alert('Please upload an image.');
+      showToast('warning', 'Please upload an image.');
       return;
     }
 
     const token = getToken();
     if (!token) {
-      alert('Please login first');
+      showToast('error', 'Please login first');
       return;
     }
 
@@ -217,27 +258,26 @@ function Hotels() {
 
       console.log('POST Response:', response.data);
       if (response.data && response.data.success) {
-        alert('Hotel added successfully!');
+        showToast('success', 'Hotel added successfully!');
         resetForm();
         fetchHotels();
       } else {
-        alert(response.data?.message || 'Failed to add hotel.');
+        showToast('error', response.data?.message || 'Failed to add hotel.');
       }
     } catch (err) {
       console.error('Add Error:', err);
-      alert(`Error: ${err.response?.data?.message || err.message}`);
+      if (err.response?.status === 401) return; // Interceptor က handle လုပ်သွားပြီးသားပါ
+      showToast('error', `Error: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // ===== DELETE HOTEL =====
-  const handleDeleteHotel = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this hotel?')) return;
-
+  // ===== DELETE HOTEL (With Custom Confirm) =====
+  const performDeleteHotel = async (id) => {
     const token = getToken();
     if (!token) {
-      alert('Please login first');
+      showToast('error', 'Please login first');
       return;
     }
 
@@ -247,41 +287,44 @@ function Hotels() {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (response.data && response.data.success) {
-        alert('Hotel deleted successfully!');
+        showToast('success', 'Hotel deleted successfully!');
         fetchHotels();
       } else {
-        alert(response.data?.message || 'Failed to delete hotel.');
+        showToast('error', response.data?.message || 'Failed to delete hotel.');
       }
     } catch (err) {
       console.error('Delete Error:', err);
-      alert(`Error: ${err.response?.data?.message || err.message}`);
+      if (err.response?.status === 401) return;
+      showToast('error', `Error: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // ===== Helper: Format date for input =====
-    // ===== Helper: Format date for input (Supports any format) =====
+  const handleDeleteHotel = (id) => {
+    setConfirmDialog({
+      visible: true,
+      message: 'Are you sure you want to delete this hotel?',
+      onConfirm: () => performDeleteHotel(id)
+    });
+  };
+
+  // ===== Helper: Format date for input (Supports any format) =====
   const formatDateForInput = (dateStr) => {
     if (!dateStr) return '';
     
-    // 1. YYYY-MM-DD ဖြစ်ရင် ပြန်ပေး
     const yyyymmddMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (yyyymmddMatch) return yyyymmddMatch[0];
     
-    // 2. YYYY/MM/DD ဖြစ်ရင် -> YYYY-MM-DD ပြောင်း
     const yyyyslashMatch = dateStr.match(/^(\d{4})\/(\d{2})\/(\d{2})/);
     if (yyyyslashMatch) return `${yyyyslashMatch[1]}-${yyyyslashMatch[2]}-${yyyyslashMatch[3]}`;
     
-    // 3. DD-MM-YYYY ဖြစ်ရင် -> YYYY-MM-DD ပြောင်း
     const ddmmyyyyMatch = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})/);
     if (ddmmyyyyMatch) return `${ddmmyyyyMatch[3]}-${ddmmyyyyMatch[2]}-${ddmmyyyyMatch[1]}`;
     
-    // 4. ISO String (2026-07-27T00:00:00.000Z) ဖြစ်ရင်
     const isoMatch = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
     if (isoMatch) return isoMatch[0];
     
-    // 5. Fallback: Date Object သုံးမယ်
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) return '';
     return date.toISOString().split('T')[0];
@@ -291,7 +334,7 @@ function Hotels() {
   const handleEditHotel = (id) => {
     const hotelToEdit = hotels.find((h) => h.id === id);
     if (!hotelToEdit) {
-      alert('Hotel not found.');
+      showToast('error', 'Hotel not found.');
       return;
     }
 
@@ -313,17 +356,16 @@ function Hotels() {
   };
 
   // ===== CONFIRM EDIT =====
-    // ===== CONFIRM EDIT =====
   const handleConfirmEdit = async () => {
     if (!formData.name || !formData.type || !formData.location || !formData.price ||
         !formData.description || !formData.facilities) {
-      alert('Please fill all required fields.');
+      showToast('warning', 'Please fill all required fields.');
       return;
     }
 
     const token = getToken();
     if (!token) {
-      alert('Please login first');
+      showToast('error', 'Please login first');
       return;
     }
 
@@ -335,11 +377,8 @@ function Hotels() {
       form.append('location', formData.location);
       form.append('price', formData.price);
       form.append('discount', formData.discount || '0');
-      
-      // ===== မူလအတိုင်း YYYY-MM-DD ပုံစံပဲ ပို့ပါ (ISO မပြောင်းပါနဲ့) =====
       form.append('start_date', formData.start_date);
       form.append('end_date', formData.end_date);
-      
       form.append('description', formData.description);
       form.append('facilities', formData.facilities);
       
@@ -355,17 +394,18 @@ function Hotels() {
       });
 
       if (response.data && response.data.success) {
-        alert('Hotel updated successfully!');
+        showToast('success', 'Hotel updated successfully!');
         setShowEditModal(false);
         setSelectedHotelForEdit(null);
         resetForm();
         fetchHotels();
       } else {
-        alert(response.data?.message || 'Failed to update hotel.');
+        showToast('error', response.data?.message || 'Failed to update hotel.');
       }
     } catch (err) {
       console.error('Update Error:', err);
-      alert(`Error: ${err.response?.data?.message || err.message}`);
+      if (err.response?.status === 401) return;
+      showToast('error', `Error: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
@@ -461,6 +501,56 @@ function Hotels() {
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Hotels Management" onThemeChange={handleThemeChange} />
+
+      {/* 🟢 Screen အလယ် Toast Alert UI */}
+      {toast.visible && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 999999,
+          width: '420px',
+          maxWidth: '90%',
+          borderRadius: '16px',
+          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+          padding: '0',
+          overflow: 'hidden',
+          backgroundColor: toast.type === 'success' ? (isDarkMode ? '#1e3a2e' : '#d4edda') : toast.type === 'error' ? (isDarkMode ? '#3e1f1f' : '#f8d7da') : toast.type === 'warning' ? (isDarkMode ? '#3d3512' : '#fff3cd') : (isDarkMode ? '#112b3c' : '#d1ecf1'),
+          color: toast.type === 'success' ? (isDarkMode ? '#b7eb8f' : '#155724') : toast.type === 'error' ? (isDarkMode ? '#ffa39e' : '#721c24') : toast.type === 'warning' ? (isDarkMode ? '#ffe58f' : '#856404') : (isDarkMode ? '#91d5ff' : '#0c5460'),
+          borderLeft: `5px solid ${toast.type === 'success' ? (isDarkMode ? '#52c41a' : '#28a745') : toast.type === 'error' ? (isDarkMode ? '#ff4d4f' : '#dc3545') : toast.type === 'warning' ? (isDarkMode ? '#faad14' : '#ffc107') : (isDarkMode ? '#1890ff' : '#17a2b8')}`
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
+            <div style={{ fontWeight: 'bold', fontSize: '16px' }}>Bagan 360</div>
+            <button onClick={() => { if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); setToast({ ...toast, visible: false }); }} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: '18px', cursor: 'pointer', opacity: 0.7, padding: '0 4px' }}>
+              <i className="bi bi-x-lg"></i>
+            </button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', padding: '20px' }}>
+            <div style={{ fontSize: '28px' }}>
+              {toast.type === 'success' && <i className="bi bi-check-circle-fill"></i>}
+              {toast.type === 'error' && <i className="bi bi-x-circle-fill"></i>}
+              {toast.type === 'warning' && <i className="bi bi-exclamation-triangle-fill"></i>}
+              {toast.type === 'info' && <i className="bi bi-info-circle-fill"></i>}
+            </div>
+            <div style={{ fontSize: '15px', lineHeight: '1.5' }}>{toast.message}</div>
+          </div>
+        </div>
+      )}
+
+      {/* 🟢 Screen အလယ် Confirm Delete Modal */}
+      {confirmDialog.visible && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: isDarkMode ? '#2d2d2d' : '#fff', padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%', boxShadow: '0 15px 40px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ color: isDarkMode ? '#eee' : '#333', marginBottom: '12px' }}>Confirm Delete</h3>
+            <p style={{ color: isDarkMode ? '#ccc' : '#555' }}>{confirmDialog.message}</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+              <button onClick={() => setConfirmDialog({ ...confirmDialog, visible: false })} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', background: 'transparent', cursor: 'pointer', color: isDarkMode ? '#ccc' : '#333' }}>Cancel</button>
+              <button onClick={() => { if(confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({ ...confirmDialog, visible: false }); }} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc3545', color: '#fff', cursor: 'pointer' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="search-actions-row">
         <div className="search-bar-wrapper">
