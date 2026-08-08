@@ -27,8 +27,8 @@ import Message from './components/Message';
  import RestaurantsOrder from './components/RestaurantsOrder';
 // import CarsOrder from './components/CarsOrder';
  import EBikesOrder from './components/EBikesOrder';
+ import TricyclesOrder from './components/TricyclesOrder';
 // import HotAirBalloonsOrder from './components/HotAirBalloonsOrder';
-// import TricyclesOrder from './components/TricyclesOrder';
 // import HorseCartsOrder from './components/HorseCartsOrder';
 // import BannerOrder from './components/BannerOrder';
 
@@ -207,6 +207,14 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
+
+        <Route path="/tricyclesorder" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <TricyclesOrder />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
           {/*
         <Route path="/hotairballoonsorder" element={
           <ProtectedRoute>
@@ -215,13 +223,7 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-        <Route path="/tricyclesorder" element={
-          <ProtectedRoute>
-            <MainLayout>
-              <TricyclesOrder />
-            </MainLayout>
-          </ProtectedRoute>
-        } />
+        
         <Route path="/horsecartsorder" element={
           <ProtectedRoute>
             <MainLayout>
