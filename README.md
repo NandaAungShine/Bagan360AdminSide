@@ -1,2 +1,2 @@
-Gmail - admin@gmail.com (Temp)
-Password - password123 (Temp)
+Gmail - aungpartner35@gmail.com 
+Password - superuser
