@@ -60,14 +60,13 @@ function Tricycles() {
     }, 1500);
   };
 
-  // ===== Form State =====
+  // ===== Form State (discount removed) =====
   const [formData, setFormData] = useState({
     name: '',           
     type: '',
     capacity: '',
     price: '',          
     pricePerDay: '',
-    discount: '',
     description: '',
     features: '',
     location: '',
@@ -159,7 +158,6 @@ function Tricycles() {
       capacity: '',
       price: '',
       pricePerDay: '',
-      discount: '',
       description: '',
       features: '',
       location: '',
@@ -168,7 +166,7 @@ function Tricycles() {
     removeImage();
   };
 
-  // ========== CREATE TRICYCLE ==========
+  // ========== CREATE TRICYCLE (discount removed from payload) ==========
   const handleAddTricycle = async () => {
     if (!formData.name || !formData.price) {
       showToast('warning', 'Please fill in Name and Price.');
@@ -184,13 +182,12 @@ function Tricycles() {
     setError(null);
     try {
       const form = new FormData();
-      // 🔥 FIX: Number/Any type ကို String ပြောင်းပြီးမှ .trim() လုပ်ပါ
       form.append('name', String(formData.name || '').trim());
       form.append('type', String(formData.type || '').trim());
       form.append('capacity', String(formData.capacity || '').trim());
       form.append('price', String(formData.price || '').trim());
       form.append('pricePerDay', String(formData.pricePerDay || '').trim());
-      form.append('discount', String(formData.discount || '').trim());
+      // discount omitted
       form.append('description', String(formData.description || '').trim());
       form.append('features', String(formData.features || '').trim());
       form.append('location', String(formData.location || '').trim());
@@ -315,7 +312,7 @@ function Tricycles() {
       capacity: item.capacity || '',
       price: item.price || '',
       pricePerDay: item.pricePerDay || '',
-      discount: item.discount || '',
+      // discount omitted
       description: item.description || '',
       features: item.features || '',
       location: item.location || '',
@@ -345,7 +342,7 @@ function Tricycles() {
     if (item) openEditModal(item);
   };
 
-  // ========== CONFIRM EDIT (🔥 Error ဖြစ်နေတဲ့ .trim() ကို String() နဲ့ ပြန်ပြင်ထားပါတယ်) ==========
+  // ========== CONFIRM EDIT (discount removed) ==========
   const handleConfirmEdit = async () => {
     if (!selectedItemForEdit) return;
     if (!formData.name) {
@@ -362,13 +359,12 @@ function Tricycles() {
     setError(null);
     try {
       const form = new FormData();
-      // 🔥 FIX: formData.price နဲ့ discount က Number ဖြစ်နေတာကြောင့် String( ) နဲ့ ကြိုပတ်ပြီးမှ trim လုပ်ပါတယ်
       form.append('name', String(formData.name || '').trim());
       form.append('type', String(formData.type || '').trim());
       form.append('capacity', String(formData.capacity || '').trim());
       form.append('price', String(formData.price || '').trim());
       form.append('pricePerDay', String(formData.pricePerDay || '').trim());
-      form.append('discount', String(formData.discount || '').trim());
+      // discount omitted
       form.append('description', String(formData.description || '').trim());
       form.append('features', String(formData.features || '').trim());
       form.append('location', String(formData.location || '').trim());
@@ -588,7 +584,7 @@ function Tricycles() {
               </div>
             </div>
 
-            {/* Form Fields */}
+            {/* Form Fields – discount removed */}
             <div className="form-fields-section">
               <div className="add-form-group">
                 <label>Tricycle Name</label>
@@ -625,10 +621,7 @@ function Tricycles() {
                 </div>
               </div>
 
-              <div className="add-form-group">
-                <label>Discount %</label>
-                <input type="text" name="discount" placeholder="eg. 10" value={formData.discount} onChange={handleInputChange} />
-              </div>
+              {/* Discount input removed entirely */}
 
               <div className="add-form-group">
                 <label>Location</label>
@@ -727,7 +720,7 @@ function Tricycles() {
         </div>
       </div>
 
-      {/* Edit Modal */}
+      {/* Edit Modal – discount removed */}
       {showEditModal && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -789,10 +782,8 @@ function Tricycles() {
                   <input type="text" name="pricePerDay" value={formData.pricePerDay} onChange={handleInputChange} />
                 </div>
               </div>
-              <div className="form-group">
-                <label>Discount %</label>
-                <input type="text" name="discount" value={formData.discount} onChange={handleInputChange} />
-              </div>
+              {/* Discount input removed */}
+
               <div className="form-group">
                 <label>Location</label>
                 <input type="text" name="location" value={formData.location} onChange={handleInputChange} />

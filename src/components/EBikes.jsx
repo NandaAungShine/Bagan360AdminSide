@@ -44,25 +44,21 @@ function EBikes() {
     type: 'success', 
     message: '',
   });
-  // Toast timeout reference (3s auto close အတွက်)
   const toastTimeoutRef = useRef(null);
 
-  // 🎯 Toast ကို ခေါ်သုံးမယ့် Helper Function (Auto-close 3s ပါဝင်ပါတယ်)
   const showToast = (type, message) => {
-    // မူလ Timer ရှိနေရင် ရှင်းပစ်မယ် (Toast အသစ်တစ်ခုခေါ်လိုက်ရင် အဟောင်းက မပျောက်အောင်)
     if (toastTimeoutRef.current) {
       clearTimeout(toastTimeoutRef.current);
       toastTimeoutRef.current = null;
     }
     setToast({ visible: true, type, message });
-    // 3 စက္ကန့် (3000ms) ကြာပြီးရင် အလိုအလျောက် ပျောက်သွားမယ်
     toastTimeoutRef.current = setTimeout(() => {
       setToast(prev => ({ ...prev, visible: false }));
       toastTimeoutRef.current = null;
     }, 3000);
   };
 
-  // Confirm Dialog (Delete မေးတဲ့ Modal)
+  // Confirm Dialog
   const [confirmDialog, setConfirmDialog] = useState({
     visible: false,
     message: '',
@@ -77,7 +73,7 @@ function EBikes() {
   const [loading, setLoading] = useState(false);
   const [loadingTypes, setLoadingTypes] = useState(false);
 
-  // Form states
+  // Form states – discount removed
   const [formData, setFormData] = useState({
     type_id: '',
     name: '',
@@ -86,7 +82,6 @@ function EBikes() {
     color: '',
     location: '',
     price: '',
-    discount: '',
     description: '',
     battery_voltage: '',
     battery_capacity: '',
@@ -119,12 +114,12 @@ function EBikes() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [cardMenuBikeId]);
 
-  // ----- Helper: Handle 401 Unauthorized (Token Expired) -----
+  // ----- Helper: Handle 401 Unauthorized -----
   const handle401Error = () => {
     localStorage.removeItem('token');
     showToast('error', 'Session expired. Please login again.');
     setTimeout(() => {
-      window.location.href = '/login'; // Login Page ကို ပြန်ပို့မယ်
+      window.location.href = '/login';
     }, 1500);
   };
 
@@ -248,7 +243,7 @@ function EBikes() {
     form.append('color', formData.color || '');
     form.append('location', formData.location || '');
     form.append('price', formData.price);
-    form.append('discount', formData.discount || 0);
+    // discount omitted
     form.append('description', formData.description || '');
     form.append('battery_voltage', formData.battery_voltage || '');
     form.append('battery_capacity', formData.battery_capacity || '');
@@ -293,7 +288,6 @@ function EBikes() {
       color: '',
       location: '',
       price: '',
-      discount: '',
       description: '',
       battery_voltage: '',
       battery_capacity: '',
@@ -305,7 +299,7 @@ function EBikes() {
     setImagePreview(null);
   };
 
-  // ---- Delete Logic without window.confirm ----
+  // ---- Delete Logic ----
   const performDeleteSelected = async (id) => {
     try {
       const response = await fetchWithAuth(`${API_BASE}/e-bike/delete/${id}`, {
@@ -395,7 +389,7 @@ function EBikes() {
       color: bike.color || '',
       location: bike.location || '',
       price: bike.price || '',
-      discount: bike.discount || 0,
+      // discount omitted
       description: bike.description || '',
       battery_voltage: bike.battery_voltage || '',
       battery_capacity: bike.battery_capacity || '',
@@ -429,7 +423,7 @@ function EBikes() {
     form.append('color', formData.color || '');
     form.append('location', formData.location || '');
     form.append('price', formData.price);
-    form.append('discount', formData.discount || 0);
+    // discount omitted
     form.append('description', formData.description || '');
     form.append('battery_voltage', formData.battery_voltage || '');
     form.append('battery_capacity', formData.battery_capacity || '');
@@ -631,7 +625,7 @@ function EBikes() {
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="E-Bikes Management" onThemeChange={handleThemeChange} />
 
-      {/* 🟢 Screen အလယ် Toast Alert UI (အရောင် ခွဲခြားထားပြီး၊ 3s အကြာမှာ အလိုအလျောက် ပျောက်မယ်) */}
+      {/* Toast */}
       {toast.visible && (
         <div style={{
           position: 'fixed',
@@ -645,7 +639,6 @@ function EBikes() {
           boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
           padding: '0',
           overflow: 'hidden',
-          // Action အလိုက် အရောင်တွေ ခွဲပေးထားပါတယ် (Success=Green, Error=Red, Warning=Yellow, Info=Blue)
           backgroundColor: toast.type === 'success' ? (isDarkMode ? '#1e3a2e' : '#d4edda') : toast.type === 'error' ? (isDarkMode ? '#3e1f1f' : '#f8d7da') : toast.type === 'warning' ? (isDarkMode ? '#3d3512' : '#fff3cd') : (isDarkMode ? '#112b3c' : '#d1ecf1'),
           color: toast.type === 'success' ? (isDarkMode ? '#b7eb8f' : '#155724') : toast.type === 'error' ? (isDarkMode ? '#ffa39e' : '#721c24') : toast.type === 'warning' ? (isDarkMode ? '#ffe58f' : '#856404') : (isDarkMode ? '#91d5ff' : '#0c5460'),
           borderLeft: `5px solid ${toast.type === 'success' ? (isDarkMode ? '#52c41a' : '#28a745') : toast.type === 'error' ? (isDarkMode ? '#ff4d4f' : '#dc3545') : toast.type === 'warning' ? (isDarkMode ? '#faad14' : '#ffc107') : (isDarkMode ? '#1890ff' : '#17a2b8')}`
@@ -695,7 +688,7 @@ function EBikes() {
         </div>
       )}
 
-      {/* 🟢 Screen အလယ် Custom Confirm Modal (Delete အတွက်) */}
+      {/* Confirm Dialog */}
       {confirmDialog.visible && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: isDarkMode ? '#2d2d2d' : '#fff', padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%', boxShadow: '0 15px 40px rgba(0,0,0,0.2)' }}>
@@ -866,27 +859,16 @@ function EBikes() {
                 </div>
               </div>
 
-              <div className="add-form-row">
-                <div className="add-form-group half">
-                  <label>Price (MMK) <span style={{ color: 'red' }}>*</span></label>
-                  <input
-                    type="number"
-                    name="price"
-                    placeholder="eg. 3000"
-                    value={formData.price}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="add-form-group half">
-                  <label>Discount (%)</label>
-                  <input
-                    type="number"
-                    name="discount"
-                    placeholder="eg. 5"
-                    value={formData.discount}
-                    onChange={handleInputChange}
-                  />
-                </div>
+              {/* Price field – now full width, discount removed */}
+              <div className="add-form-group">
+                <label>Price (MMK) <span style={{ color: 'red' }}>*</span></label>
+                <input
+                  type="number"
+                  name="price"
+                  placeholder="eg. 3000"
+                  value={formData.price}
+                  onChange={handleInputChange}
+                />
               </div>
 
               <div className="add-form-row">
@@ -1091,12 +1073,8 @@ function EBikes() {
                           <span><i className="bi bi-palette"></i> {ebike.color || 'N/A'}</span>
                         </div>
                         <p className="hotel-price">
-                          Per Day <span>MMK {ebike.total_price ?? ebike.price}</span>
-                          {ebike.discount > 0 && (
-                            <span style={{ fontSize: '12px', marginLeft: '8px', textDecoration: 'line-through', color: '#999' }}>
-                              MMK {ebike.price}
-                            </span>
-                          )}
+                          Per Day <span>MMK {ebike.price}</span>
+                          {/* Discount removed – no strikethrough or total_price */}
                         </p>
 
                         {/* Price Section */}
@@ -1251,25 +1229,15 @@ function EBikes() {
                   />
                 </div>
               </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Price (MMK) <span style={{ color: 'red' }}>*</span></label>
-                  <input
-                    type="number"
-                    name="price"
-                    value={formData.price}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Discount (%)</label>
-                  <input
-                    type="number"
-                    name="discount"
-                    value={formData.discount}
-                    onChange={handleInputChange}
-                  />
-                </div>
+              {/* Price – full width, discount removed */}
+              <div className="form-group">
+                <label>Price (MMK) <span style={{ color: 'red' }}>*</span></label>
+                <input
+                  type="number"
+                  name="price"
+                  value={formData.price}
+                  onChange={handleInputChange}
+                />
               </div>
               <div className="form-row">
                 <div className="form-group">
