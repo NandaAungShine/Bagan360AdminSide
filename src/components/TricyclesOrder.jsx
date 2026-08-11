@@ -2,6 +2,26 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
+// ===== HELPER FUNCTIONS =====
+// Parse date string like "12-08-2026" (DD-MM-YYYY) to Date object
+const parseDate = (dateStr) => {
+  if (!dateStr) return null;
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+    const year = parseInt(parts[2], 10);
+    return new Date(year, month, day);
+  }
+  return new Date(dateStr); // fallback
+};
+
+// Map backend status to frontend status
+const mapStatus = (backendStatus) => {
+  if (backendStatus === 'available') return 'pending';
+  return backendStatus;
+};
+
 function TricycleOrder() {
   // ===== 1. THEME =====
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -52,7 +72,7 @@ function TricycleOrder() {
   // ===== 5. API BASE =====
   const API_BASE = '/api/admin/thonebane/booking';
 
-  // ===== 6. FETCH BOOKINGS =====
+  // ===== 6. FETCH BOOKINGS (UPDATED) =====
   const fetchBookings = async () => {
     setLoading(true);
     setError(null);
@@ -69,22 +89,50 @@ function TricycleOrder() {
       const result = await response.json();
       console.log('✅ Bookings response:', result);
 
-      // Safely extract the array
-      let bookingsArray = [];
-      if (Array.isArray(result.data)) {
-        bookingsArray = result.data;
+      // ---- 1. Extract array ----
+      let rawBookings = [];
+      if (Array.isArray(result.booking)) {
+        rawBookings = result.booking;
+      } else if (Array.isArray(result.data)) {
+        rawBookings = result.data;
       } else if (Array.isArray(result)) {
-        bookingsArray = result;
+        rawBookings = result;
       } else {
         const possibleKeys = ['bookings', 'items', 'results', 'list'];
         for (const key of possibleKeys) {
           if (Array.isArray(result[key])) {
-            bookingsArray = result[key];
+            rawBookings = result[key];
             break;
           }
         }
       }
-      setBookings(bookingsArray);
+
+      // ---- 2. Map to component shape ----
+      const mappedBookings = rawBookings.map((item) => ({
+        // Primary fields
+        id: item.booking_id,
+        customerName: item.customer_name || 'Guest',
+        customerPhone: item.customer_phone || '',
+        customerEmail: '', // API မပါပေမယ့် လိုအပ်ရင် ထည့်နိုင်ပါတယ်
+        tricycleName: item.thonebane_name || 'Tricycle',
+        tricycle: {
+          id: item.thonebane_id,
+          name: item.thonebane_name || 'Tricycle',
+        },
+        status: mapStatus(item.status), // "available" -> "pending"
+        startDate: parseDate(item.booking_date),
+        endDate: null, // API မပါလို့ null ထားပါတယ်
+        totalPrice: item.price || 0,
+        notes: item.note || '',
+        shopName: item.shop_name || '',
+        location: item.location || '',
+        image: item.image || '',
+        passengerCount: item.passenger_count || 0,
+        // Raw data ကိုလည်း သိမ်းထားနိုင်ပါတယ် (လိုအပ်ရင်)
+        _raw: item,
+      }));
+
+      setBookings(mappedBookings);
     } catch (err) {
       setError(err.message);
       console.error('❌ Fetch Bookings Error:', err);
@@ -147,8 +195,8 @@ function TricycleOrder() {
   // ===== 9. FILTER LOGIC (with Daily/Weekly/Monthly/Yearly) =====
   const filteredBookings = bookings.filter((booking) => {
     // 9a. Search filter
-    const customerName = booking.customerName || booking.customer_name || '';
-    const tricycleName = booking.tricycle?.name || booking.tricycleName || '';
+    const customerName = booking.customerName || '';
+    const tricycleName = booking.tricycleName || '';
     const status = booking.status || '';
 
     const matchesSearch =
@@ -162,49 +210,42 @@ function TricycleOrder() {
     // 9c. Time filter (Daily / Weekly / Monthly / Yearly)
     let matchesTime = true;
     if (timeFilter !== 'all') {
-      // Try to get a date: prefer startDate, fallback to created_at/createdAt
-      const dateStr = booking.startDate || booking.start_date || booking.created_at || booking.createdAt;
-      if (!dateStr) {
+      const date = booking.startDate; // already a Date object from parseDate
+      if (!date || isNaN(date.getTime())) {
         matchesTime = false;
       } else {
-        const date = new Date(dateStr);
-        if (isNaN(date.getTime())) {
-          matchesTime = false;
-        } else {
-          const today = new Date();
-          const year = date.getFullYear();
-          const month = date.getMonth();
-          const day = date.getDate();
-          const todayYear = today.getFullYear();
-          const todayMonth = today.getMonth();
-          const todayDay = today.getDate();
+        const today = new Date();
+        const year = date.getFullYear();
+        const month = date.getMonth();
+        const day = date.getDate();
+        const todayYear = today.getFullYear();
+        const todayMonth = today.getMonth();
+        const todayDay = today.getDate();
 
-          switch (timeFilter) {
-            case 'daily':
-              matchesTime = (year === todayYear && month === todayMonth && day === todayDay);
-              break;
-            case 'weekly': {
-              // Get start of the week (Monday)
-              const startOfWeek = new Date(today);
-              const dayOfWeek = today.getDay(); // 0 = Sunday
-              const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Monday = 1
-              startOfWeek.setDate(today.getDate() - diff);
-              startOfWeek.setHours(0, 0, 0, 0);
-              const endOfWeek = new Date(startOfWeek);
-              endOfWeek.setDate(startOfWeek.getDate() + 6);
-              endOfWeek.setHours(23, 59, 59, 999);
-              matchesTime = (date >= startOfWeek && date <= endOfWeek);
-              break;
-            }
-            case 'monthly':
-              matchesTime = (year === todayYear && month === todayMonth);
-              break;
-            case 'yearly':
-              matchesTime = (year === todayYear);
-              break;
-            default:
-              matchesTime = true;
+        switch (timeFilter) {
+          case 'daily':
+            matchesTime = (year === todayYear && month === todayMonth && day === todayDay);
+            break;
+          case 'weekly': {
+            const startOfWeek = new Date(today);
+            const dayOfWeek = today.getDay();
+            const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            startOfWeek.setDate(today.getDate() - diff);
+            startOfWeek.setHours(0, 0, 0, 0);
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(startOfWeek.getDate() + 6);
+            endOfWeek.setHours(23, 59, 59, 999);
+            matchesTime = (date >= startOfWeek && date <= endOfWeek);
+            break;
           }
+          case 'monthly':
+            matchesTime = (year === todayYear && month === todayMonth);
+            break;
+          case 'yearly':
+            matchesTime = (year === todayYear);
+            break;
+          default:
+            matchesTime = true;
         }
       }
     }
@@ -212,16 +253,17 @@ function TricycleOrder() {
     return matchesSearch && matchesStatus && matchesTime;
   });
 
-  // ===== 10. STATUS BADGE =====
+  // ===== 10. STATUS BADGE (Updated to include 'available' just in case) =====
   const getStatusBadge = (status) => {
     const statusMap = {
       pending: { label: 'Pending', color: '#ffc107', bg: '#fff3cd' },
+      available: { label: 'Pending', color: '#ffc107', bg: '#fff3cd' }, // fallback
       approved: { label: 'Approved', color: '#0d6efd', bg: '#cfe2ff' },
       confirmed: { label: 'Confirmed', color: '#0d6efd', bg: '#cfe2ff' },
       completed: { label: 'Completed', color: '#198754', bg: '#d1e7dd' },
       cancelled: { label: 'Cancelled', color: '#dc3545', bg: '#f8d7da' },
     };
-    const s = statusMap[status?.toLowerCase()] || { label: status, color: '#6c757d', bg: '#e9ecef' };
+    const s = statusMap[status?.toLowerCase()] || { label: status || 'Unknown', color: '#6c757d', bg: '#e9ecef' };
     return (
       <span
         style={{
@@ -277,7 +319,7 @@ function TricycleOrder() {
       return () => document.removeEventListener('click', handleClickOutside);
     }, [isOpen]);
 
-    const isApproved = booking.status?.toLowerCase() === 'approved';
+    const isApproved = booking.status?.toLowerCase() === 'approved' || booking.status?.toLowerCase() === 'confirmed' || booking.status?.toLowerCase() === 'completed';
     const isCancelled = booking.status?.toLowerCase() === 'cancelled';
 
     return (
@@ -304,9 +346,11 @@ function TricycleOrder() {
   const DetailModal = ({ booking, onClose }) => {
     if (!booking) return null;
 
-    const formatDate = (dateStr) => {
-      if (!dateStr) return 'N/A';
-      return new Date(dateStr).toLocaleDateString();
+    const formatDate = (date) => {
+      if (!date) return 'N/A';
+      if (typeof date === 'string') return new Date(date).toLocaleDateString();
+      if (date instanceof Date) return date.toLocaleDateString();
+      return 'N/A';
     };
 
     return (
@@ -320,17 +364,17 @@ function TricycleOrder() {
           </div>
           <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div><strong>Customer:</strong> {booking.customerName || booking.customer_name || 'N/A'}</div>
-              <div><strong>Email:</strong> {booking.customerEmail || booking.customer_email || 'N/A'}</div>
-              <div><strong>Tricycle:</strong> {booking.tricycle?.name || booking.tricycleName || 'N/A'}</div>
+              <div><strong>Customer:</strong> {booking.customerName || 'N/A'}</div>
+              <div><strong>Phone:</strong> {booking.customerPhone || 'N/A'}</div>
+              <div><strong>Tricycle:</strong> {booking.tricycleName || 'N/A'}</div>
               <div><strong>Status:</strong> {getStatusBadge(booking.status)}</div>
-              <div><strong>Start Date:</strong> {formatDate(booking.startDate || booking.start_date)}</div>
-              <div><strong>End Date:</strong> {formatDate(booking.endDate || booking.end_date)}</div>
-              <div><strong>Total Price:</strong> MMK {booking.totalPrice || booking.total_price || 0}</div>
-              <div><strong>Booked On:</strong> {formatDate(booking.createdAt || booking.created_at)}</div>
+              <div><strong>Start Date:</strong> {formatDate(booking.startDate)}</div>
+              <div><strong>End Date:</strong> {booking.endDate ? formatDate(booking.endDate) : 'N/A'}</div>
+              <div><strong>Total Price:</strong> MMK {booking.totalPrice || 0}</div>
+              <div><strong>Passengers:</strong> {booking.passengerCount || 1}</div>
               <div style={{ gridColumn: '1 / -1' }}>
                 <strong>Special Requests / Notes:</strong><br />
-                <span style={{ fontSize: '14px' }}>{booking.notes || booking.special_requests || 'None'}</span>
+                <span style={{ fontSize: '14px' }}>{booking.notes || 'None'}</span>
               </div>
             </div>
           </div>
@@ -344,8 +388,15 @@ function TricycleOrder() {
 
   // ===== 13. BOOKING CARD =====
   const BookingCard = ({ booking }) => {
-    const tricycleName = booking.tricycle?.name || booking.tricycleName || 'Tricycle';
-    const customerName = booking.customerName || booking.customer_name || 'Guest';
+    const tricycleName = booking.tricycleName || 'Tricycle';
+    const customerName = booking.customerName || 'Guest';
+
+    const formatDateDisplay = (date) => {
+      if (!date) return 'N/A';
+      if (typeof date === 'string') return new Date(date).toLocaleDateString();
+      if (date instanceof Date) return date.toLocaleDateString();
+      return 'N/A';
+    };
 
     return (
       <div className="hotel-card-vertical" style={{ cursor: 'default' }}>
@@ -361,17 +412,19 @@ function TricycleOrder() {
             <i className="bi bi-bicycle"></i> {tricycleName}
           </p>
           <p className="hotel-price">
-            Total: <span>MMK {booking.totalPrice || booking.total_price || 0}</span>
+            Total: <span>MMK {booking.totalPrice || 0}</span>
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             {getStatusBadge(booking.status)}
             <span style={{ fontSize: '12px', color: '#999' }}>
-              <i className="bi bi-calendar3"></i> {booking.startDate || booking.start_date ? new Date(booking.startDate || booking.start_date).toLocaleDateString() : 'N/A'}
+              <i className="bi bi-calendar3"></i> {formatDateDisplay(booking.startDate)}
             </span>
           </div>
-          <p style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
-            <i className="bi bi-clock"></i> {booking.endDate || booking.end_date ? new Date(booking.endDate || booking.end_date).toLocaleDateString() : 'N/A'}
-          </p>
+          {booking.endDate && (
+            <p style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
+              <i className="bi bi-clock"></i> {formatDateDisplay(booking.endDate)}
+            </p>
+          )}
         </div>
       </div>
     );
@@ -408,10 +461,10 @@ function TricycleOrder() {
   // ===== 15. SUMMARY DATA =====
   const summaryData = [
     { label: 'Total Bookings', count: bookings.length, icon: 'bi-box-seam', color: '#0d6efd' },
-    { label: 'Pending', count: bookings.filter(b => (b.status || '').toLowerCase() === 'pending').length, icon: 'bi-clock-history', color: '#ffc107' },
-    { label: 'Approved', count: bookings.filter(b => (b.status || '').toLowerCase() === 'approved').length, icon: 'bi-check-circle', color: '#198754' },
+    { label: 'Pending', count: bookings.filter(b => (b.status || '').toLowerCase() === 'pending' || (b.status || '').toLowerCase() === 'available').length, icon: 'bi-clock-history', color: '#ffc107' },
+    { label: 'Approved', count: bookings.filter(b => (b.status || '').toLowerCase() === 'approved' || (b.status || '').toLowerCase() === 'confirmed' || (b.status || '').toLowerCase() === 'completed').length, icon: 'bi-check-circle', color: '#198754' },
     { label: 'Cancelled', count: bookings.filter(b => (b.status || '').toLowerCase() === 'cancelled').length, icon: 'bi-x-circle', color: '#dc3545' },
-    { label: 'Tricycles', count: new Set(bookings.map(b => b.tricycleId || b.tricycle?.id)).size || bookings.length, icon: 'bi-bicycle', color: '#6f42c1' },
+    { label: 'Tricycles', count: new Set(bookings.map(b => b.tricycle?.id || b.tricycleName)).size || bookings.length, icon: 'bi-bicycle', color: '#6f42c1' },
   ];
 
   // ===== 16. MAIN RENDER =====
@@ -524,7 +577,7 @@ function TricycleOrder() {
           </select>
         </div>
 
-        {/* ===== NEW: TIME FILTER BUTTONS ===== */}
+        {/* ===== TIME FILTER BUTTONS ===== */}
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
           <label style={{ fontSize: '14px', fontWeight: '500', marginRight: '4px' }}>Period:</label>
           {['all', 'daily', 'weekly', 'monthly', 'yearly'].map((period) => (

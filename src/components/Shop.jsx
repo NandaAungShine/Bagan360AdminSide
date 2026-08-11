@@ -8,7 +8,7 @@ const API_BASE = 'http://130.94.21.185:8000';
 const TOKEN_KEYS = ['access_token', 'token', 'access', 'auth_token'];
 const USER_KEYS = ['user', 'user_data', 'auth_user'];
 
-// Sample data (fallback)
+// Sample data (fallback) – now matches the new API shape
 const SAMPLE_REQUESTS = [
   {
     id: 1,
@@ -16,12 +16,12 @@ const SAMPLE_REQUESTS = [
     owner_name: 'U Kyaw Win',
     email: 'kyawwin@example.com',
     phone: '09-12345678',
-    shop_type: 'Hotels',
+    shop_type: 'hotel',
     address: 'Old Bagan, Near Ananda Temple',
     description: 'Luxury hotel with 50 rooms, pool and spa.',
     status: 'pending',
     created_at: '2026-07-28T10:30:00Z',
-    documents: ['business_license.png', 'tax_certificate.jpg', 'hotel_photo.webp'],
+    documents: ['business_license.png'],
   },
   {
     id: 2,
@@ -29,64 +29,12 @@ const SAMPLE_REQUESTS = [
     owner_name: 'Daw Mya Mya',
     email: 'myamya@example.com',
     phone: '09-87654321',
-    shop_type: 'E-Bikes',
+    shop_type: 'e-bikes',
     address: 'Nyaung U Market',
     description: 'E-bike rental with 20 bikes, battery charging station.',
     status: 'pending',
     created_at: '2026-07-27T14:20:00Z',
     documents: ['business_license.png'],
-  },
-  {
-    id: 3,
-    shop_name: 'Golden Land Restaurant',
-    owner_name: 'U Maung Maung',
-    email: 'maung@example.com',
-    phone: '09-11223344',
-    shop_type: 'Restaurants',
-    address: 'Main Road, Bagan',
-    description: 'Traditional Myanmar cuisine with sunset view.',
-    status: 'approved',
-    created_at: '2026-07-25T09:15:00Z',
-    documents: ['license.jpeg', 'health_certificate.webp'],
-  },
-  {
-    id: 4,
-    shop_name: 'Bagan Car Rentals',
-    owner_name: 'U Aung Aung',
-    email: 'aung@example.com',
-    phone: '09-99887766',
-    shop_type: 'Cars',
-    address: 'Airport Road, Nyaung U',
-    description: 'Car rental service with 10 vehicles including SUVs.',
-    status: 'rejected',
-    created_at: '2026-07-20T16:45:00Z',
-    documents: ['license.png'],
-  },
-  {
-    id: 5,
-    shop_name: 'Sunrise Hot Air Balloon',
-    owner_name: 'U Soe Soe',
-    email: 'soe@example.com',
-    phone: '09-55443322',
-    shop_type: 'Hot Air Balloons',
-    address: 'Old Bagan, Near Temple',
-    description: 'Hot air balloon tours with sunrise flights.',
-    status: 'pending',
-    created_at: '2026-07-29T08:10:00Z',
-    documents: ['license.png', 'safety_certificate.jpg'],
-  },
-  {
-    id: 6,
-    shop_name: 'Bagan Horse Cart Tours',
-    owner_name: 'U Tun Tun',
-    email: 'tun@example.com',
-    phone: '09-66778899',
-    shop_type: 'Horse Carts',
-    address: 'Old Bagan, Archaeological Zone',
-    description: 'Traditional horse cart tours around ancient temples.',
-    status: 'approved',
-    created_at: '2026-07-22T11:30:00Z',
-    documents: ['license.png'],
   },
 ];
 
@@ -240,7 +188,7 @@ function Shop() {
   // 7. API CALLS
   // ============================================================
 
-  // 7a. Fetch shop requests – now uses /auth/shop/account/ (singular)
+  // 7a. Fetch shop requests – using /auth/shop/list (CORRECT endpoint)
   const fetchRequests = async () => {
     setLoading(true);
     try {
@@ -255,11 +203,8 @@ function Shop() {
       const role = user?.role;
       const shopId = user?.shop?.id;
 
-      // 🔧 CHANGED: use singular "account" instead of "accounts"
-      let url = `${API_BASE}/auth/shop/account/`;
-      if (role !== 'admin' && shopId) {
-        url += `?shop_id=${shopId}`;
-      }
+      // 🔧 FIXED: Use /auth/shop/list (NOT /auth/shop/account/list)
+      const url = `${API_BASE}/auth/shop/list`;
       console.log('📡 Fetching shop list from:', url);
 
       const response = await fetch(url, {
@@ -271,7 +216,6 @@ function Shop() {
       if (!response.ok) {
         const errorText = await response.text();
         if (response.status === 401) {
-          // Token invalid/expired – clear and show login
           localStorage.removeItem('access_token');
           localStorage.removeItem('token');
           localStorage.removeItem('access');
@@ -279,18 +223,51 @@ function Shop() {
           setIsLoggedIn(false);
           throw new Error('Session expired. Please log in again.');
         }
-        // If the endpoint is not found (404) or other error, we fall back to sample data
         console.warn(`API returned ${response.status}. Falling back to sample data.`);
         setRequests(SAMPLE_REQUESTS);
         alert(`Note: Could not fetch from API (${response.status}). Using sample data for demonstration.`);
         return;
       }
 
-      const data = await response.json();
-      setRequests(data);
+      const result = await response.json();
+      // Expected: { success: true, data: [...] }
+      let data = [];
+      if (result.data && Array.isArray(result.data)) {
+        data = result.data;
+      } else if (Array.isArray(result)) {
+        data = result;
+      } else {
+        console.warn('Unexpected API response shape:', result);
+        data = [];
+      }
+
+      // Map to component's expected shape
+      const mapped = data.map(item => ({
+        id: item.id,
+        shop_name: item.shop_name || 'Unnamed Shop',
+        owner_name: item.owner_name || 'N/A', // not in API, fallback
+        email: item.email || '', // not in API
+        phone: item.shop_phone || '',
+        shop_type: item.type || '',
+        address: item.shop_address || '',
+        description: item.description || '',
+        status: item.status || 'pending',
+        created_at: item.created_at || null,
+        documents: item.documents || [], // not in API
+        image: item.image || null,
+        // keep extra fields if needed
+        _raw: item,
+      }));
+
+      // If user is not admin, filter by their shop_id (if they have one)
+      let filtered = mapped;
+      if (role !== 'admin' && shopId) {
+        filtered = mapped.filter(req => req.id === shopId);
+      }
+
+      setRequests(filtered);
     } catch (error) {
       console.error('Fetch error:', error);
-      // Fallback to sample data if anything fails
       setRequests(SAMPLE_REQUESTS);
       alert(`Could not load shop requests from API. Using sample data.\nError: ${error.message}`);
     } finally {
@@ -298,7 +275,7 @@ function Shop() {
     }
   };
 
-  // 7b. Approve / Reject (unchanged)
+  // 7b. Approve / Reject (using the provided endpoints)
   const updateRequestStatus = async (requestId, newStatus) => {
     const action = newStatus === 'approved' ? 'Approve' : 'Reject';
     if (!window.confirm(`Are you sure you want to ${action} this request?`)) return;
@@ -308,6 +285,7 @@ function Shop() {
       const token = getToken();
       if (!token) throw new Error('Not authenticated');
 
+      // Use the correct endpoints
       const endpoint =
         newStatus === 'approved'
           ? `${API_BASE}/auth/shop/account/approved/${requestId}`
@@ -333,7 +311,7 @@ function Shop() {
     }
   };
 
-  // 7c. Delete (unchanged)
+  // 7c. Delete
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this shop request?')) return;
     setLoading(true);
@@ -358,7 +336,7 @@ function Shop() {
     }
   };
 
-  // 7d. Edit (unchanged)
+  // 7d. Edit
   const handleEdit = (request) => {
     setSelectedRequestForEdit(request);
     setShowEditModal(true);
@@ -378,7 +356,12 @@ function Shop() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify(selectedRequestForEdit),
+          body: JSON.stringify({
+            shop_name: selectedRequestForEdit.shop_name,
+            shop_phone: selectedRequestForEdit.phone,
+            shop_address: selectedRequestForEdit.address,
+            // other fields if needed
+          }),
         }
       );
       if (!response.ok) throw new Error('Failed to update');
@@ -426,7 +409,7 @@ function Shop() {
   };
 
   // ============================================================
-  // 8. FILTER & SORT (unchanged)
+  // 8. FILTER & SORT
   // ============================================================
   const getSortedRequests = (list) => {
     let result = [...list];
@@ -458,11 +441,11 @@ function Shop() {
     total: requests.length,
     pending: requests.filter((r) => r.status === 'pending').length,
     approved: requests.filter((r) => r.status === 'approved').length,
-    rejected: requests.filter((r) => r.status === 'rejected').length,
+    rejected: requests.filter((r) => r.status === 'rejected' || r.status === 'cancelled').length,
   };
 
   // ============================================================
-  // 10. HELPER RENDER FUNCTIONS (unchanged)
+  // 10. HELPER RENDER FUNCTIONS
   // ============================================================
   const formatDate = (dateStr) => (dateStr ? dateStr.slice(0, 10) : 'N/A');
 
@@ -471,6 +454,7 @@ function Shop() {
       pending: { label: 'Pending', color: '#ffc107', bg: '#fff3cd' },
       approved: { label: 'Approved', color: '#198754', bg: '#d1e7dd' },
       rejected: { label: 'Rejected', color: '#dc3545', bg: '#f8d7da' },
+      cancelled: { label: 'Cancelled', color: '#dc3545', bg: '#f8d7da' },
     };
     const s = map[status?.toLowerCase()] || { label: status, color: '#6c757d', bg: '#e9ecef' };
     return (
@@ -495,16 +479,16 @@ function Shop() {
 
   const getTypeBadge = (type) => {
     const map = {
-      Cars: { color: '#0d6efd', bg: '#cfe2ff' },
-      Destinations: { color: '#6f42c1', bg: '#e2d9f3' },
-      'E-Bikes': { color: '#17a2b8', bg: '#cff4fc' },
-      'Horse Carts': { color: '#fd7e14', bg: '#ffe5d0' },
-      'Hot Air Balloons': { color: '#dc3545', bg: '#f8d7da' },
-      Hotels: { color: '#198754', bg: '#d1e7dd' },
-      Restaurants: { color: '#d63384', bg: '#f5d4e1' },
-      Tricycles: { color: '#6c757d', bg: '#e9ecef' },
+      cars: { color: '#0d6efd', bg: '#cfe2ff' },
+      destinations: { color: '#6f42c1', bg: '#e2d9f3' },
+      'e-bikes': { color: '#17a2b8', bg: '#cff4fc' },
+      'horse carts': { color: '#fd7e14', bg: '#ffe5d0' },
+      'hot air balloons': { color: '#dc3545', bg: '#f8d7da' },
+      hotels: { color: '#198754', bg: '#d1e7dd' },
+      restaurants: { color: '#d63384', bg: '#f5d4e1' },
+      tricycles: { color: '#6c757d', bg: '#e9ecef' },
     };
-    const s = map[type] || { color: '#6c757d', bg: '#e9ecef' };
+    const s = map[type?.toLowerCase()] || { color: '#6c757d', bg: '#e9ecef' };
     return (
       <span
         style={{
@@ -520,23 +504,23 @@ function Shop() {
           textAlign: 'center',
         }}
       >
-        {type}
+        {type || 'N/A'}
       </span>
     );
   };
 
   const getTypeIcon = (type) => {
     const map = {
-      Cars: 'bi-car-front',
-      Destinations: 'bi-geo-alt',
-      'E-Bikes': 'bi-bicycle',
-      'Horse Carts': 'bi-truck',
-      'Hot Air Balloons': 'bi-balloon',
-      Hotels: 'bi-building',
-      Restaurants: 'bi-egg-fried',
-      Tricycles: 'bi-truck',
+      cars: 'bi-car-front',
+      destinations: 'bi-geo-alt',
+      'e-bikes': 'bi-bicycle',
+      'horse carts': 'bi-truck',
+      'hot air balloons': 'bi-balloon',
+      hotels: 'bi-building',
+      restaurants: 'bi-egg-fried',
+      tricycles: 'bi-truck',
     };
-    return map[type] || 'bi-shop';
+    return map[type?.toLowerCase()] || 'bi-shop';
   };
 
   // ============================================================
@@ -762,7 +746,7 @@ function Shop() {
           </div>
           <div className="stat-info">
             <h4>{stats.rejected}</h4>
-            <p>Rejected</p>
+            <p>Rejected / Cancelled</p>
           </div>
         </div>
       </div>
@@ -1040,28 +1024,6 @@ function Shop() {
                 />
               </div>
               <div className="form-group mb-3">
-                <label>Owner Name</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={selectedRequestForEdit.owner_name}
-                  onChange={(e) =>
-                    setSelectedRequestForEdit({
-                      ...selectedRequestForEdit,
-                      owner_name: e.target.value,
-                    })
-                  }
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color)',
-                    background: 'var(--input-bg)',
-                    color: 'var(--text-color)',
-                  }}
-                />
-              </div>
-              <div className="form-group mb-3">
                 <label>Phone</label>
                 <input
                   type="text"
@@ -1241,4 +1203,4 @@ function Shop() {
   );
 }
 
-export default Shop;                    
+export default Shop;
