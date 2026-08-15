@@ -8445,3 +8445,175 @@ body.dark-mode .sort-dropdown-menu button:hover {
 body.dark-mode .sort-dropdown-menu button i {
   color: #94a3b8;
 }
+
+/* ==================== Destination Plan additions ====================
+   Append this to your existing dashboard stylesheet (the one already
+   used by hotels-two-columns / add-form-card / hotel-card-vertical etc.)
+   These rules only add the pieces that HistoryOfPagodas.css does not
+   already define: transport chips and the itinerary builder + preview. */
+
+/* ---- Transport chip picker (Add form + Edit modal) ---- */
+.transport-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.transport-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 20px;
+  border: 1px solid #ced4da;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.transport-chip:hover {
+  border-color: #d97757;
+}
+
+.transport-chip.active {
+  background: #d97757;
+  border-color: #d97757;
+  color: #fff;
+}
+
+/* ---- Itinerary builder (Add form + Edit modal) ---- */
+.itinerary-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.itinerary-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.itinerary-index {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #d97757;
+  color: #fff;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.itinerary-time-select {
+  flex: 0 0 150px;
+  padding: 6px 8px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid #ced4da;
+}
+
+.itinerary-activity-input {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid #ced4da;
+}
+
+.itinerary-remove-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid #ced4da;
+  background: transparent;
+  color: #dc3545;
+  cursor: pointer;
+}
+
+.itinerary-remove-btn:hover {
+  background: rgba(220, 53, 69, 0.1);
+}
+
+.itinerary-add-btn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px dashed #d97757;
+  background: transparent;
+  color: #d97757;
+  cursor: pointer;
+}
+
+.itinerary-add-btn:hover {
+  background: rgba(217, 119, 87, 0.08);
+}
+
+/* ---- Plan card badges + itinerary preview (right column cards) ---- */
+.plan-duration-badge {
+  margin-left: 8px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(217, 119, 87, 0.15);
+  color: #d97757;
+}
+
+.plan-transport-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.plan-transport-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  border: 1px solid #ced4da;
+  color: #6c757d;
+}
+
+.plan-itinerary-preview {
+  margin: 8px 0;
+  padding-top: 8px;
+  border-top: 1px dashed #ced4da;
+}
+
+.plan-itinerary-preview-row {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.plan-itinerary-time {
+  flex: 0 0 90px;
+  color: #d97757;
+  font-weight: 500;
+}
+
+.plan-itinerary-activity {
+  flex: 1;
+  color: #6c757d;
+}
+
+.plan-itinerary-more {
+  font-size: 11px;
+  color: #999;
+  margin: 0;
+}

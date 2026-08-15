@@ -1,5 +1,5 @@
 // components/Shop.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
 const API_BASE = 'http://130.94.21.185:8000';
@@ -8,7 +8,7 @@ const API_BASE = 'http://130.94.21.185:8000';
 const TOKEN_KEYS = ['access_token', 'token', 'access', 'auth_token'];
 const USER_KEYS = ['user', 'user_data', 'auth_user'];
 
-// Sample data (fallback) – now matches the new API shape
+// Sample data (fallback)
 const SAMPLE_REQUESTS = [
   {
     id: 1,
@@ -16,12 +16,12 @@ const SAMPLE_REQUESTS = [
     owner_name: 'U Kyaw Win',
     email: 'kyawwin@example.com',
     phone: '09-12345678',
-    shop_type: 'hotel',
+    shop_type: 'Hotels',
     address: 'Old Bagan, Near Ananda Temple',
     description: 'Luxury hotel with 50 rooms, pool and spa.',
     status: 'pending',
     created_at: '2026-07-28T10:30:00Z',
-    documents: ['business_license.png'],
+    documents: ['business_license.png', 'tax_certificate.jpg', 'hotel_photo.webp'],
   },
   {
     id: 2,
@@ -29,12 +29,64 @@ const SAMPLE_REQUESTS = [
     owner_name: 'Daw Mya Mya',
     email: 'myamya@example.com',
     phone: '09-87654321',
-    shop_type: 'e-bikes',
+    shop_type: 'E-Bikes',
     address: 'Nyaung U Market',
     description: 'E-bike rental with 20 bikes, battery charging station.',
     status: 'pending',
     created_at: '2026-07-27T14:20:00Z',
     documents: ['business_license.png'],
+  },
+  {
+    id: 3,
+    shop_name: 'Golden Land Restaurant',
+    owner_name: 'U Maung Maung',
+    email: 'maung@example.com',
+    phone: '09-11223344',
+    shop_type: 'Restaurants',
+    address: 'Main Road, Bagan',
+    description: 'Traditional Myanmar cuisine with sunset view.',
+    status: 'approved',
+    created_at: '2026-07-25T09:15:00Z',
+    documents: ['license.jpeg', 'health_certificate.webp'],
+  },
+  {
+    id: 4,
+    shop_name: 'Bagan Car Rentals',
+    owner_name: 'U Aung Aung',
+    email: 'aung@example.com',
+    phone: '09-99887766',
+    shop_type: 'Cars',
+    address: 'Airport Road, Nyaung U',
+    description: 'Car rental service with 10 vehicles including SUVs.',
+    status: 'rejected',
+    created_at: '2026-07-20T16:45:00Z',
+    documents: ['license.png'],
+  },
+  {
+    id: 5,
+    shop_name: 'Sunrise Hot Air Balloon',
+    owner_name: 'U Soe Soe',
+    email: 'soe@example.com',
+    phone: '09-55443322',
+    shop_type: 'Hot Air Balloons',
+    address: 'Old Bagan, Near Temple',
+    description: 'Hot air balloon tours with sunrise flights.',
+    status: 'pending',
+    created_at: '2026-07-29T08:10:00Z',
+    documents: ['license.png', 'safety_certificate.jpg'],
+  },
+  {
+    id: 6,
+    shop_name: 'Bagan Horse Cart Tours',
+    owner_name: 'U Tun Tun',
+    email: 'tun@example.com',
+    phone: '09-66778899',
+    shop_type: 'Horse Carts',
+    address: 'Old Bagan, Archaeological Zone',
+    description: 'Traditional horse cart tours around ancient temples.',
+    status: 'approved',
+    created_at: '2026-07-22T11:30:00Z',
+    documents: ['license.png'],
   },
 ];
 
@@ -49,7 +101,48 @@ function Shop() {
   const [storageDebug, setStorageDebug] = useState({});
 
   // ============================================================
-  // 2. UI / DATA STATE
+  // 2. TOAST & CONFIRM STATES (Alert အစားထိုးရန်)
+  // ============================================================
+  const [toast, setToast] = useState({
+    visible: false,
+    type: 'success',
+    message: '',
+  });
+  const toastTimeoutRef = useRef(null);
+
+  const [confirmDialog, setConfirmDialog] = useState({
+    visible: false,
+    message: '',
+    onConfirm: null,
+  });
+
+  // ===== Toast Helper =====
+  const showToast = (type, message) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
+    setToast({ visible: true, type, message });
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(prev => ({ ...prev, visible: false }));
+      toastTimeoutRef.current = null;
+    }, 3000);
+  };
+
+  // ===== 401 Unauthorized Handler =====
+  const handle401Error = () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('token');
+    localStorage.removeItem('access');
+    localStorage.removeItem('auth_token');
+    showToast('error', 'Session expired. Please log in again.');
+    setTimeout(() => {
+      window.location.href = '/login';
+    }, 1500);
+  };
+
+  // ============================================================
+  // 3. UI / DATA STATE
   // ============================================================
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -92,7 +185,7 @@ function Shop() {
   ];
 
   // ============================================================
-  // 3. THEME HANDLER
+  // 4. THEME HANDLER
   // ============================================================
   const handleThemeChange = (isDark) => {
     setIsDarkMode(isDark);
@@ -104,7 +197,7 @@ function Shop() {
   }, [isDarkMode]);
 
   // ============================================================
-  // 4. AUTH DETECTION
+  // 5. AUTH DETECTION
   // ============================================================
   const detectAuth = () => {
     let token = null;
@@ -150,7 +243,7 @@ function Shop() {
   };
 
   // ============================================================
-  // 5. INIT
+  // 6. INIT
   // ============================================================
   const initAuth = () => {
     const { token, user } = detectAuth();
@@ -174,7 +267,7 @@ function Shop() {
   }, []);
 
   // ============================================================
-  // 6. API HELPERS
+  // 7. API HELPERS
   // ============================================================
   const getToken = () => {
     for (const key of TOKEN_KEYS) {
@@ -185,10 +278,10 @@ function Shop() {
   };
 
   // ============================================================
-  // 7. API CALLS
+  // 8. API CALLS
   // ============================================================
 
-  // 7a. Fetch shop requests – using /auth/shop/list (CORRECT endpoint)
+  // 8a. Fetch shop requests
   const fetchRequests = async () => {
     setLoading(true);
     try {
@@ -203,8 +296,10 @@ function Shop() {
       const role = user?.role;
       const shopId = user?.shop?.id;
 
-      // 🔧 FIXED: Use /auth/shop/list (NOT /auth/shop/account/list)
-      const url = `${API_BASE}/auth/shop/list`;
+      let url = `${API_BASE}/auth/shop/account/`;
+      if (role !== 'admin' && shopId) {
+        url += `?shop_id=${shopId}`;
+      }
       console.log('📡 Fetching shop list from:', url);
 
       const response = await fetch(url, {
@@ -216,76 +311,34 @@ function Shop() {
       if (!response.ok) {
         const errorText = await response.text();
         if (response.status === 401) {
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('token');
-          localStorage.removeItem('access');
-          localStorage.removeItem('auth_token');
-          setIsLoggedIn(false);
-          throw new Error('Session expired. Please log in again.');
+          handle401Error();
+          return;
         }
         console.warn(`API returned ${response.status}. Falling back to sample data.`);
         setRequests(SAMPLE_REQUESTS);
-        alert(`Note: Could not fetch from API (${response.status}). Using sample data for demonstration.`);
+        showToast('warning', `Note: Could not fetch from API (${response.status}). Using sample data for demonstration.`);
         return;
       }
 
-      const result = await response.json();
-      // Expected: { success: true, data: [...] }
-      let data = [];
-      if (result.data && Array.isArray(result.data)) {
-        data = result.data;
-      } else if (Array.isArray(result)) {
-        data = result;
-      } else {
-        console.warn('Unexpected API response shape:', result);
-        data = [];
-      }
-
-      // Map to component's expected shape
-      const mapped = data.map(item => ({
-        id: item.id,
-        shop_name: item.shop_name || 'Unnamed Shop',
-        owner_name: item.owner_name || 'N/A', // not in API, fallback
-        email: item.email || '', // not in API
-        phone: item.shop_phone || '',
-        shop_type: item.type || '',
-        address: item.shop_address || '',
-        description: item.description || '',
-        status: item.status || 'pending',
-        created_at: item.created_at || null,
-        documents: item.documents || [], // not in API
-        image: item.image || null,
-        // keep extra fields if needed
-        _raw: item,
-      }));
-
-      // If user is not admin, filter by their shop_id (if they have one)
-      let filtered = mapped;
-      if (role !== 'admin' && shopId) {
-        filtered = mapped.filter(req => req.id === shopId);
-      }
-
-      setRequests(filtered);
+      const data = await response.json();
+      setRequests(data);
     } catch (error) {
       console.error('Fetch error:', error);
       setRequests(SAMPLE_REQUESTS);
-      alert(`Could not load shop requests from API. Using sample data.\nError: ${error.message}`);
+      showToast('error', `Could not load shop requests from API. Using sample data.\nError: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // 7b. Approve / Reject (using the provided endpoints)
-  const updateRequestStatus = async (requestId, newStatus) => {
+  // 8b. Approve / Reject (Confirm Modal အသုံးပြုရန် ပြောင်းထားပါတယ်)
+  const performStatusUpdate = async (requestId, newStatus) => {
     const action = newStatus === 'approved' ? 'Approve' : 'Reject';
-    if (!window.confirm(`Are you sure you want to ${action} this request?`)) return;
-
     setLoading(true);
     try {
       const token = getToken();
       if (!token) throw new Error('Not authenticated');
 
-      // Use the correct endpoints
       const endpoint =
         newStatus === 'approved'
           ? `${API_BASE}/auth/shop/account/approved/${requestId}`
@@ -302,18 +355,26 @@ function Shop() {
           req.id === requestId ? { ...req, status: newStatus } : req
         )
       );
-      alert(`Request ${action}ed successfully!`);
+      showToast('success', `Request ${action}ed successfully!`);
     } catch (error) {
       console.error('Status update error:', error);
-      alert(`Error: ${error.message}`);
+      showToast('error', `Error: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // 7c. Delete
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this shop request?')) return;
+  const updateRequestStatus = (requestId, newStatus) => {
+    const action = newStatus === 'approved' ? 'Approve' : 'Reject';
+    setConfirmDialog({
+      visible: true,
+      message: `Are you sure you want to ${action} this request?`,
+      onConfirm: () => performStatusUpdate(requestId, newStatus)
+    });
+  };
+
+  // 8c. Delete (Confirm Modal အသုံးပြုရန် ပြောင်းထားပါတယ်)
+  const performDelete = async (id) => {
     setLoading(true);
     try {
       const token = getToken();
@@ -327,16 +388,24 @@ function Shop() {
       });
       if (!response.ok) throw new Error('Failed to delete');
       setRequests((prev) => prev.filter((req) => req.id !== id));
-      alert('Shop request deleted successfully!');
+      showToast('success', 'Shop request deleted successfully!');
     } catch (error) {
       console.error('Delete error:', error);
-      alert(`Error deleting: ${error.message}`);
+      showToast('error', `Error deleting: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // 7d. Edit
+  const handleDelete = (id) => {
+    setConfirmDialog({
+      visible: true,
+      message: 'Are you sure you want to delete this shop request?',
+      onConfirm: () => performDelete(id)
+    });
+  };
+
+  // 8d. Edit (Alert များကို Toast ဖြင့် အစားထိုးပါတယ်)
   const handleEdit = (request) => {
     setSelectedRequestForEdit(request);
     setShowEditModal(true);
@@ -356,31 +425,26 @@ function Shop() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({
-            shop_name: selectedRequestForEdit.shop_name,
-            shop_phone: selectedRequestForEdit.phone,
-            shop_address: selectedRequestForEdit.address,
-            // other fields if needed
-          }),
+          body: JSON.stringify(selectedRequestForEdit),
         }
       );
       if (!response.ok) throw new Error('Failed to update');
-      alert('Shop request updated successfully!');
+      showToast('success', 'Shop request updated successfully!');
       setShowEditModal(false);
       setSelectedRequestForEdit(null);
       fetchRequests();
     } catch (error) {
       console.error('Edit error:', error);
-      alert(`Error updating: ${error.message}`);
+      showToast('error', `Error updating: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // 7e. Create Hotel (unchanged)
+  // 8e. Create Hotel (Alert များကို Toast ဖြင့် အစားထိုးပါတယ်)
   const handleCreateHotel = async () => {
     if (!hotelForm.shop_id) {
-      alert('Please select a shop.');
+      showToast('warning', 'Please select a shop.');
       return;
     }
     setLoading(true);
@@ -397,19 +461,19 @@ function Shop() {
         body: JSON.stringify(hotelForm),
       });
       if (!response.ok) throw new Error('Failed to create hotel');
-      alert('Hotel created successfully!');
+      showToast('success', 'Hotel created successfully!');
       setShowCreateHotelModal(false);
       setHotelForm({ shop_id: '', name: '', description: '', address: '', phone: '' });
     } catch (error) {
       console.error('Hotel creation error:', error);
-      alert(`Error: ${error.message}`);
+      showToast('error', `Error: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
   // ============================================================
-  // 8. FILTER & SORT
+  // 9. FILTER & SORT (unchanged)
   // ============================================================
   const getSortedRequests = (list) => {
     let result = [...list];
@@ -435,17 +499,17 @@ function Shop() {
   const finalSortedRequests = getSortedRequests(filteredRequests);
 
   // ============================================================
-  // 9. STATS
+  // 10. STATS
   // ============================================================
   const stats = {
     total: requests.length,
     pending: requests.filter((r) => r.status === 'pending').length,
     approved: requests.filter((r) => r.status === 'approved').length,
-    rejected: requests.filter((r) => r.status === 'rejected' || r.status === 'cancelled').length,
+    rejected: requests.filter((r) => r.status === 'rejected').length,
   };
 
   // ============================================================
-  // 10. HELPER RENDER FUNCTIONS
+  // 11. HELPER RENDER FUNCTIONS (unchanged)
   // ============================================================
   const formatDate = (dateStr) => (dateStr ? dateStr.slice(0, 10) : 'N/A');
 
@@ -454,7 +518,6 @@ function Shop() {
       pending: { label: 'Pending', color: '#ffc107', bg: '#fff3cd' },
       approved: { label: 'Approved', color: '#198754', bg: '#d1e7dd' },
       rejected: { label: 'Rejected', color: '#dc3545', bg: '#f8d7da' },
-      cancelled: { label: 'Cancelled', color: '#dc3545', bg: '#f8d7da' },
     };
     const s = map[status?.toLowerCase()] || { label: status, color: '#6c757d', bg: '#e9ecef' };
     return (
@@ -479,16 +542,16 @@ function Shop() {
 
   const getTypeBadge = (type) => {
     const map = {
-      cars: { color: '#0d6efd', bg: '#cfe2ff' },
-      destinations: { color: '#6f42c1', bg: '#e2d9f3' },
-      'e-bikes': { color: '#17a2b8', bg: '#cff4fc' },
-      'horse carts': { color: '#fd7e14', bg: '#ffe5d0' },
-      'hot air balloons': { color: '#dc3545', bg: '#f8d7da' },
-      hotels: { color: '#198754', bg: '#d1e7dd' },
-      restaurants: { color: '#d63384', bg: '#f5d4e1' },
-      tricycles: { color: '#6c757d', bg: '#e9ecef' },
+      Cars: { color: '#0d6efd', bg: '#cfe2ff' },
+      Destinations: { color: '#6f42c1', bg: '#e2d9f3' },
+      'E-Bikes': { color: '#17a2b8', bg: '#cff4fc' },
+      'Horse Carts': { color: '#fd7e14', bg: '#ffe5d0' },
+      'Hot Air Balloons': { color: '#dc3545', bg: '#f8d7da' },
+      Hotels: { color: '#198754', bg: '#d1e7dd' },
+      Restaurants: { color: '#d63384', bg: '#f5d4e1' },
+      Tricycles: { color: '#6c757d', bg: '#e9ecef' },
     };
-    const s = map[type?.toLowerCase()] || { color: '#6c757d', bg: '#e9ecef' };
+    const s = map[type] || { color: '#6c757d', bg: '#e9ecef' };
     return (
       <span
         style={{
@@ -504,27 +567,27 @@ function Shop() {
           textAlign: 'center',
         }}
       >
-        {type || 'N/A'}
+        {type}
       </span>
     );
   };
 
   const getTypeIcon = (type) => {
     const map = {
-      cars: 'bi-car-front',
-      destinations: 'bi-geo-alt',
-      'e-bikes': 'bi-bicycle',
-      'horse carts': 'bi-truck',
-      'hot air balloons': 'bi-balloon',
-      hotels: 'bi-building',
-      restaurants: 'bi-egg-fried',
-      tricycles: 'bi-truck',
+      Cars: 'bi-car-front',
+      Destinations: 'bi-geo-alt',
+      'E-Bikes': 'bi-bicycle',
+      'Horse Carts': 'bi-truck',
+      'Hot Air Balloons': 'bi-balloon',
+      Hotels: 'bi-building',
+      Restaurants: 'bi-egg-fried',
+      Tricycles: 'bi-truck',
     };
-    return map[type?.toLowerCase()] || 'bi-shop';
+    return map[type] || 'bi-shop';
   };
 
   // ============================================================
-  // 11. RENDER: NOT LOGGED IN (with debug)
+  // 12. RENDER: NOT LOGGED IN (with debug)
   // ============================================================
   if (!isLoggedIn) {
     return (
@@ -618,7 +681,7 @@ function Shop() {
   }
 
   // ============================================================
-  // 12. LOADING SCREEN
+  // 13. LOADING SCREEN
   // ============================================================
   if (loading && requests.length === 0) {
     return (
@@ -635,11 +698,61 @@ function Shop() {
   }
 
   // ============================================================
-  // 13. MAIN RENDER (logged in)
+  // 14. MAIN RENDER (logged in)
   // ============================================================
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Shop Requests Management" onThemeChange={handleThemeChange} />
+
+      {/* 🟢 Screen အလယ် Toast Alert UI */}
+      {toast.visible && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 999999,
+          width: '420px',
+          maxWidth: '90%',
+          borderRadius: '16px',
+          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+          padding: '0',
+          overflow: 'hidden',
+          backgroundColor: toast.type === 'success' ? (isDarkMode ? '#1e3a2e' : '#d4edda') : toast.type === 'error' ? (isDarkMode ? '#3e1f1f' : '#f8d7da') : toast.type === 'warning' ? (isDarkMode ? '#3d3512' : '#fff3cd') : (isDarkMode ? '#112b3c' : '#d1ecf1'),
+          color: toast.type === 'success' ? (isDarkMode ? '#b7eb8f' : '#155724') : toast.type === 'error' ? (isDarkMode ? '#ffa39e' : '#721c24') : toast.type === 'warning' ? (isDarkMode ? '#ffe58f' : '#856404') : (isDarkMode ? '#91d5ff' : '#0c5460'),
+          borderLeft: `5px solid ${toast.type === 'success' ? (isDarkMode ? '#52c41a' : '#28a745') : toast.type === 'error' ? (isDarkMode ? '#ff4d4f' : '#dc3545') : toast.type === 'warning' ? (isDarkMode ? '#faad14' : '#ffc107') : (isDarkMode ? '#1890ff' : '#17a2b8')}`
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
+            <div style={{ fontWeight: 'bold', fontSize: '16px' }}>Bagan 360</div>
+            <button onClick={() => { if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); setToast({ ...toast, visible: false }); }} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: '18px', cursor: 'pointer', opacity: 0.7, padding: '0 4px' }}>
+              <i className="bi bi-x-lg"></i>
+            </button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', padding: '20px' }}>
+            <div style={{ fontSize: '28px' }}>
+              {toast.type === 'success' && <i className="bi bi-check-circle-fill"></i>}
+              {toast.type === 'error' && <i className="bi bi-x-circle-fill"></i>}
+              {toast.type === 'warning' && <i className="bi bi-exclamation-triangle-fill"></i>}
+              {toast.type === 'info' && <i className="bi bi-info-circle-fill"></i>}
+            </div>
+            <div style={{ fontSize: '15px', lineHeight: '1.5' }}>{toast.message}</div>
+          </div>
+        </div>
+      )}
+
+      {/* 🟢 Screen အလယ် Custom Confirm Modal (Alert အစားထိုးရန်) */}
+      {confirmDialog.visible && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: isDarkMode ? '#2d2d2d' : '#fff', padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%', boxShadow: '0 15px 40px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ color: isDarkMode ? '#eee' : '#333', marginBottom: '12px' }}>Confirm Action</h3>
+            <p style={{ color: isDarkMode ? '#ccc' : '#555' }}>{confirmDialog.message}</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+              <button onClick={() => setConfirmDialog({ ...confirmDialog, visible: false })} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', background: 'transparent', cursor: 'pointer', color: isDarkMode ? '#ccc' : '#333' }}>Cancel</button>
+              <button onClick={() => { if(confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({ ...confirmDialog, visible: false }); }} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc3545', color: '#fff', cursor: 'pointer' }}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .stat-cards-row { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -746,7 +859,7 @@ function Shop() {
           </div>
           <div className="stat-info">
             <h4>{stats.rejected}</h4>
-            <p>Rejected / Cancelled</p>
+            <p>Rejected</p>
           </div>
         </div>
       </div>
@@ -1011,6 +1124,28 @@ function Shop() {
                     setSelectedRequestForEdit({
                       ...selectedRequestForEdit,
                       shop_name: e.target.value,
+                    })
+                  }
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--input-bg)',
+                    color: 'var(--text-color)',
+                  }}
+                />
+              </div>
+              <div className="form-group mb-3">
+                <label>Owner Name</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={selectedRequestForEdit.owner_name}
+                  onChange={(e) =>
+                    setSelectedRequestForEdit({
+                      ...selectedRequestForEdit,
+                      owner_name: e.target.value,
                     })
                   }
                   style={{

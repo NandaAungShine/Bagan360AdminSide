@@ -7,6 +7,7 @@ import Login from './components/Login';
 import HistoryOfPagodas from './components/HistoryOfPagodas';
 import Hotels from './components/Hotels';
 import Destinations from './components/Destinations';
+import DestinationPlans from './components/DestinationPlans';
 import Restaurants from './components/Restaurants';
 import Cars from './components/Cars';
 import EBikes from './components/EBikes';
@@ -113,6 +114,14 @@ function App() {
           <ProtectedRoute>
             <MainLayout>
               <Destinations />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+
+      <Route path="/destination-plans" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <DestinationPlans />
             </MainLayout>
           </ProtectedRoute>
         } />

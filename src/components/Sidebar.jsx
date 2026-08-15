@@ -9,18 +9,18 @@ function Sidebar() {
 
   // Add ထဲမှာ ထည့်မယ့် စာရင်း (မူလအတိုင်း - History Of Pagodas အပါအဝင်)
   const addMenuItems = [
-    { name: 'History Of Pagodas', icon: 'bi-building', path: '/historyofpagodas' },
-    { name: 'Hotels', icon: 'bi-building', path: '/hotels' },
-    { name: 'Destinations', icon: 'bi-geo-alt', path: '/destinations' },
-    { name: 'Restaurants', icon: 'bi-egg-fried', path: '/restaurants' },
-    { name: 'Cars', icon: 'bi-car-front', path: '/cars' },
-    { name: 'E-Bikes', icon: 'bi-bicycle', path: '/ebikes' },
-    { name: 'Hot Air Balloons', icon: 'bi-balloon', path: '/hotairballoons' },
-    { name: 'Tricycles', icon: 'bi-truck', path: '/tricycles' },
-    { name: 'Horse Carts', icon: 'bi-truck', path: '/horsecarts' },
-    { name: 'Banner', icon: 'bi-image', path: '/banner' },
-  ];
-
+  { name: 'History Of Pagodas', icon: 'bi-building', path: '/historyofpagodas' },
+  { name: 'Hotels', icon: 'bi-building', path: '/hotels' },
+  { name: 'Destinations', icon: 'bi-geo-alt', path: '/destinations' },
+  { name: 'Destination Plans', icon: 'bi-pin-map', path: '/destination-plans' },
+  { name: 'Restaurants', icon: 'bi-egg-fried', path: '/restaurants' },
+  { name: 'Cars', icon: 'bi-car-front', path: '/cars' },
+  { name: 'E-Bikes', icon: 'bi-bicycle', path: '/ebikes' },
+  { name: 'Hot Air Balloons', icon: 'bi-balloon', path: '/hotairballoons' },
+  { name: 'Tricycles', icon: 'bi-truck', path: '/tricycles' },
+  { name: 'Horse Carts', icon: 'bi-truck', path: '/horsecarts' },
+  { name: 'Banner', icon: 'bi-image', path: '/banner' },
+];
   // Order ထဲမှာ ထည့်မယ့် စာရင်း (ခင်ဗျား ပေးလိုက်တဲ့အတိုင်း တိကျစွာ သတ်မှတ်ထား)
   const orderMenuItems = [
     { name: 'Hotels Order', icon: 'bi-building', path: '/hotelsorder' },

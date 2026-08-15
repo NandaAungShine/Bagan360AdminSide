@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -16,6 +16,33 @@ function Users() {
   // Sorting State
   const [sortBy, setSortBy] = useState('idDesc');
   const [showSortDropdown, setShowSortDropdown] = useState(false);
+
+  // ===== Toast & Confirm States (Alert အစားထိုးရန်) =====
+  const [toast, setToast] = useState({
+    visible: false,
+    type: 'success',
+    message: '',
+  });
+  const toastTimeoutRef = useRef(null);
+
+  const [confirmDialog, setConfirmDialog] = useState({
+    visible: false,
+    message: '',
+    onConfirm: null,
+  });
+
+  // ===== Toast Helper (3s အကြာမှာ အလိုအလျောက်ပျောက်မယ်) =====
+  const showToast = (type, message) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
+    setToast({ visible: true, type, message });
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(prev => ({ ...prev, visible: false }));
+      toastTimeoutRef.current = null;
+    }, 3000);
+  };
 
   // User registration data for chart
   const registrationData = [
@@ -185,7 +212,7 @@ function Users() {
   const handleAddUser = () => {
     if (formData.fullName && formData.email && formData.password) {
       if (formData.password !== formData.confirmPassword) {
-        alert('Passwords do not match!');
+        showToast('warning', 'Passwords do not match!');
         return;
       }
 
@@ -213,9 +240,9 @@ function Users() {
         confirmPassword: ''
       });
       setShowAddUserModal(false);
-      alert('User added successfully!');
+      showToast('success', 'User added successfully!');
     } else {
-      alert('Please fill in all required fields');
+      showToast('warning', 'Please fill in all required fields');
     }
   };
 
@@ -234,11 +261,26 @@ function Users() {
     }
   };
 
+  // Block/Unblock user (Replace alert with Toast)
   const handleBlockUser = (id) => {
     setUsers(users.map(user => 
       user.id === id ? { ...user, status: user.status === 'Banned' ? 'Active' : 'Banned' } : user
     ));
-    alert('User status updated');
+    showToast('success', 'User status updated successfully!');
+  };
+
+  // Delete user via Custom Confirm Modal
+  const performDeleteUser = (id) => {
+    setUsers(users.filter(u => u.id !== id));
+    showToast('success', 'User deleted successfully!');
+  };
+
+  const handleDeleteUser = (id) => {
+    setConfirmDialog({
+      visible: true,
+      message: 'Are you sure you want to delete this user?',
+      onConfirm: () => performDeleteUser(id)
+    });
   };
 
   // Filter logic
@@ -283,6 +325,56 @@ function Users() {
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Users Management" onThemeChange={handleThemeChange} />
+
+      {/* 🟢 Screen အလယ် Toast Alert UI */}
+      {toast.visible && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 999999,
+          width: '420px',
+          maxWidth: '90%',
+          borderRadius: '16px',
+          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+          padding: '0',
+          overflow: 'hidden',
+          backgroundColor: toast.type === 'success' ? (isDarkMode ? '#1e3a2e' : '#d4edda') : toast.type === 'error' ? (isDarkMode ? '#3e1f1f' : '#f8d7da') : toast.type === 'warning' ? (isDarkMode ? '#3d3512' : '#fff3cd') : (isDarkMode ? '#112b3c' : '#d1ecf1'),
+          color: toast.type === 'success' ? (isDarkMode ? '#b7eb8f' : '#155724') : toast.type === 'error' ? (isDarkMode ? '#ffa39e' : '#721c24') : toast.type === 'warning' ? (isDarkMode ? '#ffe58f' : '#856404') : (isDarkMode ? '#91d5ff' : '#0c5460'),
+          borderLeft: `5px solid ${toast.type === 'success' ? (isDarkMode ? '#52c41a' : '#28a745') : toast.type === 'error' ? (isDarkMode ? '#ff4d4f' : '#dc3545') : toast.type === 'warning' ? (isDarkMode ? '#faad14' : '#ffc107') : (isDarkMode ? '#1890ff' : '#17a2b8')}`
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
+            <div style={{ fontWeight: 'bold', fontSize: '16px' }}>Bagan 360</div>
+            <button onClick={() => { if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); setToast({ ...toast, visible: false }); }} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: '18px', cursor: 'pointer', opacity: 0.7, padding: '0 4px' }}>
+              <i className="bi bi-x-lg"></i>
+            </button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', padding: '20px' }}>
+            <div style={{ fontSize: '28px' }}>
+              {toast.type === 'success' && <i className="bi bi-check-circle-fill"></i>}
+              {toast.type === 'error' && <i className="bi bi-x-circle-fill"></i>}
+              {toast.type === 'warning' && <i className="bi bi-exclamation-triangle-fill"></i>}
+              {toast.type === 'info' && <i className="bi bi-info-circle-fill"></i>}
+            </div>
+            <div style={{ fontSize: '15px', lineHeight: '1.5' }}>{toast.message}</div>
+          </div>
+        </div>
+      )}
+
+      {/* 🟢 Screen အလယ် Custom Confirm Modal (Delete အတွက်) */}
+      {confirmDialog.visible && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: isDarkMode ? '#2d2d2d' : '#fff', padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%', boxShadow: '0 15px 40px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ color: isDarkMode ? '#eee' : '#333', marginBottom: '12px' }}>Confirm Delete</h3>
+            <p style={{ color: isDarkMode ? '#ccc' : '#555' }}>{confirmDialog.message}</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+              <button onClick={() => setConfirmDialog({ ...confirmDialog, visible: false })} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', background: 'transparent', cursor: 'pointer', color: isDarkMode ? '#ccc' : '#333' }}>Cancel</button>
+              <button onClick={() => { if(confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({ ...confirmDialog, visible: false }); }} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc3545', color: '#fff', cursor: 'pointer' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Statistics Cards Row */}
       <div className="stats-cards-row">
@@ -461,10 +553,12 @@ function Users() {
                     </span>
                   </td>
                   <td className="col-joined">{user.joinedDate}</td>
-                  <td className="col-actions">
+                  
+                  {/* 🔧 FIX: တစ်တန်းတည်းဖြစ်ဖို့ Flex နဲ့ width သတ်မှတ်ပေးထားပါတယ် */}
+                  <td className="col-actions" style={{ whiteSpace: 'nowrap', minWidth: '110px' }}>
                     {/* View Button */}
-                    <button className="action-icon view" title="View">
-                      <i className="bi bi-eye"></i>
+                    <button className="action-icon view" title="View" style={{ width: '32px', height: '32px', padding: 0, flexShrink: 0 }}>
+                      <i className="bi bi-eye" style={{ fontSize: '14px', lineHeight: '32px' }}></i>
                     </button>
                     
                     {/* Block/Unblock Button */}
@@ -472,21 +566,19 @@ function Users() {
                       className={`action-icon ${user.status === 'Banned' ? 'unblock' : 'block'}`} 
                       title={user.status === 'Banned' ? 'Unblock' : 'Block'}
                       onClick={() => handleBlockUser(user.id)}
+                      style={{ width: '32px', height: '32px', padding: 0, flexShrink: 0 }}
                     >
-                      <i className={`bi ${user.status === 'Banned' ? 'bi-unlock' : 'bi-lock'}`}></i>
+                      <i className={`bi ${user.status === 'Banned' ? 'bi-unlock' : 'bi-lock'}`} style={{ fontSize: '14px', lineHeight: '32px' }}></i>
                     </button>
                     
                     {/* Delete Button */}
                     <button 
                       className="action-icon delete" 
                       title="Delete"
-                      onClick={() => {
-                        if (window.confirm('Delete this user?')) {
-                          setUsers(users.filter(u => u.id !== user.id));
-                        }
-                      }}
+                      onClick={() => handleDeleteUser(user.id)}
+                      style={{ width: '32px', height: '32px', padding: 0, flexShrink: 0 }}
                     >
-                      <i className="bi bi-trash"></i>
+                      <i className="bi bi-trash" style={{ fontSize: '14px', lineHeight: '32px' }}></i>
                     </button>
                   </td>
                 </tr>
