@@ -7,24 +7,26 @@ function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Add ထဲမှာ ထည့်မယ့် စာရင်း (မူလအတိုင်း - History Of Pagodas အပါအဝင်)
+  // Add ထဲမှာ ထည့်မယ့် စာရင်း
   const addMenuItems = [
-  { name: 'History Of Pagodas', icon: 'bi-building', path: '/historyofpagodas' },
-  { name: 'Hotels', icon: 'bi-building', path: '/hotels' },
-  { name: 'Destinations', icon: 'bi-geo-alt', path: '/destinations' },
-  { name: 'Destination Plans', icon: 'bi-pin-map', path: '/destination-plans' },
-  { name: 'Restaurants', icon: 'bi-egg-fried', path: '/restaurants' },
-  { name: 'Cars', icon: 'bi-car-front', path: '/cars' },
-  { name: 'E-Bikes', icon: 'bi-bicycle', path: '/ebikes' },
-  { name: 'Hot Air Balloons', icon: 'bi-balloon', path: '/hotairballoons' },
-  { name: 'Tricycles', icon: 'bi-truck', path: '/tricycles' },
-  { name: 'Horse Carts', icon: 'bi-truck', path: '/horsecarts' },
-  { name: 'Banner', icon: 'bi-image', path: '/banner' },
-];
-  // Order ထဲမှာ ထည့်မယ့် စာရင်း (ခင်ဗျား ပေးလိုက်တဲ့အတိုင်း တိကျစွာ သတ်မှတ်ထား)
+    { name: 'History Of Pagodas', icon: 'bi-building', path: '/historyofpagodas' },
+    { name: 'Hotels', icon: 'bi-building', path: '/hotels' },
+    { name: 'Destinations', icon: 'bi-geo-alt', path: '/destinations' },
+    { name: 'Destination Plans', icon: 'bi-pin-map', path: '/destination-plans' },
+    { name: 'Restaurants', icon: 'bi-egg-fried', path: '/restaurants' },
+    { name: 'Cars', icon: 'bi-car-front', path: '/cars' },
+    { name: 'E-Bikes', icon: 'bi-bicycle', path: '/ebikes' },
+    { name: 'Hot Air Balloons', icon: 'bi-balloon', path: '/hotairballoons' },
+    { name: 'Tricycles', icon: 'bi-truck', path: '/tricycles' },
+    { name: 'Horse Carts', icon: 'bi-truck', path: '/horsecarts' },
+    { name: 'Banner', icon: 'bi-image', path: '/banner' },
+  ];
+
+  // Order ထဲမှာ ထည့်မယ့် စာရင်း
   const orderMenuItems = [
     { name: 'Hotels Order', icon: 'bi-building', path: '/hotelsorder' },
     { name: 'Destinations Order', icon: 'bi-geo-alt', path: '/destinationsorder' },
+    { name: 'Destination Plans Order', icon: 'bi-pin-map', path: '/destinationPlansOrder'},
     { name: 'Restaurants Order', icon: 'bi-egg-fried', path: '/restaurantsorder' },
     { name: 'Cars Order', icon: 'bi-car-front', path: '/carsorder' },
     { name: 'E-Bikes Order', icon: 'bi-bicycle', path: '/ebikesorder' },
@@ -47,6 +49,7 @@ function Sidebar() {
       alert('You have been logged out successfully!');
     }
   };
+
 
   return (
     <div className="sidebar-container">
@@ -100,8 +103,8 @@ function Sidebar() {
             </Link>
           </li>
 
-          {/* Add Dropdown (မူလအတိုင်း) */}
-          <li className="nav-item">
+          {/* ===== ADD DROPDOWN (ဖြတ်တောက်မခံရအောင် overflow visible ထည့်ထား) ===== */}
+          <li className="nav-item" style={{ overflow: 'visible' }}>
             <div className="nav-link justify-between" onClick={() => setIsAddOpen(!isAddOpen)}>
               <div className="flex-items">
                 <i className="bi bi-plus-square-fill icon"></i>
@@ -110,7 +113,14 @@ function Sidebar() {
               <i className={`bi bi-chevron-down arrow-icon ${isAddOpen ? 'rotate-180' : ''}`}></i>
             </div>
 
-            <ul className={`submenu ${isAddOpen ? 'submenu-open' : 'submenu-closed'}`}>
+            <ul 
+              className={`submenu ${isAddOpen ? 'submenu-open' : 'submenu-closed'}`}
+              style={{ 
+                overflow: 'visible', 
+                maxHeight: isAddOpen ? '2000px' : '0', 
+                transition: 'max-height 0.3s ease-in-out' 
+              }}
+            >
               {addMenuItems.map((item, index) => (
                 <li key={index} className={`submenu-item ${isActive(item.path) ? 'active' : ''}`}>
                   <Link to={item.path} className="submenu-link">
@@ -122,8 +132,8 @@ function Sidebar() {
             </ul>
           </li>
 
-          {/* Order Dropdown (ခင်ဗျား သတ်မှတ်ထားတဲ့ စာရင်းအတိုင်း) */}
-          <li className="nav-item">
+          {/* ===== ORDER DROPDOWN (ဖြတ်တောက်မခံရအောင် overflow visible ထည့်ထား) ===== */}
+          <li className="nav-item" style={{ overflow: 'visible' }}>
             <div className="nav-link justify-between" onClick={() => setIsOrderOpen(!isOrderOpen)}>
               <div className="flex-items">
                 <i className="bi bi-box-seam icon"></i>
@@ -132,7 +142,14 @@ function Sidebar() {
               <i className={`bi bi-chevron-down arrow-icon ${isOrderOpen ? 'rotate-180' : ''}`}></i>
             </div>
 
-            <ul className={`submenu ${isOrderOpen ? 'submenu-open' : 'submenu-closed'}`}>
+            <ul 
+              className={`submenu ${isOrderOpen ? 'submenu-open' : 'submenu-closed'}`}
+              style={{ 
+                overflow: 'visible', 
+                maxHeight: isOrderOpen ? '2000px' : '0', 
+                transition: 'max-height 0.3s ease-in-out' 
+              }}
+            >
               {orderMenuItems.map((item, index) => (
                 <li key={index} className={`submenu-item ${isActive(item.path) ? 'active' : ''}`}>
                   <Link to={item.path} className="submenu-link">

@@ -13,6 +13,8 @@ const getAuthHeaders = () => {
   };
 };
 
+
+
 const fetchWithAuth = async (url, options = {}) => {
   const headers = getAuthHeaders();
   const response = await fetch(url, {

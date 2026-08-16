@@ -47,6 +47,97 @@
   color: #dc3545;
 }
 
+/* Tabs */
+.login-tabs {
+  display: flex;
+  border-bottom: 1px solid #ddd;
+  margin-bottom: 20px;
+}
+.tab-btn {
+  flex: 1;
+  padding: 10px;
+  background: transparent;
+  border: none;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #888;
+  cursor: pointer;
+  transition: 0.2s;
+  border-bottom: 3px solid transparent;
+}
+.tab-btn.active {
+  color: #333;
+  border-bottom-color: #007bff;
+}
+.tab-btn:hover:not(.active) {
+  color: #555;
+  background: #f5f5f5;
+}
+
+/* OTP container */
+.otp-container h3 {
+  margin-top: 0;
+  text-align: center;
+}
+.otp-container p {
+  text-align: center;
+  color: #666;
+}
+.otp-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+}
+.link-btn {
+  background: none;
+  border: none;
+  color: #007bff;
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: 0.9rem;
+}
+.link-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Success message */
+.login-success {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #d4edda;
+  color: #155724;
+  padding: 10px 15px;
+  border-radius: 6px;
+  margin-bottom: 15px;
+}
+.login-success i {
+  font-size: 1.2rem;
+}
+
+/* Footer */
+.login-footer {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 0.9rem;
+  color: #666;
+}
+.login-footer .link-btn {
+  font-weight: 600;
+}
+
+/* Input wrapper for select */
+.login-input-wrapper select {
+  width: 100%;
+  padding: 12px 40px 12px 40px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 1rem;
+  background: white;
+  appearance: auto;
+}
+
 /* Card Actions Dropdown */
 .card-actions-wrapper {
   position: absolute;

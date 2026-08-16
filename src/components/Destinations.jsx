@@ -9,6 +9,8 @@ function Destinations() {
     return savedTheme === 'dark';
   });
 
+  
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDestinationForEdit, setSelectedDestinationForEdit] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);

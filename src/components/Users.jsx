@@ -17,7 +17,7 @@ function Users() {
   const [sortBy, setSortBy] = useState('idDesc');
   const [showSortDropdown, setShowSortDropdown] = useState(false);
 
-  // ===== Toast & Confirm States (Alert အစားထိုးရန်) =====
+  // ===== Toast & Confirm States =====
   const [toast, setToast] = useState({
     visible: false,
     type: 'success',
@@ -31,7 +31,10 @@ function Users() {
     onConfirm: null,
   });
 
-  // ===== Toast Helper (3s အကြာမှာ အလိုအလျောက်ပျောက်မယ်) =====
+  // ===== View Detail Modal =====
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+
   const showToast = (type, message) => {
     if (toastTimeoutRef.current) {
       clearTimeout(toastTimeoutRef.current);
@@ -44,33 +47,8 @@ function Users() {
     }, 3000);
   };
 
-  // User registration data for chart
-  const registrationData = [
-    { month: 'Jan', registrations: 12, active: 45 },
-    { month: 'Feb', registrations: 19, active: 52 },
-    { month: 'Mar', registrations: 15, active: 48 },
-    { month: 'Apr', registrations: 22, active: 61 },
-    { month: 'May', registrations: 28, active: 73 },
-    { month: 'Jun', registrations: 32, active: 85 },
-    { month: 'Jul', registrations: 35, active: 94 },
-    { month: 'Aug', registrations: 42, active: 108 },
-    { month: 'Sep', registrations: 38, active: 112 },
-    { month: 'Oct', registrations: 45, active: 125 },
-    { month: 'Nov', registrations: 52, active: 142 },
-    { month: 'Dec', registrations: 58, active: 158 }
-  ];
-
-  const [formData, setFormData] = useState({
-    fullName: '',
-    email: '',
-    phone: '',
-    role: 'User',
-    status: 'Active',
-    password: '',
-    confirmPassword: ''
-  });
-
-  const [users, setUsers] = useState([
+  // ===== 1. SAMPLE DATA (fallback) =====
+  const sampleUsers = [
     {
       id: 1,
       fullName: 'Aung Ko Lin',
@@ -175,21 +153,90 @@ function Users() {
       lastActiveDays: 0,
       avatar: '👧'
     }
-  ]);
+  ];
 
-  // Statistics calculations
-  const totalUsers = users.length;
-  const activeUsers = users.filter(u => u.status === 'Active').length;
-  const inactiveUsers = users.filter(u => u.status === 'Inactive').length;
-  const bannedUsers = users.filter(u => u.status === 'Banned').length;
-  const newUsersThisWeek = users.filter(u => {
-    const joinDate = new Date(u.joinedDate);
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    return joinDate >= weekAgo;
-  }).length;
-  const onlineNow = users.filter(u => u.lastActiveDays === 0 && u.status === 'Active').length;
+  // ===== 2. STATE =====
+  const [users, setUsers] = useState(sampleUsers);
 
+  // ===== 3. API CONFIGURATION =====
+  const API_BASE = 'http://130.94.21.185:8000';
+  const API_URL = `${API_BASE}/auth/user/list`;
+
+  // ===== 4. FETCH USERS FROM API =====
+  const fetchUsers = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      // No token, keep sample data
+      return;
+    }
+
+    try {
+      const response = await fetch(API_URL, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Users API Response:', data);
+
+      // --- Adapt API response to our internal structure ---
+      let userList = [];
+      if (data.success && Array.isArray(data.data)) {
+        userList = data.data;
+      } else if (Array.isArray(data)) {
+        userList = data;
+      } else if (data.users && Array.isArray(data.users)) {
+        userList = data.users;
+      } else {
+        throw new Error('Unexpected API response format');
+      }
+
+      // Map fields to match our component's expected structure
+      const mappedUsers = userList.map((user) => ({
+        id: user.id || user.userId || 0,
+        fullName: user.username || user.fullName || user.name || 'Unknown',
+        email: user.email || '',
+        phone: user.phone || user.phoneNumber || '',
+        role: user.role || 'User',
+        status: user.status || 'Active',
+        lastLogin: user.lastLogin || user.lastLoginAt || user.updated_at || 'N/A',
+        loginCount: user.loginCount || 0,
+        joinedDate: user.created_at ? new Date(user.created_at).toISOString().split('T')[0] : user.joinedDate || new Date().toISOString().split('T')[0],
+        lastActiveDays: user.lastActiveDays || 0,
+        avatar: user.avatar || (user.image ? '🖼️' : '👤'),
+        // Additional fields for detail view
+        address: user.address || '',
+        township: user.township || '',
+        region: user.region || '',
+        gender: user.gender || '',
+        image: user.image || null,
+        created_at: user.created_at || '',
+        updated_at: user.updated_at || '',
+        password: user.password || '',
+      }));
+
+      setUsers(mappedUsers);
+    } catch (error) {
+      console.error('❌ Failed to fetch users:', error);
+      showToast('error', 'Failed to load users from server. Showing sample data.');
+      // Keep sample data (already set)
+    }
+  };
+
+  // ===== 5. LOAD DATA ON MOUNT =====
+  useEffect(() => {
+    fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ===== 6. THEME =====
   const handleThemeChange = (isDark) => {
     setIsDarkMode(isDark);
   };
@@ -203,6 +250,17 @@ function Users() {
       document.body.classList.remove('dark-mode');
     }
   }, [isDarkMode]);
+
+  // ===== 7. FORM HANDLERS (Add User) =====
+  const [formData, setFormData] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    role: 'User',
+    status: 'Active',
+    password: '',
+    confirmPassword: ''
+  });
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -227,7 +285,14 @@ function Users() {
         loginCount: 0,
         joinedDate: new Date().toISOString().split('T')[0],
         lastActiveDays: 0,
-        avatar: '👤'
+        avatar: '👤',
+        address: '',
+        township: '',
+        region: '',
+        gender: '',
+        image: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
       setUsers([newUser, ...users]);
       setFormData({
@@ -246,7 +311,28 @@ function Users() {
     }
   };
 
-  // Sorting Logic
+  // ===== 8. DELETE & BLOCK/UNBLOCK =====
+  const performDeleteUser = (id) => {
+    setUsers(users.filter(u => u.id !== id));
+    showToast('success', 'User deleted successfully!');
+  };
+
+  const handleDeleteUser = (id) => {
+    setConfirmDialog({
+      visible: true,
+      message: 'Are you sure you want to delete this user?',
+      onConfirm: () => performDeleteUser(id)
+    });
+  };
+
+  const handleBlockUser = (id) => {
+    setUsers(users.map(user => 
+      user.id === id ? { ...user, status: user.status === 'Banned' ? 'Active' : 'Banned' } : user
+    ));
+    showToast('success', 'User status updated successfully!');
+  };
+
+  // ===== 9. SORTING & FILTERING =====
   const getSortedUsers = (usersList) => {
     const sorted = [...usersList];
     switch(sortBy) {
@@ -261,29 +347,6 @@ function Users() {
     }
   };
 
-  // Block/Unblock user (Replace alert with Toast)
-  const handleBlockUser = (id) => {
-    setUsers(users.map(user => 
-      user.id === id ? { ...user, status: user.status === 'Banned' ? 'Active' : 'Banned' } : user
-    ));
-    showToast('success', 'User status updated successfully!');
-  };
-
-  // Delete user via Custom Confirm Modal
-  const performDeleteUser = (id) => {
-    setUsers(users.filter(u => u.id !== id));
-    showToast('success', 'User deleted successfully!');
-  };
-
-  const handleDeleteUser = (id) => {
-    setConfirmDialog({
-      visible: true,
-      message: 'Are you sure you want to delete this user?',
-      onConfirm: () => performDeleteUser(id)
-    });
-  };
-
-  // Filter logic
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -293,9 +356,38 @@ function Users() {
     return matchesSearch && matchesStatus && matchesRole;
   });
 
-  // Apply sorting to filtered users
   const sortedUsers = getSortedUsers(filteredUsers);
 
+  // ===== 10. STATISTICS =====
+  const totalUsers = users.length;
+  const activeUsers = users.filter(u => u.status === 'Active').length;
+  const inactiveUsers = users.filter(u => u.status === 'Inactive').length;
+  const bannedUsers = users.filter(u => u.status === 'Banned').length;
+  const newUsersThisWeek = users.filter(u => {
+    const joinDate = new Date(u.joinedDate);
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    return joinDate >= weekAgo;
+  }).length;
+  const onlineNow = users.filter(u => u.lastActiveDays === 0 && u.status === 'Active').length;
+
+  // ===== 11. CHART DATA (static) =====
+  const registrationData = [
+    { month: 'Jan', registrations: 12, active: 45 },
+    { month: 'Feb', registrations: 19, active: 52 },
+    { month: 'Mar', registrations: 15, active: 48 },
+    { month: 'Apr', registrations: 22, active: 61 },
+    { month: 'May', registrations: 28, active: 73 },
+    { month: 'Jun', registrations: 32, active: 85 },
+    { month: 'Jul', registrations: 35, active: 94 },
+    { month: 'Aug', registrations: 42, active: 108 },
+    { month: 'Sep', registrations: 38, active: 112 },
+    { month: 'Oct', registrations: 45, active: 125 },
+    { month: 'Nov', registrations: 52, active: 142 },
+    { month: 'Dec', registrations: 58, active: 158 }
+  ];
+
+  // ===== 12. BADGE HELPERS =====
   const getRoleBadgeClass = (role) => {
     switch(role) {
       case 'Admin':
@@ -303,6 +395,7 @@ function Users() {
       case 'Manager':
         return 'role-badge manager';
       case 'Agency':
+      case 'shop':
         return 'role-badge agency';
       default:
         return 'role-badge user';
@@ -322,11 +415,78 @@ function Users() {
     }
   };
 
+  // ===== 13. VIEW DETAIL HANDLER =====
+  const handleViewDetails = (user) => {
+    setSelectedUser(user);
+    setShowDetailModal(true);
+  };
+
+  // ===== 14. DETAIL MODAL =====
+  const DetailModal = ({ user, onClose }) => {
+    if (!user) return null;
+
+    // Format date helper
+    const formatDate = (dateStr) => {
+      if (!dateStr) return 'N/A';
+      try {
+        return new Date(dateStr).toLocaleString();
+      } catch {
+        return dateStr;
+      }
+    };
+
+    return (
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+          <div className="modal-header">
+            <h2>User Details</h2>
+            <button className="close-btn" onClick={onClose}>
+              <i className="bi bi-x-lg"></i>
+            </button>
+          </div>
+          <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '20px' }}>
+              <div style={{ fontSize: '64px' }}>
+                {user.avatar || '👤'}
+              </div>
+              <div>
+                <h3 style={{ margin: 0 }}>{user.fullName}</h3>
+                <p style={{ margin: 0, color: '#6c757d' }}>{user.email}</p>
+                <span className={getStatusBadgeClass(user.status)} style={{ display: 'inline-block', marginTop: '4px' }}>
+                  {user.status}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div><strong>ID:</strong> {user.id}</div>
+              <div><strong>Role:</strong> <span className={getRoleBadgeClass(user.role)}>{user.role}</span></div>
+              <div><strong>Phone:</strong> {user.phone || 'N/A'}</div>
+              <div><strong>Gender:</strong> {user.gender || 'N/A'}</div>
+              <div><strong>Address:</strong> {user.address || 'N/A'}</div>
+              <div><strong>Township:</strong> {user.township || 'N/A'}</div>
+              <div><strong>Region:</strong> {user.region || 'N/A'}</div>
+              <div><strong>Joined:</strong> {formatDate(user.created_at || user.joinedDate)}</div>
+              <div><strong>Last Login:</strong> {user.lastLogin || 'N/A'}</div>
+              <div><strong>Login Count:</strong> {user.loginCount || 0}</div>
+              <div><strong>Last Active Days:</strong> {user.lastActiveDays || 0}</div>
+              <div><strong>Image:</strong> {user.image ? '✅ Has image' : '❌ No image'}</div>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button className="discard-btn" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ===== 15. RENDER =====
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Users Management" onThemeChange={handleThemeChange} />
 
-      {/* 🟢 Screen အလယ် Toast Alert UI */}
+      {/* Toast Alert UI */}
       {toast.visible && (
         <div style={{
           position: 'fixed',
@@ -362,7 +522,7 @@ function Users() {
         </div>
       )}
 
-      {/* 🟢 Screen အလယ် Custom Confirm Modal (Delete အတွက်) */}
+      {/* Confirm Delete Modal */}
       {confirmDialog.visible && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: isDarkMode ? '#2d2d2d' : '#fff', padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%', boxShadow: '0 15px 40px rgba(0,0,0,0.2)' }}>
@@ -374,6 +534,17 @@ function Users() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* View Detail Modal */}
+      {showDetailModal && (
+        <DetailModal
+          user={selectedUser}
+          onClose={() => {
+            setShowDetailModal(false);
+            setSelectedUser(null);
+          }}
+        />
       )}
 
       {/* Statistics Cards Row */}
@@ -521,10 +692,10 @@ function Users() {
                 <th className="col-no">No.</th>
                 <th className="col-profile">Profile</th>
                 <th className="col-name">Name</th>
-                <th className="col-contact">Email / Phone</th>
+                <th className="col-contact">Email</th>
                 <th className="col-role">Role</th>
                 <th className="col-status">Status</th>
-                <th className="col-joined">Joined Date</th>
+                <th className="col-joined">Joined</th>
                 <th className="col-actions">Actions</th>
               </tr>
             </thead>
@@ -540,7 +711,6 @@ function Users() {
                   </td>
                   <td className="col-contact">
                     <div className="user-email">{user.email}</div>
-                    <div className="user-phone">{user.phone}</div>
                   </td>
                   <td className="col-role">
                     <span className={getRoleBadgeClass(user.role)}>
@@ -553,15 +723,16 @@ function Users() {
                     </span>
                   </td>
                   <td className="col-joined">{user.joinedDate}</td>
-                  
-                  {/* 🔧 FIX: တစ်တန်းတည်းဖြစ်ဖို့ Flex နဲ့ width သတ်မှတ်ပေးထားပါတယ် */}
-                  <td className="col-actions" style={{ whiteSpace: 'nowrap', minWidth: '110px' }}>
-                    {/* View Button */}
-                    <button className="action-icon view" title="View" style={{ width: '32px', height: '32px', padding: 0, flexShrink: 0 }}>
+                  <td className="col-actions" style={{ whiteSpace: 'nowrap', minWidth: '80px' }}>
+                    <button 
+                      className="action-icon view" 
+                      title="View Details"
+                      onClick={() => handleViewDetails(user)}
+                      style={{ width: '32px', height: '32px', padding: 0, flexShrink: 0 }}
+                    >
                       <i className="bi bi-eye" style={{ fontSize: '14px', lineHeight: '32px' }}></i>
                     </button>
                     
-                    {/* Block/Unblock Button */}
                     <button 
                       className={`action-icon ${user.status === 'Banned' ? 'unblock' : 'block'}`} 
                       title={user.status === 'Banned' ? 'Unblock' : 'Block'}
@@ -571,7 +742,6 @@ function Users() {
                       <i className={`bi ${user.status === 'Banned' ? 'bi-unlock' : 'bi-lock'}`} style={{ fontSize: '14px', lineHeight: '32px' }}></i>
                     </button>
                     
-                    {/* Delete Button */}
                     <button 
                       className="action-icon delete" 
                       title="Delete"

@@ -7,7 +7,7 @@ import Login from './components/Login';
 import HistoryOfPagodas from './components/HistoryOfPagodas';
 import Hotels from './components/Hotels';
 import Destinations from './components/Destinations';
-import DestinationPlans from './components/DestinationPlans';
+import DestinationPlans from './components/Destinationplans';
 import Restaurants from './components/Restaurants';
 import Cars from './components/Cars';
 import EBikes from './components/EBikes';
@@ -25,6 +25,7 @@ import Message from './components/Message';
 
  import HotelsOrder from './components/HotelsOrder';
  import DestinationsOrder from './components/DestinationsOrder';
+ import DestinationPlansOrder from './components/DestinationPlansOrder';
  import RestaurantsOrder from './components/RestaurantsOrder';
 // import CarsOrder from './components/CarsOrder';
  import EBikesOrder from './components/EBikesOrder';
@@ -189,6 +190,14 @@ function App() {
           <ProtectedRoute>
             <MainLayout>
               <DestinationsOrder />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/destinationplansorder" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <DestinationPlansOrder />
             </MainLayout>
           </ProtectedRoute>
         } />
