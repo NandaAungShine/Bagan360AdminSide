@@ -3,6 +3,14 @@ import React, { useState, useEffect } from 'react';
 import Header from './Header';
 
 function HotelsOrder() {
+  // ===== User Role Check (added) =====
+  const user = (() => {
+    try { return JSON.parse(localStorage.getItem('user')); } 
+    catch { return null; }
+  })();
+  const admin = user?.role === 'admin';
+  const userId = user?.id;
+
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
     return savedTheme === 'dark';
@@ -15,63 +23,131 @@ function HotelsOrder() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
-  const sampleOrders = [
-    {
-      id: 1,
-      hotel: { name: 'Aureum Palace Hotel', image: '/images/hotel1.jpg', description: 'Luxury hotel with pool and spa.' },
-      user: { name: 'John Doe', email: 'john@example.com' },
-      total_price: 150000,
-      status: 'pending',
-      check_in_date: '2026-08-01',
-      check_out_date: '2026-08-03',
-      special_requests: 'Extra pillow, non-smoking room',
-      created_at: '2026-07-28T10:30:00Z',
-    },
-    {
-      id: 2,
-      hotel: { name: 'Bagan Thiripyitsaya Sanctuary', image: '/images/hotel2.jpg', description: 'Beautiful resort overlooking the river.' },
-      user: { name: 'Jane Smith', email: 'jane@example.com' },
-      total_price: 200000,
-      status: 'confirmed',
-      check_in_date: '2026-08-05',
-      check_out_date: '2026-08-07',
-      special_requests: '',
-      created_at: '2026-07-27T14:20:00Z',
-    },
-    {
-      id: 3,
-      hotel: { name: 'Bagan Lodge', image: '/images/hotel3.jpg', description: 'Cozy lodge with traditional decor.' },
-      user: { name: 'Mike Johnson', email: 'mike@example.com' },
-      total_price: 120000,
-      status: 'completed',
-      check_in_date: '2026-07-20',
-      check_out_date: '2026-07-22',
-      special_requests: 'Airport pickup',
-      created_at: '2026-07-19T09:15:00Z',
-    },
-    {
-      id: 4,
-      hotel: { name: 'The Hotel @ Tharabar Gate', image: '/images/hotel4.jpg', description: 'Heritage hotel near the ancient gate.' },
-      user: { name: 'Sarah Lee', email: 'sarah@example.com' },
-      total_price: 180000,
-      status: 'cancelled',
-      check_in_date: '2026-08-10',
-      check_out_date: '2026-08-12',
-      special_requests: '',
-      created_at: '2026-07-25T16:45:00Z',
-    },
-    {
-      id: 5,
-      hotel: { name: 'Bagan Thande Hotel', image: '/images/hotel5.jpg', description: 'Riverside hotel with sunset views.' },
-      user: { name: 'David Kim', email: 'david@example.com' },
-      total_price: 95000,
-      status: 'pending',
-      check_in_date: '2026-08-15',
-      check_out_date: '2026-08-16',
-      special_requests: 'Late check-in',
-      created_at: '2026-07-29T08:10:00Z',
-    },
-  ];
+  // ===== Hotel Data for Filtering (added) =====
+  const [hotels, setHotels] = useState([]);
+  const [myHotelIds, setMyHotelIds] = useState([]);
+
+  // ===== API Helpers =====
+  const getToken = () => localStorage.getItem('token');
+  const getHeaders = () => ({
+    'Authorization': `Bearer ${getToken()}`,
+    'Content-Type': 'application/json',
+  });
+
+  const handle401Error = () => {
+    localStorage.removeItem('token');
+    alert('Session expired. Please login again.');
+    setTimeout(() => window.location.href = '/login', 1500);
+  };
+
+  // ===== API BASE =====
+  const API_BASE = '/api/admin/hotel';
+  const ORDER_API_BASE = '/api/admin/hotel/booking';
+
+  // ===== FETCH HOTELS (added) =====
+  const fetchHotels = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/list`, {
+        method: 'GET',
+        headers: getHeaders(),
+      });
+      if (response.status === 401) return handle401Error();
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
+      }
+      const result = await response.json();
+      console.log('✅ Hotels response:', result);
+      
+      const list = result.data || result.hotels || result || [];
+      setHotels(list);
+      
+      // Filter hotels created by current user (if not admin)
+      if (!admin) {
+        const myIds = list
+          .filter(h => h.createdBy === userId)
+          .map(h => h.id);
+        setMyHotelIds(myIds);
+        console.log('🔑 My hotel IDs:', myIds);
+      } else {
+        const allIds = list.map(h => h.id);
+        setMyHotelIds(allIds);
+      }
+    } catch (err) {
+      console.error('❌ Fetch Hotels Error:', err);
+    }
+  };
+
+  // ===== FETCH ORDERS =====
+  const fetchOrders = async () => {
+    // First fetch hotels to get ownership info
+    await fetchHotels();
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${ORDER_API_BASE}/list/`, {
+        method: 'GET',
+        headers: getHeaders(),
+      });
+      if (response.status === 401) return handle401Error();
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
+      }
+      const result = await response.json();
+      console.log('✅ Orders response:', result);
+
+      // Extract orders from response
+      let rawOrders = [];
+      if (Array.isArray(result.data)) {
+        rawOrders = result.data;
+      } else if (Array.isArray(result.orders)) {
+        rawOrders = result.orders;
+      } else if (Array.isArray(result)) {
+        rawOrders = result;
+      } else {
+        rawOrders = [];
+      }
+
+      // Map to component shape
+      const mappedOrders = rawOrders.map((item) => ({
+        id: item.id || item.booking_id,
+        hotelId: item.hotel_id,
+        hotel: {
+          id: item.hotel_id,
+          name: item.hotel_name || 'Hotel',
+          image: item.hotel_image || '/default-hotel.jpg',
+          description: item.hotel_description || '',
+        },
+        user: {
+          name: item.customer_name || 'Guest',
+          email: item.customer_email || '',
+        },
+        total_price: item.total_price || item.price || 0,
+        status: item.status || 'pending',
+        check_in_date: item.check_in_date || item.start_date || '',
+        check_out_date: item.check_out_date || item.end_date || '',
+        special_requests: item.special_requests || item.note || '',
+        created_at: item.created_at || item.booking_date || new Date().toISOString(),
+        _raw: item,
+      }));
+
+      setOrders(mappedOrders);
+    } catch (err) {
+      console.error('❌ Fetch Orders Error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const token = getToken();
+    if (!token) {
+      alert('Please login first');
+      return;
+    }
+    fetchOrders();
+  }, []);
 
   const handleThemeChange = (isDark) => {
     setIsDarkMode(isDark);
@@ -87,40 +163,49 @@ function HotelsOrder() {
     }
   }, [isDarkMode]);
 
-  const fetchOrders = () => {
-    setLoading(true);
-    setTimeout(() => {
-      setOrders(sampleOrders);
-      setLoading(false);
-    }, 500);
-  };
-
-  useEffect(() => {
-    fetchOrders();
-  }, []);
-
-  const updateOrderStatus = (orderId, newStatus) => {
+  const updateOrderStatus = async (orderId, newStatus) => {
     if (!window.confirm(`Change status to "${newStatus}"?`)) return;
     setLoading(true);
-    setTimeout(() => {
-      setOrders((prev) =>
-        prev.map((order) =>
-          order.id === orderId ? { ...order, status: newStatus } : order
-        )
-      );
-      setLoading(false);
+    try {
+      const response = await fetch(`${ORDER_API_BASE}/status/${orderId}`, {
+        method: 'PUT',
+        headers: {
+          ...getHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (response.status === 401) return handle401Error();
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
+      }
+      await fetchOrders();
       alert(`Order status updated to ${newStatus}`);
-    }, 400);
+    } catch (err) {
+      console.error('❌ Update Status Error:', err);
+      alert('Failed to update status');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const filteredOrders = orders.filter((order) => {
-    const matchesSearch =
-      order.id.toString().includes(searchTerm) ||
-      order.user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.hotel.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter ? order.status === statusFilter : true;
-    return matchesSearch && matchesStatus;
-  });
+  // ===== FILTER LOGIC (UPDATED with User Role Filter) =====
+  const filteredOrders = orders
+    // Step 1: Filter by user role (only show orders for hotels user owns)
+    .filter((order) => {
+      if (admin) return true;
+      return myHotelIds.includes(order.hotelId);
+    })
+    // Step 2: Search filter
+    .filter((order) => {
+      const matchesSearch =
+        order.id.toString().includes(searchTerm) ||
+        order.user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.hotel.name.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = statusFilter ? order.status === statusFilter : true;
+      return matchesSearch && matchesStatus;
+    });
 
   const getStatusBadge = (status) => {
     const statusMap = {
@@ -297,14 +382,14 @@ function HotelsOrder() {
     { label: 'Pending', count: orders.filter(o => o.status === 'pending').length, icon: 'bi-clock-history', color: '#ffc107' },
     { label: 'Completed', count: orders.filter(o => o.status === 'completed').length, icon: 'bi-check-circle', color: '#198754' },
     { label: 'Cancelled', count: orders.filter(o => o.status === 'cancelled').length, icon: 'bi-x-circle', color: '#dc3545' },
-    { label: 'Hotels', count: orders.length, icon: 'bi-building', color: '#6f42c1' },
+    { label: 'Hotels', count: new Set(orders.map(o => o.hotelId)).size, icon: 'bi-building', color: '#6f42c1' },
   ];
 
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Hotel Orders" onThemeChange={handleThemeChange} />
 
-      {/* ===== Summary Boxes (Background fixed to #2d2d2d) ===== */}
+      {/* ===== Summary Boxes ===== */}
       <div
         style={{
           display: 'grid',
@@ -317,7 +402,7 @@ function HotelsOrder() {
           <div
             key={index}
             style={{
-              backgroundColor: '#2d2d2d', // Light နဲ့ Dark နှစ်မျိုးလုံး အတူတူပဲ
+              backgroundColor: '#2d2d2d',
               padding: '15px 10px',
               borderRadius: '8px',
               display: 'flex',
@@ -328,7 +413,7 @@ function HotelsOrder() {
                 : '0 2px 8px rgba(0,0,0,0.15)',
               border: isDarkMode
                 ? '1px solid #555'
-                : '1px solid #6c757d', // Light Mode မှာ Border ပေါ်အောင်
+                : '1px solid #6c757d',
               transition: 'all 0.3s',
             }}
           >
@@ -352,7 +437,7 @@ function HotelsOrder() {
               <div
                 style={{
                   fontSize: '12px',
-                  color: isDarkMode ? '#bbb' : '#e9ecef', // Light Mode မှာ အဖြူဆန်ဆန်
+                  color: isDarkMode ? '#bbb' : '#e9ecef',
                   fontWeight: '500',
                 }}
               >
@@ -362,7 +447,7 @@ function HotelsOrder() {
                 style={{
                   fontSize: '20px',
                   fontWeight: 'bold',
-                  color: isDarkMode ? '#fff' : '#ffffff', // Light Mode မှာ အဖြူရောင်
+                  color: '#ffffff',
                 }}
               >
                 {item.count}

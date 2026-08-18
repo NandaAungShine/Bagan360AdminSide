@@ -55,6 +55,14 @@ function Hotels() {
     onConfirm: null,
   });
 
+  // ===== User role check (added) =====
+  const user = (() => {
+    try { return JSON.parse(localStorage.getItem('user')); } 
+    catch { return null; }
+  })();
+  const admin = user?.role === 'admin';
+  const userId = user?.id;
+
   // ===== Toast Helper (3s အကြာမှာ အလိုအလျောက်ပျောက်မယ်) =====
   const showToast = (type, message) => {
     if (toastTimeoutRef.current) {
@@ -411,11 +419,16 @@ function Hotels() {
     }
   };
 
-  // ===== FILTER & RENDER =====
-  const filteredHotels = hotels.filter((hotel) =>
-    hotel.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    hotel.location?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // ===== FILTER & RENDER (modified: add role filter) =====
+  const filteredHotels = hotels
+    .filter(hotel => {
+      if (admin) return true;
+      return hotel.createdBy === userId;
+    })
+    .filter(hotel =>
+      hotel.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      hotel.location?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
   const renderStars = (rating) => {
     const safeRating = rating || 0;

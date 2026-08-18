@@ -13,8 +13,6 @@ const getAuthHeaders = () => {
   };
 };
 
-
-
 const fetchWithAuth = async (url, options = {}) => {
   const headers = getAuthHeaders();
   const response = await fetch(url, {
@@ -74,6 +72,14 @@ function EBikes() {
   const [pricesByBike, setPricesByBike] = useState({}); 
   const [loading, setLoading] = useState(false);
   const [loadingTypes, setLoadingTypes] = useState(false);
+
+  // ----- User role check (added) -----
+  const user = (() => {
+    try { return JSON.parse(localStorage.getItem('user')); } 
+    catch { return null; }
+  })();
+  const admin = user?.role === 'admin';
+  const userId = user?.id;
 
   // Form states – discount removed
   const [formData, setFormData] = useState({
@@ -615,12 +621,18 @@ function EBikes() {
     setCardMenuBikeId(cardMenuBikeId === id ? null : id);
   };
 
-  const filteredEBikes = eBikes.filter((ebike) =>
-    ebike.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ebike.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ebike.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ebike.location?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // ----- Modified filteredEBikes (added user role filter) -----
+  const filteredEBikes = eBikes
+    .filter(ebike => {
+      if (admin) return true;
+      return ebike.createdBy === userId;
+    })
+    .filter(ebike =>
+      ebike.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ebike.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ebike.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ebike.location?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
   // ----- Render -----
   return (

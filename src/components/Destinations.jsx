@@ -4,6 +4,14 @@ import Header from './Header';
 import axios from 'axios';
 
 function Destinations() {
+  // ===== User Role Check (added) =====
+  const user = (() => {
+    try { return JSON.parse(localStorage.getItem('user')); } 
+    catch { return null; }
+  })();
+  const admin = user?.role === 'admin';
+  const userId = user?.id;
+
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
     return savedTheme === 'dark';
@@ -173,6 +181,8 @@ function Destinations() {
           startDate: toISODate(item.start_date || item.startDate || ''),
           endDate: toISODate(item.end_date || item.endDate || ''),
           bestTimeToVisit: item.best_time_to_visit || item.bestTimeToVisit || '',
+          // 🔥 createdBy ထည့်သွင်းထားပါတယ် (User Role Filter အတွက်)
+          createdBy: item.createdBy || null,
         }));
 
         setDestinations(formattedDestinations);
@@ -467,11 +477,16 @@ function Destinations() {
   };
 
   // ========== FILTER & RENDER ==========
-  const filteredDestinations = destinations.filter(
-    (destination) =>
+  // ===== Modified filteredDestinations (added user role filter) =====
+  const filteredDestinations = destinations
+    .filter(destination => {
+      if (admin) return true;
+      return destination.createdBy === userId;
+    })
+    .filter(destination =>
       destination.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       destination.location?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+    );
 
   const renderStars = (rating) => {
     const fullStars = Math.floor(rating);

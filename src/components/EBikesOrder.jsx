@@ -19,9 +19,15 @@ const parseDate = (dateStr) => {
   return null;
 };
 
-
-
 function EBikesOrder() {
+  // ===== User Role Check (added) =====
+  const user = (() => {
+    try { return JSON.parse(localStorage.getItem('user')); } 
+    catch { return null; }
+  })();
+  const admin = user?.role === 'admin';
+  const userId = user?.id;
+
   // ===== 1. THEME =====
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -39,7 +45,11 @@ function EBikesOrder() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [error, setError] = useState(null);
 
-  // ===== 3. TOAST =====
+  // ===== 3. E-Bike Data for Filtering (added) =====
+  const [eBikes, setEBikes] = useState([]);
+  const [myEBikeIds, setMyEBikeIds] = useState([]);
+
+  // ===== 4. TOAST =====
   const [toast, setToast] = useState({
     visible: false,
     type: 'success',
@@ -56,7 +66,7 @@ function EBikesOrder() {
     }, 3000);
   };
 
-  // ===== 4. API HELPERS =====
+  // ===== 5. API HELPERS =====
   const getToken = () => localStorage.getItem('token');
   const getHeaders = () => ({
     'Content-Type': 'application/json',
@@ -71,8 +81,46 @@ function EBikesOrder() {
 
   const API_BASE = '/api/admin/e-bike';
 
-  // ===== 5. FETCH ORDERS (UPDATED: now checks "booking" key) =====
+  // ===== 6. FETCH E-BIKES (added) =====
+  const fetchEBikes = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/list`, {
+        method: 'GET',
+        headers: getHeaders(),
+      });
+      if (response.status === 401) return handle401Error();
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
+      }
+      const result = await response.json();
+      console.log('✅ E-Bikes response:', result);
+      
+      const list = result.data || result || [];
+      setEBikes(list);
+      
+      // Filter e-bikes created by current user (if not admin)
+      if (!admin) {
+        const myIds = list
+          .filter(e => e.createdBy === userId)
+          .map(e => e.id);
+        setMyEBikeIds(myIds);
+        console.log('🔑 My e-bike IDs:', myIds);
+      } else {
+        const allIds = list.map(e => e.id);
+        setMyEBikeIds(allIds);
+      }
+    } catch (err) {
+      console.error('❌ Fetch E-Bikes Error:', err);
+      showToast('error', 'Failed to load e-bikes for filtering.');
+    }
+  };
+
+  // ===== 7. FETCH ORDERS =====
   const fetchOrders = async () => {
+    // First fetch e-bikes to get ownership info
+    await fetchEBikes();
+
     setLoading(true);
     setError(null);
     try {
@@ -93,7 +141,7 @@ function EBikesOrder() {
       // ---- 1. Extract array ----
       let rawOrders = [];
       if (Array.isArray(result.booking)) {
-        rawOrders = result.booking;          // <-- YOUR API USES "booking"
+        rawOrders = result.booking;
       } else if (Array.isArray(result.orders)) {
         rawOrders = result.orders;
       } else if (Array.isArray(result.data)) {
@@ -116,7 +164,7 @@ function EBikesOrder() {
         status: item.status || 'pending',
         totalPrice: item.selected_price || item.total_price || item.price || 0,
         startDate: parseDate(item.booking_date || item.start_date),
-        endDate: null, // not provided in this API
+        endDate: null,
         createdAt: parseDate(item.created_at || item.createdAt),
         specialRequests: item.note || item.special_requests || '',
         passenger_count: item.passenger_count || 0,
@@ -186,7 +234,7 @@ function EBikesOrder() {
     fetchOrders();
   }, []);
 
-  // ===== 6. THEME =====
+  // ===== 8. THEME =====
   const handleThemeChange = (isDark) => {
     setIsDarkMode(isDark);
   };
@@ -201,7 +249,7 @@ function EBikesOrder() {
     }
   }, [isDarkMode]);
 
-  // ===== 7. UPDATE STATUS =====
+  // ===== 9. UPDATE STATUS =====
   const updateOrderStatus = async (orderId, newStatus, endpoint) => {
     if (!window.confirm(`Are you sure you want to ${newStatus} this order?`)) return;
     setUpdatingId(orderId);
@@ -227,58 +275,65 @@ function EBikesOrder() {
     }
   };
 
-  // ===== 8. FILTER LOGIC =====
-  const filteredOrders = orders.filter((order) => {
-    const searchStr = `${order.id} ${order.user?.name || ''} ${order.ebike?.name || ''} ${order.ebike?.brand || ''}`.toLowerCase();
-    const matchesSearch = searchStr.includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter ? order.status === statusFilter : true;
+  // ===== 10. FILTER LOGIC (UPDATED with User Role Filter) =====
+  const filteredOrders = orders
+    // Step 1: Filter by user role (only show orders for e-bikes user owns)
+    .filter((order) => {
+      if (admin) return true;
+      return myEBikeIds.includes(order.ebike?.id);
+    })
+    // Step 2: Search, status, time filters
+    .filter((order) => {
+      const searchStr = `${order.id} ${order.user?.name || ''} ${order.ebike?.name || ''} ${order.ebike?.brand || ''}`.toLowerCase();
+      const matchesSearch = searchStr.includes(searchTerm.toLowerCase());
+      const matchesStatus = statusFilter ? order.status === statusFilter : true;
 
-    let matchesTime = true;
-    if (timeFilter !== 'all') {
-      const date = order.startDate || order.createdAt;
-      if (!date || isNaN(date.getTime())) {
-        matchesTime = false;
-      } else {
-        const today = new Date();
-        const year = date.getFullYear();
-        const month = date.getMonth();
-        const day = date.getDate();
-        const todayYear = today.getFullYear();
-        const todayMonth = today.getMonth();
-        const todayDay = today.getDate();
+      let matchesTime = true;
+      if (timeFilter !== 'all') {
+        const date = order.startDate || order.createdAt;
+        if (!date || isNaN(date.getTime())) {
+          matchesTime = false;
+        } else {
+          const today = new Date();
+          const year = date.getFullYear();
+          const month = date.getMonth();
+          const day = date.getDate();
+          const todayYear = today.getFullYear();
+          const todayMonth = today.getMonth();
+          const todayDay = today.getDate();
 
-        switch (timeFilter) {
-          case 'daily':
-            matchesTime = (year === todayYear && month === todayMonth && day === todayDay);
-            break;
-          case 'weekly': {
-            const startOfWeek = new Date(today);
-            const dayOfWeek = today.getDay();
-            const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-            startOfWeek.setDate(today.getDate() - diff);
-            startOfWeek.setHours(0, 0, 0, 0);
-            const endOfWeek = new Date(startOfWeek);
-            endOfWeek.setDate(startOfWeek.getDate() + 6);
-            endOfWeek.setHours(23, 59, 59, 999);
-            matchesTime = (date >= startOfWeek && date <= endOfWeek);
-            break;
+          switch (timeFilter) {
+            case 'daily':
+              matchesTime = (year === todayYear && month === todayMonth && day === todayDay);
+              break;
+            case 'weekly': {
+              const startOfWeek = new Date(today);
+              const dayOfWeek = today.getDay();
+              const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+              startOfWeek.setDate(today.getDate() - diff);
+              startOfWeek.setHours(0, 0, 0, 0);
+              const endOfWeek = new Date(startOfWeek);
+              endOfWeek.setDate(startOfWeek.getDate() + 6);
+              endOfWeek.setHours(23, 59, 59, 999);
+              matchesTime = (date >= startOfWeek && date <= endOfWeek);
+              break;
+            }
+            case 'monthly':
+              matchesTime = (year === todayYear && month === todayMonth);
+              break;
+            case 'yearly':
+              matchesTime = (year === todayYear);
+              break;
+            default:
+              matchesTime = true;
           }
-          case 'monthly':
-            matchesTime = (year === todayYear && month === todayMonth);
-            break;
-          case 'yearly':
-            matchesTime = (year === todayYear);
-            break;
-          default:
-            matchesTime = true;
         }
       }
-    }
 
-    return matchesSearch && matchesStatus && matchesTime;
-  });
+      return matchesSearch && matchesStatus && matchesTime;
+    });
 
-  // ===== 9. STATUS BADGE =====
+  // ===== 11. STATUS BADGE =====
   const getStatusBadge = (status) => {
     const statusMap = {
       pending: { label: 'Pending', color: '#ffc107', bg: '#fff3cd' },
@@ -305,7 +360,7 @@ function EBikesOrder() {
     );
   };
 
-  // ===== 10. CARD ACTIONS =====
+  // ===== 12. CARD ACTIONS =====
   const CardActions = ({ order }) => {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -372,7 +427,7 @@ function EBikesOrder() {
     );
   };
 
-  // ===== 11. DETAIL MODAL =====
+  // ===== 13. DETAIL MODAL =====
   const DetailModal = ({ order, onClose }) => {
     if (!order) return null;
 
@@ -426,7 +481,7 @@ function EBikesOrder() {
     );
   };
 
-  // ===== 12. ORDER CARD =====
+  // ===== 14. ORDER CARD =====
   const OrderCard = ({ order }) => {
     const formatDateDisplay = (date) => {
       if (!date) return 'N/A';
@@ -477,7 +532,7 @@ function EBikesOrder() {
     );
   };
 
-  // ===== 13. LOADING / ERROR =====
+  // ===== 15. LOADING / ERROR =====
   if (loading && orders.length === 0) {
     return (
       <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
@@ -505,7 +560,7 @@ function EBikesOrder() {
     );
   }
 
-  // ===== 14. SUMMARY DATA =====
+  // ===== 16. SUMMARY DATA =====
   const summaryData = [
     { label: 'Total Orders', count: orders.length, icon: 'bi-box-seam', color: '#0d6efd' },
     { label: 'Pending', count: orders.filter(o => o.status === 'pending').length, icon: 'bi-clock-history', color: '#ffc107' },
@@ -514,7 +569,7 @@ function EBikesOrder() {
     { label: 'E-Bikes', count: new Set(orders.map(o => o.ebike?.id || o.ebike?.name)).size || orders.length, icon: 'bi-bicycle', color: '#17a2b8' },
   ];
 
-  // ===== 15. MAIN RENDER =====
+  // ===== 17. MAIN RENDER =====
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="E-Bike Orders" onThemeChange={handleThemeChange} />

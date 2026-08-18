@@ -2,6 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
 function Tricycles() {
+  // ===== User Role Check (added) =====
+  const user = (() => {
+    try { return JSON.parse(localStorage.getItem('user')); } 
+    catch { return null; }
+  })();
+  const admin = user?.role === 'admin';
+  const userId = user?.id;
+
   // ===== Theme =====
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -166,7 +174,7 @@ function Tricycles() {
     removeImage();
   };
 
-  // ========== CREATE TRICYCLE (discount removed from payload) ==========
+  // ========== CREATE TRICYCLE ==========
   const handleAddTricycle = async () => {
     if (!formData.name || !formData.price) {
       showToast('warning', 'Please fill in Name and Price.');
@@ -342,7 +350,7 @@ function Tricycles() {
     if (item) openEditModal(item);
   };
 
-  // ========== CONFIRM EDIT (discount removed) ==========
+  // ========== CONFIRM EDIT ==========
   const handleConfirmEdit = async () => {
     if (!selectedItemForEdit) return;
     if (!formData.name) {
@@ -419,12 +427,17 @@ function Tricycles() {
     setSelectedId(prev => prev === id ? null : id);
   };
 
-  // ========== FILTER ==========
-  const filteredTricycles = tricycles.filter(item =>
-    (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (item.type || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (item.location || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // ===== Modified filteredTricycles (added user role filter) =====
+  const filteredTricycles = tricycles
+    .filter(item => {
+      if (admin) return true;
+      return item.createdBy === userId;
+    })
+    .filter(item =>
+      (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.type || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.location || '').toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
   // ========== RENDER STARS ==========
   const renderStars = (rating) => {
@@ -475,7 +488,7 @@ function Tricycles() {
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Tricycles Management" onThemeChange={setIsDarkMode} />
 
-      {/* 🟢 Toast Alert UI */}
+      {/* Toast Alert UI */}
       {toast.visible && (
         <div style={{
           position: 'fixed',
@@ -511,7 +524,7 @@ function Tricycles() {
         </div>
       )}
 
-      {/* 🟢 Confirm Delete Modal */}
+      {/* Confirm Delete Modal */}
       {confirmDialog.visible && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: isDarkMode ? '#2d2d2d' : '#fff', padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%', boxShadow: '0 15px 40px rgba(0,0,0,0.2)' }}>
@@ -584,7 +597,7 @@ function Tricycles() {
               </div>
             </div>
 
-            {/* Form Fields – discount removed */}
+            {/* Form Fields */}
             <div className="form-fields-section">
               <div className="add-form-group">
                 <label>Tricycle Name</label>
@@ -620,8 +633,6 @@ function Tricycles() {
                   <input type="text" name="pricePerDay" placeholder="eg. 80000" value={formData.pricePerDay} onChange={handleInputChange} />
                 </div>
               </div>
-
-              {/* Discount input removed entirely */}
 
               <div className="add-form-group">
                 <label>Location</label>
@@ -720,7 +731,7 @@ function Tricycles() {
         </div>
       </div>
 
-      {/* Edit Modal – discount removed */}
+      {/* Edit Modal */}
       {showEditModal && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -782,7 +793,6 @@ function Tricycles() {
                   <input type="text" name="pricePerDay" value={formData.pricePerDay} onChange={handleInputChange} />
                 </div>
               </div>
-              {/* Discount input removed */}
 
               <div className="form-group">
                 <label>Location</label>

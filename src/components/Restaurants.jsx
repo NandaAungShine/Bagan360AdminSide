@@ -2,6 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
 function Restaurants() {
+  // ===== User Role Check (added) =====
+  const user = (() => {
+    try { return JSON.parse(localStorage.getItem('user')); } 
+    catch { return null; }
+  })();
+  const admin = user?.role === 'admin';
+  const userId = user?.id;
+
   // ===== Theme =====
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -79,7 +87,7 @@ function Restaurants() {
   // ===== Get Token =====
   const getToken = () => localStorage.getItem('token');
 
-  // ========== FETCH RESTAURANTS (✅ FIX: .trim() added) ==========
+  // ========== FETCH RESTAURANTS ==========
   const fetchRestaurants = async () => {
     setLoading(true);
     setError(null);
@@ -106,7 +114,6 @@ function Restaurants() {
       if (result.success && Array.isArray(result.data)) {
         list = result.data.map(item => ({
           ...item,
-          // 🔥 FIX: .trim() added here to remove leading space
           image: item.image
             ? (item.image.startsWith('http') ? item.image : `${BACKEND_URL}/${item.image.trim()}`)
             : null,
@@ -340,10 +347,9 @@ function Restaurants() {
       description: restaurant.description || '',
     });
     
-    // ✅ Already had .trim() here - Good
     const existingImage = restaurant.image 
-  ? (restaurant.image.startsWith('http') ? restaurant.image : `${BACKEND_URL}/${restaurant.image.trim()}`)
-  : null;
+      ? (restaurant.image.startsWith('http') ? restaurant.image : `${BACKEND_URL}/${restaurant.image.trim()}`)
+      : null;
     setImagePreview(existingImage);
     setImageFile(null);
     
@@ -364,7 +370,7 @@ function Restaurants() {
     if (restaurant) openEditModal(restaurant);
   };
 
-  // ========== 🚀 CONFIRM EDIT (✅ FIX: Removed the problematic else if) ==========
+  // ========== CONFIRM EDIT ==========
   const handleConfirmEdit = async () => {
     if (!selectedRestaurantForEdit) return;
     if (!formData.restaurantName) {
@@ -392,16 +398,10 @@ function Restaurants() {
       form.append('dishes', formData.dishes?.trim() || '');
       form.append('opening_hours', formData.openingHours?.trim() || '');
       
-      // ✅ FIX: Only send image if a NEW file is selected.
-      // If no new file, DO NOT send the 'image' field at all.
-      // This prevents sending the string path with spaces back to the backend.
+      // Only send image if a new file is selected
       if (imageFile) {
         form.append('image', imageFile);
       }
-      // ❌ အောက်က else if ကို လုံးဝ ဖျက်ပစ်လိုက်ပါ။ ဒါမှ ပုံဟောင်း မပျက်တော့မှာ။
-      // else if (selectedRestaurantForEdit && selectedRestaurantForEdit.image) {
-      //   form.append('image', selectedRestaurantForEdit.image);
-      // }
 
       console.log('📤 Updating with FormData...');
 
@@ -452,11 +452,17 @@ function Restaurants() {
     setSelectedRestaurantId(prev => prev === id ? null : id);
   };
 
-  const filteredRestaurants = restaurants.filter(r =>
-    (r.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (r.location || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (r.dishes || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // ===== Modified filteredRestaurants (added user role filter) =====
+  const filteredRestaurants = restaurants
+    .filter(restaurant => {
+      if (admin) return true;
+      return restaurant.createdBy === userId;
+    })
+    .filter(restaurant =>
+      (restaurant.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (restaurant.location || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (restaurant.dishes || '').toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
   const renderStars = (rating) => {
     const num = parseFloat(rating) || 0;
@@ -644,7 +650,6 @@ function Restaurants() {
             ) : (
               <div className="hotels-grid-2cols">
                 {filteredRestaurants.map(r => {
-                  // ✅ FIX: .trim() added here to remove leading space in card rendering
                   const imageUrl = r.image ? (r.image.startsWith('http') ? r.image : `${BACKEND_URL}/${r.image.trim()}`) : "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='200'%3E%3Crect width='300' height='200' fill='%23f0f0f0'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='14' fill='%23999' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E";
                   return (
                     <div key={r.id} className={`hotel-card-vertical ${selectedRestaurantId === r.id ? 'selected' : ''}`} onClick={() => toggleRestaurantSelection(r.id)}>

@@ -20,6 +20,14 @@ const parseDate = (dateStr) => {
 };
 
 function RestaurantsOrder() {
+  // ===== User Role Check (added) =====
+  const user = (() => {
+    try { return JSON.parse(localStorage.getItem('user')); } 
+    catch { return null; }
+  })();
+  const admin = user?.role === 'admin';
+  const userId = user?.id;
+
   // ===== 1. THEME =====
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -36,7 +44,11 @@ function RestaurantsOrder() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [error, setError] = useState(null);
 
-  // ===== 3. TOAST =====
+  // ===== 3. Restaurant Data for Filtering (added) =====
+  const [restaurants, setRestaurants] = useState([]);
+  const [myRestaurantIds, setMyRestaurantIds] = useState([]);
+
+  // ===== 4. TOAST =====
   const [toast, setToast] = useState({
     visible: false,
     type: 'success',
@@ -53,7 +65,7 @@ function RestaurantsOrder() {
     }, 3000);
   };
 
-  // ===== 4. API HELPERS =====
+  // ===== 5. API HELPERS =====
   const getToken = () => localStorage.getItem('token');
   const getHeaders = () => ({
     'Authorization': `Bearer ${getToken()}`,
@@ -66,14 +78,53 @@ function RestaurantsOrder() {
     setTimeout(() => window.location.href = '/login', 1500);
   };
 
-  const API_BASE = '/api/admin/restaurant/booking';
+  const API_BASE_RESTAURANT = '/api/admin/restaurant';
+  const API_BASE_BOOKING = '/api/admin/restaurant/booking';
 
-  // ===== 5. FETCH ORDERS (UPDATED) =====
+  // ===== 6. FETCH RESTAURANTS (added) =====
+  const fetchRestaurants = async () => {
+    try {
+      const response = await fetch(`${API_BASE_RESTAURANT}/list`, {
+        method: 'GET',
+        headers: getHeaders(),
+      });
+      if (response.status === 401) return handle401Error();
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
+      }
+      const result = await response.json();
+      console.log('✅ Restaurants response:', result);
+
+      const list = result.data || result || [];
+      setRestaurants(list);
+
+      // Filter restaurants created by current user (if not admin)
+      if (!admin) {
+        const myIds = list
+          .filter(r => r.createdBy === userId)
+          .map(r => r.id);
+        setMyRestaurantIds(myIds);
+        console.log('🔑 My restaurant IDs:', myIds);
+      } else {
+        const allIds = list.map(r => r.id);
+        setMyRestaurantIds(allIds);
+      }
+    } catch (err) {
+      console.error('❌ Fetch Restaurants Error:', err);
+      showToast('error', 'Failed to load restaurants for filtering.');
+    }
+  };
+
+  // ===== 7. FETCH ORDERS (UPDATED) =====
   const fetchOrders = async () => {
+    // First fetch restaurants to get ownership info
+    await fetchRestaurants();
+
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE}/list/`, {
+      const response = await fetch(`${API_BASE_BOOKING}/list/`, {
         method: 'GET',
         headers: getHeaders(),
       });
@@ -88,7 +139,7 @@ function RestaurantsOrder() {
       // ---- 1. Extract array ----
       let rawOrders = [];
       if (Array.isArray(result.booking)) {
-        rawOrders = result.booking;          // <-- YOUR API USES "booking"
+        rawOrders = result.booking;
       } else if (Array.isArray(result.data)) {
         rawOrders = result.data;
       } else if (Array.isArray(result)) {
@@ -106,6 +157,7 @@ function RestaurantsOrder() {
       // ---- 2. Map to component shape ----
       const mappedOrders = rawOrders.map((item) => ({
         id: item.booking_id || item.id,
+        restaurantId: item.restaurant_id, // <-- added for filtering
         status: item.status || 'pending',
         totalPrice: item.total_price || item.price || 0,
         startDate: parseDate(item.booking_date || item.start_date),
@@ -165,7 +217,7 @@ function RestaurantsOrder() {
     fetchOrders();
   }, []);
 
-  // ===== 6. THEME HANDLER =====
+  // ===== 8. THEME HANDLER =====
   const handleThemeChange = (isDark) => {
     setIsDarkMode(isDark);
   };
@@ -180,13 +232,13 @@ function RestaurantsOrder() {
     }
   }, [isDarkMode]);
 
-  // ===== 7. UPDATE STATUS =====
+  // ===== 9. UPDATE STATUS =====
   const updateOrderStatus = async (orderId, action) => {
     if (!window.confirm(`Are you sure you want to ${action} this booking?`)) return;
     setLoading(true);
     try {
       const endpoint = action === 'approved' ? 'approved' : 'cancelled';
-      const response = await fetch(`${API_BASE}/${endpoint}/${orderId}`, {
+      const response = await fetch(`${API_BASE_BOOKING}/${endpoint}/${orderId}`, {
         method: 'PUT',
         headers: getHeaders(),
       });
@@ -205,59 +257,66 @@ function RestaurantsOrder() {
     }
   };
 
-  // ===== 8. FILTER LOGIC =====
-  const filteredOrders = orders.filter((order) => {
-    const searchStr = `${order.id} ${order.restaurant?.name || ''} ${order.user?.name || ''}`.toLowerCase();
-    const matchesSearch = searchStr.includes(searchTerm.toLowerCase());
+  // ===== 10. FILTER LOGIC (UPDATED with User Role Filter) =====
+  const filteredOrders = orders
+    // Step 1: Filter by user role (only show bookings for restaurants user owns)
+    .filter((order) => {
+      if (admin) return true;
+      return myRestaurantIds.includes(order.restaurantId);
+    })
+    // Step 2: Search, status & time filters
+    .filter((order) => {
+      const searchStr = `${order.id} ${order.restaurant?.name || ''} ${order.user?.name || ''}`.toLowerCase();
+      const matchesSearch = searchStr.includes(searchTerm.toLowerCase());
 
-    const matchesStatus = statusFilter ? order.status === statusFilter : true;
+      const matchesStatus = statusFilter ? order.status === statusFilter : true;
 
-    let matchesTime = true;
-    if (timeFilter !== 'all') {
-      const date = order.startDate || order.createdAt;
-      if (!date || isNaN(date.getTime())) {
-        matchesTime = false;
-      } else {
-        const today = new Date();
-        const year = date.getFullYear();
-        const month = date.getMonth();
-        const day = date.getDate();
-        const todayYear = today.getFullYear();
-        const todayMonth = today.getMonth();
-        const todayDay = today.getDate();
+      let matchesTime = true;
+      if (timeFilter !== 'all') {
+        const date = order.startDate || order.createdAt;
+        if (!date || isNaN(date.getTime())) {
+          matchesTime = false;
+        } else {
+          const today = new Date();
+          const year = date.getFullYear();
+          const month = date.getMonth();
+          const day = date.getDate();
+          const todayYear = today.getFullYear();
+          const todayMonth = today.getMonth();
+          const todayDay = today.getDate();
 
-        switch (timeFilter) {
-          case 'daily':
-            matchesTime = (year === todayYear && month === todayMonth && day === todayDay);
-            break;
-          case 'weekly': {
-            const startOfWeek = new Date(today);
-            const dayOfWeek = today.getDay();
-            const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-            startOfWeek.setDate(today.getDate() - diff);
-            startOfWeek.setHours(0, 0, 0, 0);
-            const endOfWeek = new Date(startOfWeek);
-            endOfWeek.setDate(startOfWeek.getDate() + 6);
-            endOfWeek.setHours(23, 59, 59, 999);
-            matchesTime = (date >= startOfWeek && date <= endOfWeek);
-            break;
+          switch (timeFilter) {
+            case 'daily':
+              matchesTime = (year === todayYear && month === todayMonth && day === todayDay);
+              break;
+            case 'weekly': {
+              const startOfWeek = new Date(today);
+              const dayOfWeek = today.getDay();
+              const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+              startOfWeek.setDate(today.getDate() - diff);
+              startOfWeek.setHours(0, 0, 0, 0);
+              const endOfWeek = new Date(startOfWeek);
+              endOfWeek.setDate(startOfWeek.getDate() + 6);
+              endOfWeek.setHours(23, 59, 59, 999);
+              matchesTime = (date >= startOfWeek && date <= endOfWeek);
+              break;
+            }
+            case 'monthly':
+              matchesTime = (year === todayYear && month === todayMonth);
+              break;
+            case 'yearly':
+              matchesTime = (year === todayYear);
+              break;
+            default:
+              matchesTime = true;
           }
-          case 'monthly':
-            matchesTime = (year === todayYear && month === todayMonth);
-            break;
-          case 'yearly':
-            matchesTime = (year === todayYear);
-            break;
-          default:
-            matchesTime = true;
         }
       }
-    }
 
-    return matchesSearch && matchesStatus && matchesTime;
-  });
+      return matchesSearch && matchesStatus && matchesTime;
+    });
 
-  // ===== 9. STATUS BADGE =====
+  // ===== 11. STATUS BADGE =====
   const getStatusBadge = (status) => {
     const statusMap = {
       pending: { label: 'Pending', color: '#ffc107', bg: '#fff3cd' },
@@ -284,7 +343,7 @@ function RestaurantsOrder() {
     );
   };
 
-  // ===== 10. CARD ACTIONS =====
+  // ===== 12. CARD ACTIONS =====
   const CardActions = ({ order }) => {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -350,7 +409,7 @@ function RestaurantsOrder() {
     );
   };
 
-  // ===== 11. DETAIL MODAL =====
+  // ===== 13. DETAIL MODAL =====
   const DetailModal = ({ order, onClose }) => {
     if (!order) return null;
 
@@ -414,7 +473,7 @@ function RestaurantsOrder() {
     );
   };
 
-  // ===== 12. ORDER CARD =====
+  // ===== 14. ORDER CARD =====
   const OrderCard = ({ order }) => {
     const restaurantName = order.restaurant?.name || 'Restaurant';
     const userName = order.user?.name || 'Guest';
@@ -472,7 +531,7 @@ function RestaurantsOrder() {
     );
   };
 
-  // ===== 13. LOADING / ERROR =====
+  // ===== 15. LOADING / ERROR =====
   if (loading && orders.length === 0) {
     return (
       <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
@@ -500,7 +559,7 @@ function RestaurantsOrder() {
     );
   }
 
-  // ===== 14. SUMMARY DATA =====
+  // ===== 16. SUMMARY DATA =====
   const summaryData = [
     { label: 'Total Bookings', count: orders.length, icon: 'bi-box-seam', color: '#0d6efd' },
     { label: 'Pending', count: orders.filter(o => (o.status || '').toLowerCase() === 'pending').length, icon: 'bi-clock-history', color: '#ffc107' },
@@ -509,7 +568,7 @@ function RestaurantsOrder() {
     { label: 'Restaurants', count: new Set(orders.map(o => o.restaurant?.id || o.restaurant?.name)).size || orders.length, icon: 'bi-egg-fried', color: '#6f42c1' },
   ];
 
-  // ===== 15. MAIN RENDER =====
+  // ===== 17. MAIN RENDER =====
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Restaurant Bookings" onThemeChange={handleThemeChange} />
