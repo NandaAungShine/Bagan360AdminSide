@@ -2,12 +2,13 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
+import TravelTodos from './components/TravelTodos';
 import Dashboard from './components/Dashboard';
 import Login from './components/Login';
 import HistoryOfPagodas from './components/HistoryOfPagodas';
 import Hotels from './components/Hotels';
 import Destinations from './components/Destinations';
-import DestinationPlans from './components/Destinationplans';
+import PackagePlan from './components/PackagePlan';          // Add page
 import Restaurants from './components/Restaurants';
 import Cars from './components/Cars';
 import EBikes from './components/EBikes';
@@ -22,17 +23,17 @@ import Reports from './components/Reports';
 import Settings from './components/Settings';
 import Message from './components/Message';
 
-
- import HotelsOrder from './components/HotelsOrder';
- import DestinationsOrder from './components/DestinationsOrder';
- import DestinationPlansOrder from './components/DestinationPlansOrder';
- import RestaurantsOrder from './components/RestaurantsOrder';
-// import CarsOrder from './components/CarsOrder';
- import EBikesOrder from './components/EBikesOrder';
- import TricyclesOrder from './components/TricyclesOrder';
-// import HotAirBalloonsOrder from './components/HotAirBalloonsOrder';
-// import HorseCartsOrder from './components/HorseCartsOrder';
-// import BannerOrder from './components/BannerOrder';
+// ===== Order Components (All Uncommented) =====
+import HotelsOrder from './components/HotelsOrder';
+import DestinationsOrder from './components/DestinationsOrder';
+import PackagePlansOrder from './components/PackagePlansOrder';   // Replaced DestinationPlansOrder
+import RestaurantsOrder from './components/RestaurantsOrder';
+import CarsOrder from './components/CarsOrder';
+import EBikesOrder from './components/EBikesOrder';
+import TricyclesOrder from './components/TricyclesOrder';
+import HotAirBalloonsOrder from './components/HotAirBalloonsOrder';
+import HorseCartsOrder from './components/HorseCartsOrder';
+import BannerOrder from './components/BannerOrder';
 
 import './index.css';
 
@@ -88,15 +89,22 @@ function App() {
           } 
         />
         
-          <Route path="/shop" element={
-  <ProtectedRoute>
-    <MainLayout>
-      <Shop />
-    </MainLayout>
-  </ProtectedRoute>
-} />
+        <Route path="/shop" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <Shop />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
 
         {/* ===== Add Section Routes ===== */}
+        <Route path="/TravelTodos" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <TravelTodos />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
         <Route path="/historyofpagodas" element={
           <ProtectedRoute>
             <MainLayout>
@@ -119,13 +127,14 @@ function App() {
           </ProtectedRoute>
         } />
 
-      <Route path="/destination-plans" element={
+        <Route path="/PackagePlan" element={
           <ProtectedRoute>
             <MainLayout>
-              <DestinationPlans />
+              <PackagePlan />
             </MainLayout>
           </ProtectedRoute>
         } />
+
         <Route path="/restaurants" element={
           <ProtectedRoute>
             <MainLayout>
@@ -176,8 +185,7 @@ function App() {
           </ProtectedRoute>
         } />
         
-        {/* ===== Order Section Routes (Comment ထားတယ်) ===== */}
-        
+        {/* ===== Order Section Routes (All Uncommented) ===== */}
         <Route path="/hotelsorder" element={
           <ProtectedRoute>
             <MainLayout>
@@ -194,10 +202,11 @@ function App() {
           </ProtectedRoute>
         } />
 
-        <Route path="/destinationplansorder" element={
+        {/* Package Plans Order - using PackagePlansOrder */}
+        <Route path="/packageplansorder" element={
           <ProtectedRoute>
             <MainLayout>
-              <DestinationPlansOrder />
+              <PackagePlansOrder />
             </MainLayout>
           </ProtectedRoute>
         } />
@@ -209,7 +218,7 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-          {/*
+
         <Route path="/carsorder" element={
           <ProtectedRoute>
             <MainLayout>
@@ -217,7 +226,7 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-         */}
+
         <Route path="/ebikesorder" element={
           <ProtectedRoute>
             <MainLayout>
@@ -233,7 +242,7 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-          {/*
+
         <Route path="/hotairballoonsorder" element={
           <ProtectedRoute>
             <MainLayout>
@@ -249,6 +258,7 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
+
         <Route path="/bannerorder" element={
           <ProtectedRoute>
             <MainLayout>
@@ -256,8 +266,8 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
-        */}
         
+        {/* ===== Other Management Routes ===== */}
         <Route path="/users" element={
           <ProtectedRoute>
             <MainLayout>

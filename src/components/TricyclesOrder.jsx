@@ -476,7 +476,7 @@ function TricycleOrder() {
 
     return (
       <div className="hotel-card-vertical" style={{ cursor: 'default' }}>
-        <div className="hotel-card-image">
+        <div className="hotel-card-image" style={{ height : '200px'}}>
           <div className="image-slider" style={{ background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '120px' }}>
             <i className="bi bi-calendar-check" style={{ fontSize: '48px', color: '#888' }}></i>
           </div>

@@ -3,16 +3,17 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 function Sidebar() {
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [isOrderOpen, setIsOrderOpen] = useState(false); // Order dropdown state
+  const [isOrderOpen, setIsOrderOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
   // Add ထဲမှာ ထည့်မယ့် စာရင်း
   const addMenuItems = [
+    { name: 'Travel To Do', icon: 'bi-list', path: '/traveltodos' },
     { name: 'History Of Pagodas', icon: 'bi-building', path: '/historyofpagodas' },
     { name: 'Hotels', icon: 'bi-building', path: '/hotels' },
     { name: 'Destinations', icon: 'bi-geo-alt', path: '/destinations' },
-    { name: 'Destination Plans', icon: 'bi-pin-map', path: '/destination-plans' },
+    { name: 'Package Plans', icon: 'bi-pin-map', path: '/destination-plans' },
     { name: 'Restaurants', icon: 'bi-egg-fried', path: '/restaurants' },
     { name: 'Cars', icon: 'bi-car-front', path: '/cars' },
     { name: 'E-Bikes', icon: 'bi-bicycle', path: '/ebikes' },
@@ -22,11 +23,11 @@ function Sidebar() {
     { name: 'Banner', icon: 'bi-image', path: '/banner' },
   ];
 
-  // Order ထဲမှာ ထည့်မယ့် စာရင်း
+  // Order ထဲမှာ ထည့်မယ့် စာရင်း (Destination Plans Order → Package Plans Order)
   const orderMenuItems = [
     { name: 'Hotels Order', icon: 'bi-building', path: '/hotelsorder' },
     { name: 'Destinations Order', icon: 'bi-geo-alt', path: '/destinationsorder' },
-    { name: 'Destination Plans Order', icon: 'bi-pin-map', path: '/destinationPlansOrder'},
+    { name: 'Package Plans Order', icon: 'bi-pin-map', path: '/packageplansorder' },  // <-- ပြောင်းလဲထားတဲ့နေရာ
     { name: 'Restaurants Order', icon: 'bi-egg-fried', path: '/restaurantsorder' },
     { name: 'Cars Order', icon: 'bi-car-front', path: '/carsorder' },
     { name: 'E-Bikes Order', icon: 'bi-bicycle', path: '/ebikesorder' },
@@ -50,10 +51,9 @@ function Sidebar() {
     }
   };
 
-
   return (
     <div className="sidebar-container">
-      {/* Logo Section with Image - No Background */}
+      {/* Logo Section */}
       <div className="logo-section">
         <Link to="/" className="logo-link">
           <img 
@@ -103,7 +103,7 @@ function Sidebar() {
             </Link>
           </li>
 
-          {/* ===== ADD DROPDOWN (ဖြတ်တောက်မခံရအောင် overflow visible ထည့်ထား) ===== */}
+          {/* ===== ADD DROPDOWN ===== */}
           <li className="nav-item" style={{ overflow: 'visible' }}>
             <div className="nav-link justify-between" onClick={() => setIsAddOpen(!isAddOpen)}>
               <div className="flex-items">
@@ -132,7 +132,7 @@ function Sidebar() {
             </ul>
           </li>
 
-          {/* ===== ORDER DROPDOWN (ဖြတ်တောက်မခံရအောင် overflow visible ထည့်ထား) ===== */}
+          {/* ===== ORDER DROPDOWN ===== */}
           <li className="nav-item" style={{ overflow: 'visible' }}>
             <div className="nav-link justify-between" onClick={() => setIsOrderOpen(!isOrderOpen)}>
               <div className="flex-items">

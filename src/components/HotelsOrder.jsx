@@ -327,7 +327,7 @@ function HotelsOrder() {
 
   const OrderCard = ({ order }) => (
     <div className="hotel-card-vertical" style={{ cursor: 'default' }}>
-      <div className="hotel-card-image">
+      <div className="hotel-card-image" style={{ height : '200px'}}>
         <div className="image-slider">
           <img
             src={order.hotel.image || '/default-hotel.jpg'}
