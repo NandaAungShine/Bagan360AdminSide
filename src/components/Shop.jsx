@@ -4,124 +4,104 @@ import Header from './Header';
 
 const API_BASE = 'http://130.94.21.185:8000';
 
-// Possible token and user keys – adjust if your login uses different names
-const TOKEN_KEYS = ['access_token', 'token', 'access', 'auth_token'];
-const USER_KEYS = ['user', 'user_data', 'auth_user'];
-
-// Sample data (fallback)
+// Sample data (fallback) - updated to match API structure
 const SAMPLE_REQUESTS = [
   {
-    id: 1,
-    shop_name: 'Bagan Golden Hotel',
-    owner_name: 'U Kyaw Win',
-    email: 'kyawwin@example.com',
-    phone: '09-12345678',
-    shop_type: 'Hotels',
-    address: 'Old Bagan, Near Ananda Temple',
-    description: 'Luxury hotel with 50 rooms, pool and spa.',
-    status: 'pending',
-    created_at: '2026-07-28T10:30:00Z',
-    documents: ['business_license.png', 'tax_certificate.jpg', 'hotel_photo.webp'],
-  },
-  {
-    id: 2,
-    shop_name: 'Bagan E-Bike Rental',
-    owner_name: 'Daw Mya Mya',
-    email: 'myamya@example.com',
-    phone: '09-87654321',
-    shop_type: 'E-Bikes',
-    address: 'Nyaung U Market',
-    description: 'E-bike rental with 20 bikes, battery charging station.',
-    status: 'pending',
-    created_at: '2026-07-27T14:20:00Z',
-    documents: ['business_license.png'],
-  },
-  {
-    id: 3,
-    shop_name: 'Golden Land Restaurant',
-    owner_name: 'U Maung Maung',
-    email: 'maung@example.com',
-    phone: '09-11223344',
-    shop_type: 'Restaurants',
-    address: 'Main Road, Bagan',
-    description: 'Traditional Myanmar cuisine with sunset view.',
-    status: 'approved',
-    created_at: '2026-07-25T09:15:00Z',
-    documents: ['license.jpeg', 'health_certificate.webp'],
-  },
-  {
-    id: 4,
-    shop_name: 'Bagan Car Rentals',
-    owner_name: 'U Aung Aung',
-    email: 'aung@example.com',
-    phone: '09-99887766',
-    shop_type: 'Cars',
-    address: 'Airport Road, Nyaung U',
-    description: 'Car rental service with 10 vehicles including SUVs.',
-    status: 'rejected',
-    created_at: '2026-07-20T16:45:00Z',
-    documents: ['license.png'],
+    id: 6,
+    user_id: 43,
+    type: 'thonebane',
+    shop_name: 'Thar Sis',
+    shop_address: '163758/B',
+    shop_phone: '09763341727',
+    nrc: '12 / ဒဂတ (N) 099020',
+    image: null,
+    status: 'approved'
   },
   {
     id: 5,
-    shop_name: 'Sunrise Hot Air Balloon',
-    owner_name: 'U Soe Soe',
-    email: 'soe@example.com',
-    phone: '09-55443322',
-    shop_type: 'Hot Air Balloons',
-    address: 'Old Bagan, Near Temple',
-    description: 'Hot air balloon tours with sunrise flights.',
-    status: 'pending',
-    created_at: '2026-07-29T08:10:00Z',
-    documents: ['license.png', 'safety_certificate.jpg'],
+    user_id: 36,
+    type: 'restaurant',
+    shop_name: 'Royal Bagan',
+    shop_address: 'Old Bagan, 12 streets',
+    shop_phone: '09123456789',
+    nrc: '1/TaTaNa(N)123456',
+    image: null,
+    status: 'approved'
   },
   {
-    id: 6,
-    shop_name: 'Bagan Horse Cart Tours',
-    owner_name: 'U Tun Tun',
-    email: 'tun@example.com',
-    phone: '09-66778899',
-    shop_type: 'Horse Carts',
-    address: 'Old Bagan, Archaeological Zone',
-    description: 'Traditional horse cart tours around ancient temples.',
-    status: 'approved',
-    created_at: '2026-07-22T11:30:00Z',
-    documents: ['license.png'],
+    id: 4,
+    user_id: 32,
+    type: 'restaurant',
+    shop_name: 'let eat ',
+    shop_address: 'yangon',
+    shop_phone: '09769361178',
+    nrc: '4 / ပလဝ (N) 177155',
+    image: null,
+    status: 'approved'
   },
+  {
+    id: 3,
+    user_id: 31,
+    type: 'restaurant',
+    shop_name: 'Moe May Moe May',
+    shop_address: '157954/B',
+    shop_phone: '09763341727',
+    nrc: '12 / ဒဂတ (N) 099020',
+    image: null,
+    status: 'approved'
+  },
+  {
+    id: 2,
+    user_id: 15,
+    type: 'hotel',
+    shop_name: 'Bagan Hotel',
+    shop_address: 'Old Bagan, Nyaung U',
+    shop_phone: '09988888888',
+    nrc: '12/lakana(N)308086',
+    image: null,
+    status: 'approved'
+  },
+  {
+    id: 1,
+    user_id: 14,
+    type: 'restaurant',
+    shop_name: 'Bagan Hotel',
+    shop_address: 'Old Bagan, Nyaung U',
+    shop_phone: '09988888888',
+    nrc: '12/lakana(N)308086',
+    image: null,
+    status: 'approved'
+  }
 ];
 
 function Shop() {
-  // ============================================================
-  // 1. AUTHENTICATION STATE
-  // ============================================================
-  const [authToken, setAuthToken] = useState(null);
+  // ===== 1. THEME =====
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const savedTheme = localStorage.getItem('theme');
+    return savedTheme === 'dark';
+  });
+
+  // ===== 2. UI STATES =====
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterType, setFilterType] = useState('all');
+  const [sortById, setSortById] = useState('newest');
+  const [requests, setRequests] = useState([]);
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedRequestForEdit, setSelectedRequestForEdit] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [userRole, setUserRole] = useState(null);
-  const [userShopId, setUserShopId] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [storageDebug, setStorageDebug] = useState({});
 
-  // ============================================================
-  // 2. TOAST & CONFIRM STATES (Alert အစားထိုးရန်)
-  // ============================================================
-  const [toast, setToast] = useState({
-    visible: false,
-    type: 'success',
-    message: '',
-  });
+  // ===== 3. TOAST & CONFIRM =====
+  const [toast, setToast] = useState({ visible: false, type: 'success', message: '' });
   const toastTimeoutRef = useRef(null);
+  const [confirmDialog, setConfirmDialog] = useState({ visible: false, message: '', onConfirm: null });
 
-  const [confirmDialog, setConfirmDialog] = useState({
-    visible: false,
-    message: '',
-    onConfirm: null,
-  });
-
-  // ===== Toast Helper =====
   const showToast = (type, message) => {
-    if (toastTimeoutRef.current) {
-      clearTimeout(toastTimeoutRef.current);
-      toastTimeoutRef.current = null;
-    }
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     setToast({ visible: true, type, message });
     toastTimeoutRef.current = setTimeout(() => {
       setToast(prev => ({ ...prev, visible: false }));
@@ -129,132 +109,44 @@ function Shop() {
     }, 3000);
   };
 
-  // ===== 401 Unauthorized Handler =====
-  const handle401Error = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('token');
-    localStorage.removeItem('access');
-    localStorage.removeItem('auth_token');
-    showToast('error', 'Session expired. Please log in again.');
-    setTimeout(() => {
-      window.location.href = '/login';
-    }, 1500);
-  };
-
-  // ============================================================
-  // 3. UI / DATA STATE
-  // ============================================================
-  const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterType, setFilterType] = useState('all');
-  const [sortById, setSortById] = useState('newest');
-  const [requests, setRequests] = useState([]);
-
-  // Modals
-  const [selectedRequest, setSelectedRequest] = useState(null);
-  const [showDetailModal, setShowDetailModal] = useState(false);
-  const [selectedRequestForEdit, setSelectedRequestForEdit] = useState(null);
-  const [showEditModal, setShowEditModal] = useState(false);
-
-  // Hotel creation modal (admin only)
-  const [showCreateHotelModal, setShowCreateHotelModal] = useState(false);
-  const [hotelForm, setHotelForm] = useState({
-    shop_id: '',
-    name: '',
-    description: '',
-    address: '',
-    phone: '',
-  });
-
-  // Theme
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    const saved = localStorage.getItem('theme');
-    return saved === 'dark';
-  });
-
-  const shopTypes = [
-    'Cars',
-    'Destinations',
-    'E-Bikes',
-    'Horse Carts',
-    'Hot Air Balloons',
-    'Hotels',
-    'Restaurants',
-    'Tricycles',
-  ];
-
-  // ============================================================
-  // 4. THEME HANDLER
-  // ============================================================
+  // ===== 4. THEME HANDLER =====
   const handleThemeChange = (isDark) => {
     setIsDarkMode(isDark);
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
   };
 
   useEffect(() => {
     document.body.className = isDarkMode ? 'dark-mode' : 'light-mode';
-    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  // ============================================================
-  // 5. AUTH DETECTION
-  // ============================================================
-  const detectAuth = () => {
-    let token = null;
-    let tokenKeyUsed = null;
-    for (const key of TOKEN_KEYS) {
-      const val = localStorage.getItem(key);
-      if (val) {
-        token = val;
-        tokenKeyUsed = key;
-        break;
-      }
-    }
+  // ===== 5. AUTH HELPERS =====
+  const getToken = () => localStorage.getItem('token') || localStorage.getItem('access_token');
 
-    let user = null;
-    let userKeyUsed = null;
-    for (const key of USER_KEYS) {
-      const val = localStorage.getItem(key);
-      if (val) {
-        try {
-          user = JSON.parse(val);
-          userKeyUsed = key;
-          break;
-        } catch (e) {
-          console.warn(`Invalid JSON in localStorage key "${key}"`);
-        }
-      }
-    }
-
-    const debug = {
-      tokenKeyUsed,
-      tokenExists: !!token,
-      tokenPreview: token ? token.substring(0, 10) + '…' : null,
-      userKeyUsed,
-      userExists: !!user,
-      role: user?.role || null,
-      shopId: user?.shop?.id || null,
-      allKeys: Object.keys(localStorage).map(k => ({ key: k, value: localStorage.getItem(k)?.substring(0, 30) })),
-    };
-    setStorageDebug(debug);
-    console.log('🔍 Auth detection:', debug);
-
-    return { token, user };
+  const getUser = () => {
+    try {
+      const userStr = localStorage.getItem('user') || localStorage.getItem('user_data');
+      if (userStr) return JSON.parse(userStr);
+    } catch (e) {}
+    return null;
   };
 
-  // ============================================================
-  // 6. INIT
-  // ============================================================
+  const handle401Error = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('user_data');
+    showToast('error', 'Session expired. Please login again.');
+    setTimeout(() => window.location.href = '/login', 1500);
+  };
+
+  // ===== 6. INIT AUTH =====
   const initAuth = () => {
-    const { token, user } = detectAuth();
+    const token = getToken();
+    const user = getUser();
     if (token && user) {
-      setAuthToken(token);
-      setUserRole(user.role);
-      if (user.shop && user.shop.id) {
-        setUserShopId(user.shop.id);
-      }
       setIsLoggedIn(true);
-      fetchRequests(); // fetch with token
+      setUserRole(user.role || 'admin');
+      fetchRequests();
     } else {
       setIsLoggedIn(false);
       setLoading(false);
@@ -266,72 +158,78 @@ function Shop() {
     // eslint-disable-next-line
   }, []);
 
-  // ============================================================
-  // 7. API HELPERS
-  // ============================================================
-  const getToken = () => {
-    for (const key of TOKEN_KEYS) {
-      const val = localStorage.getItem(key);
-      if (val) return val;
-    }
-    return null;
-  };
-
-  // ============================================================
-  // 8. API CALLS
-  // ============================================================
-
-  // 8a. Fetch shop requests
+  // ===== 7. FETCH REQUESTS =====
   const fetchRequests = async () => {
     setLoading(true);
     try {
       const token = getToken();
-      const user = JSON.parse(localStorage.getItem('user') || 'null');
-
       if (!token) {
         setIsLoggedIn(false);
-        throw new Error('No token found. Please log in again.');
+        throw new Error('No token found');
       }
 
-      const role = user?.role;
-      const shopId = user?.shop?.id;
-
-      let url = `${API_BASE}/auth/shop/account/`;
-      if (role !== 'admin' && shopId) {
-        url += `?shop_id=${shopId}`;
-      }
-      console.log('📡 Fetching shop list from:', url);
-
-      const response = await fetch(url, {
+      const response = await fetch(`${API_BASE}/auth/shop/list`, {
         headers: {
-          Authorization: `Bearer ${token}`,
-        },
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
         if (response.status === 401) {
           handle401Error();
           return;
         }
-        console.warn(`API returned ${response.status}. Falling back to sample data.`);
-        setRequests(SAMPLE_REQUESTS);
-        showToast('warning', `Note: Could not fetch from API (${response.status}). Using sample data for demonstration.`);
-        return;
+        throw new Error(`HTTP ${response.status}`);
       }
 
-      const data = await response.json();
-      setRequests(data);
-    } catch (error) {
-      console.error('Fetch error:', error);
-      setRequests(SAMPLE_REQUESTS);
-      showToast('error', `Could not load shop requests from API. Using sample data.\nError: ${error.message}`);
+      const result = await response.json();
+      console.log('✅ Shop API Response:', result);
+
+      let shopData = [];
+      if (result.success && Array.isArray(result.data)) {
+        shopData = result.data;
+      } else if (Array.isArray(result)) {
+        shopData = result;
+      } else {
+        throw new Error('Unexpected API response format');
+      }
+
+      // Map fields to component structure
+      const mapped = shopData.map(item => ({
+        id: item.id,
+        user_id: item.user_id,
+        shop_name: item.shop_name || 'N/A',
+        type: item.type || 'N/A',
+        shop_address: item.shop_address || 'N/A',
+        shop_phone: item.shop_phone || 'N/A',
+        nrc: item.nrc || 'N/A',
+        image: item.image || null,
+        status: item.status || 'pending',
+        // Fallback fields for compatibility
+        owner_name: 'N/A',
+        email: 'N/A',
+        description: '',
+        created_at: null
+      }));
+
+      setRequests(mapped);
+    } catch (err) {
+      console.error('❌ Fetch Error:', err);
+      showToast('error', 'Failed to fetch shop data. Using sample data.');
+      setRequests(SAMPLE_REQUESTS.map(item => ({
+        ...item,
+        owner_name: 'N/A',
+        email: 'N/A',
+        description: '',
+        created_at: null
+      })));
     } finally {
       setLoading(false);
     }
   };
 
-  // 8b. Approve / Reject (Confirm Modal အသုံးပြုရန် ပြောင်းထားပါတယ်)
+  // ===== 8. UPDATE STATUS (Approve / Reject) =====
   const performStatusUpdate = async (requestId, newStatus) => {
     const action = newStatus === 'approved' ? 'Approve' : 'Reject';
     setLoading(true);
@@ -339,26 +237,36 @@ function Shop() {
       const token = getToken();
       if (!token) throw new Error('Not authenticated');
 
-      const endpoint =
-        newStatus === 'approved'
-          ? `${API_BASE}/auth/shop/account/approved/${requestId}`
-          : `${API_BASE}/auth/shop/account/cancelled/${requestId}`;
+      // API endpoint - adjust if your backend uses different path
+      const endpoint = newStatus === 'approved'
+        ? `${API_BASE}/auth/shop/account/approved/${requestId}`
+        : `${API_BASE}/auth/shop/account/cancelled/${requestId}`;
+
       const response = await fetch(endpoint, {
         method: 'PUT',
         headers: {
-          Authorization: `Bearer ${token}`,
-        },
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       });
-      if (!response.ok) throw new Error(`Failed to ${action}`);
-      setRequests((prev) =>
-        prev.map((req) =>
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Failed to ${action}: ${response.status} ${text}`);
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        setRequests(prev => prev.map(req =>
           req.id === requestId ? { ...req, status: newStatus } : req
-        )
-      );
-      showToast('success', `Request ${action}ed successfully!`);
-    } catch (error) {
-      console.error('Status update error:', error);
-      showToast('error', `Error: ${error.message}`);
+        ));
+        showToast('success', `Shop ${action}d successfully!`);
+      } else {
+        throw new Error(result.message || 'Update failed');
+      }
+    } catch (err) {
+      console.error('❌ Status update error:', err);
+      showToast('error', `Error: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -368,12 +276,12 @@ function Shop() {
     const action = newStatus === 'approved' ? 'Approve' : 'Reject';
     setConfirmDialog({
       visible: true,
-      message: `Are you sure you want to ${action} this request?`,
+      message: `Are you sure you want to ${action} this shop?`,
       onConfirm: () => performStatusUpdate(requestId, newStatus)
     });
   };
 
-  // 8c. Delete (Confirm Modal အသုံးပြုရန် ပြောင်းထားပါတယ်)
+  // ===== 9. DELETE =====
   const performDelete = async (id) => {
     setLoading(true);
     try {
@@ -383,15 +291,26 @@ function Shop() {
       const response = await fetch(`${API_BASE}/auth/shop/account/${id}`, {
         method: 'DELETE',
         headers: {
-          Authorization: `Bearer ${token}`,
-        },
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       });
-      if (!response.ok) throw new Error('Failed to delete');
-      setRequests((prev) => prev.filter((req) => req.id !== id));
-      showToast('success', 'Shop request deleted successfully!');
-    } catch (error) {
-      console.error('Delete error:', error);
-      showToast('error', `Error deleting: ${error.message}`);
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Failed to delete: ${response.status} ${text}`);
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        setRequests(prev => prev.filter(req => req.id !== id));
+        showToast('success', 'Shop deleted successfully!');
+      } else {
+        throw new Error(result.message || 'Delete failed');
+      }
+    } catch (err) {
+      console.error('❌ Delete error:', err);
+      showToast('error', `Error: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -400,14 +319,14 @@ function Shop() {
   const handleDelete = (id) => {
     setConfirmDialog({
       visible: true,
-      message: 'Are you sure you want to delete this shop request?',
+      message: 'Are you sure you want to delete this shop?',
       onConfirm: () => performDelete(id)
     });
   };
 
-  // 8d. Edit (Alert များကို Toast ဖြင့် အစားထိုးပါတယ်)
+  // ===== 10. EDIT =====
   const handleEdit = (request) => {
-    setSelectedRequestForEdit(request);
+    setSelectedRequestForEdit({ ...request });
     setShowEditModal(true);
   };
 
@@ -417,124 +336,100 @@ function Shop() {
       const token = getToken();
       if (!token) throw new Error('Not authenticated');
 
-      const response = await fetch(
-        `${API_BASE}/auth/shop/account/${selectedRequestForEdit.id}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(selectedRequestForEdit),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to update');
-      showToast('success', 'Shop request updated successfully!');
-      setShowEditModal(false);
-      setSelectedRequestForEdit(null);
-      fetchRequests();
-    } catch (error) {
-      console.error('Edit error:', error);
-      showToast('error', `Error updating: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 8e. Create Hotel (Alert များကို Toast ဖြင့် အစားထိုးပါတယ်)
-  const handleCreateHotel = async () => {
-    if (!hotelForm.shop_id) {
-      showToast('warning', 'Please select a shop.');
-      return;
-    }
-    setLoading(true);
-    try {
-      const token = getToken();
-      if (!token) throw new Error('Not authenticated');
-
-      const response = await fetch(`${API_BASE}/auth/hotels/`, {
-        method: 'POST',
+      const response = await fetch(`${API_BASE}/auth/shop/account/${selectedRequestForEdit.id}`, {
+        method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify(hotelForm),
+        body: JSON.stringify({
+          shop_name: selectedRequestForEdit.shop_name,
+          shop_address: selectedRequestForEdit.shop_address,
+          shop_phone: selectedRequestForEdit.shop_phone,
+          nrc: selectedRequestForEdit.nrc,
+          type: selectedRequestForEdit.type
+        })
       });
-      if (!response.ok) throw new Error('Failed to create hotel');
-      showToast('success', 'Hotel created successfully!');
-      setShowCreateHotelModal(false);
-      setHotelForm({ shop_id: '', name: '', description: '', address: '', phone: '' });
-    } catch (error) {
-      console.error('Hotel creation error:', error);
-      showToast('error', `Error: ${error.message}`);
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Failed to update: ${response.status} ${text}`);
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        setRequests(prev => prev.map(req =>
+          req.id === selectedRequestForEdit.id ? { ...selectedRequestForEdit } : req
+        ));
+        showToast('success', 'Shop updated successfully!');
+        setShowEditModal(false);
+        setSelectedRequestForEdit(null);
+      } else {
+        throw new Error(result.message || 'Update failed');
+      }
+    } catch (err) {
+      console.error('❌ Edit error:', err);
+      showToast('error', `Error: ${err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // ============================================================
-  // 9. FILTER & SORT (unchanged)
-  // ============================================================
+  // ===== 11. FILTER & SORT =====
   const getSortedRequests = (list) => {
     let result = [...list];
     if (sortById === 'newest') {
       result.sort((a, b) => b.id - a.id);
-    } else if (sortById === 'oldest') {
+    } else {
       result.sort((a, b) => a.id - b.id);
     }
     return result;
   };
 
-  const filteredRequests = requests.filter((req) => {
-    const matchesSearch =
-      req.shop_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.owner_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.phone.includes(searchTerm);
-    const matchesStatus = filterStatus === 'all' || req.status === filterStatus;
-    const matchesType = filterType === 'all' || req.shop_type === filterType;
-    return matchesSearch && matchesStatus && matchesType;
+  const filteredRequests = requests.filter(req => {
+    const search = searchTerm.toLowerCase();
+    const matchSearch =
+      req.shop_name.toLowerCase().includes(search) ||
+      req.shop_address.toLowerCase().includes(search) ||
+      req.type.toLowerCase().includes(search) ||
+      req.shop_phone.includes(searchTerm);
+    const matchStatus = filterStatus === 'all' || req.status === filterStatus;
+    const matchType = filterType === 'all' || req.type === filterType;
+    return matchSearch && matchStatus && matchType;
   });
 
   const finalSortedRequests = getSortedRequests(filteredRequests);
 
-  // ============================================================
-  // 10. STATS
-  // ============================================================
+  // ===== 12. STATS =====
   const stats = {
     total: requests.length,
-    pending: requests.filter((r) => r.status === 'pending').length,
-    approved: requests.filter((r) => r.status === 'approved').length,
-    rejected: requests.filter((r) => r.status === 'rejected').length,
+    pending: requests.filter(r => r.status === 'pending').length,
+    approved: requests.filter(r => r.status === 'approved').length,
+    rejected: requests.filter(r => r.status === 'rejected' || r.status === 'cancelled').length,
   };
 
-  // ============================================================
-  // 11. HELPER RENDER FUNCTIONS (unchanged)
-  // ============================================================
-  const formatDate = (dateStr) => (dateStr ? dateStr.slice(0, 10) : 'N/A');
-
+  // ===== 13. HELPERS =====
   const getStatusBadge = (status) => {
     const map = {
       pending: { label: 'Pending', color: '#ffc107', bg: '#fff3cd' },
       approved: { label: 'Approved', color: '#198754', bg: '#d1e7dd' },
       rejected: { label: 'Rejected', color: '#dc3545', bg: '#f8d7da' },
+      cancelled: { label: 'Cancelled', color: '#dc3545', bg: '#f8d7da' },
     };
     const s = map[status?.toLowerCase()] || { label: status, color: '#6c757d', bg: '#e9ecef' };
     return (
-      <span
-        style={{
-          display: 'inline-block',
-          padding: '4px 14px',
-          borderRadius: '20px',
-          fontSize: '12px',
-          fontWeight: '600',
-          color: s.color,
-          backgroundColor: s.bg,
-          border: `1px solid ${s.color}`,
-          minWidth: '70px',
-          textAlign: 'center',
-        }}
-      >
+      <span style={{
+        display: 'inline-block',
+        padding: '4px 14px',
+        borderRadius: '20px',
+        fontSize: '12px',
+        fontWeight: '600',
+        color: s.color,
+        backgroundColor: s.bg,
+        border: `1px solid ${s.color}`,
+        minWidth: '70px',
+        textAlign: 'center'
+      }}>
         {s.label}
       </span>
     );
@@ -542,31 +437,28 @@ function Shop() {
 
   const getTypeBadge = (type) => {
     const map = {
-      Cars: { color: '#0d6efd', bg: '#cfe2ff' },
-      Destinations: { color: '#6f42c1', bg: '#e2d9f3' },
-      'E-Bikes': { color: '#17a2b8', bg: '#cff4fc' },
-      'Horse Carts': { color: '#fd7e14', bg: '#ffe5d0' },
-      'Hot Air Balloons': { color: '#dc3545', bg: '#f8d7da' },
-      Hotels: { color: '#198754', bg: '#d1e7dd' },
-      Restaurants: { color: '#d63384', bg: '#f5d4e1' },
-      Tricycles: { color: '#6c757d', bg: '#e9ecef' },
+      hotel: { color: '#0d6efd', bg: '#cfe2ff' },
+      restaurant: { color: '#d63384', bg: '#f5d4e1' },
+      thonebane: { color: '#17a2b8', bg: '#cff4fc' },
+      car: { color: '#fd7e14', bg: '#ffe5d0' },
+      ebike: { color: '#198754', bg: '#d1e7dd' },
+      balloon: { color: '#dc3545', bg: '#f8d7da' },
+      horsecart: { color: '#6f42c1', bg: '#e2d9f3' },
     };
-    const s = map[type] || { color: '#6c757d', bg: '#e9ecef' };
+    const s = map[type?.toLowerCase()] || { color: '#6c757d', bg: '#e9ecef' };
     return (
-      <span
-        style={{
-          display: 'inline-block',
-          padding: '4px 14px',
-          borderRadius: '20px',
-          fontSize: '12px',
-          fontWeight: '600',
-          color: s.color,
-          backgroundColor: s.bg,
-          border: `1px solid ${s.color}`,
-          minWidth: '70px',
-          textAlign: 'center',
-        }}
-      >
+      <span style={{
+        display: 'inline-block',
+        padding: '4px 14px',
+        borderRadius: '20px',
+        fontSize: '12px',
+        fontWeight: '600',
+        color: s.color,
+        backgroundColor: s.bg,
+        border: `1px solid ${s.color}`,
+        minWidth: '70px',
+        textAlign: 'center'
+      }}>
         {type}
       </span>
     );
@@ -574,137 +466,56 @@ function Shop() {
 
   const getTypeIcon = (type) => {
     const map = {
-      Cars: 'bi-car-front',
-      Destinations: 'bi-geo-alt',
-      'E-Bikes': 'bi-bicycle',
-      'Horse Carts': 'bi-truck',
-      'Hot Air Balloons': 'bi-balloon',
-      Hotels: 'bi-building',
-      Restaurants: 'bi-egg-fried',
-      Tricycles: 'bi-truck',
+      hotel: 'bi-building',
+      restaurant: 'bi-egg-fried',
+      thonebane: 'bi-shop',
+      car: 'bi-car-front',
+      ebike: 'bi-bicycle',
+      balloon: 'bi-balloon',
+      horsecart: 'bi-truck',
     };
-    return map[type] || 'bi-shop';
+    return map[type?.toLowerCase()] || 'bi-shop';
   };
 
-  // ============================================================
-  // 12. RENDER: NOT LOGGED IN (with debug)
-  // ============================================================
+  // ===== 14. NOT LOGGED IN =====
   if (!isLoggedIn) {
     return (
       <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
-        <Header title="Shop Requests Management" onThemeChange={handleThemeChange} />
-        <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+        <Header title="Shop Management" onThemeChange={handleThemeChange} />
+        <div style={{ textAlign: 'center', padding: '50px 20px' }}>
           <i className="bi bi-lock" style={{ fontSize: '48px', color: '#dc3545' }}></i>
-          <h2 style={{ marginTop: '20px' }}>Please Log In</h2>
-          <p style={{ color: 'var(--text-secondary)' }}>
-            You need to be logged in to view shop requests.
-          </p>
-
-          <div
-            style={{
-              background: isDarkMode ? '#2d2d2d' : '#f8f9fa',
-              padding: '15px',
-              borderRadius: '12px',
-              maxWidth: '600px',
-              margin: '20px auto',
-              textAlign: 'left',
-              fontSize: '14px',
-              border: '1px solid #dee2e6',
-            }}
+          <h2>Please Log In</h2>
+          <p>You need to be logged in to manage shops.</p>
+          <button
+            className="btn btn-primary"
+            style={{ padding: '10px 30px', borderRadius: '40px', border: 'none', background: '#0d6efd', color: '#fff' }}
+            onClick={() => window.location.href = '/login'}
           >
-            <h4 style={{ marginTop: 0 }}>🔍 Debug Info</h4>
-            <p><strong>Token found?</strong> {storageDebug.tokenExists ? '✅ Yes' : '❌ No'}</p>
-            {storageDebug.tokenKeyUsed && (
-              <p><strong>Token key used:</strong> <code>{storageDebug.tokenKeyUsed}</code></p>
-            )}
-            {storageDebug.tokenPreview && (
-              <p><strong>Token preview:</strong> <code>{storageDebug.tokenPreview}</code></p>
-            )}
-            <p><strong>User found?</strong> {storageDebug.userExists ? '✅ Yes' : '❌ No'}</p>
-            {storageDebug.userKeyUsed && (
-              <p><strong>User key used:</strong> <code>{storageDebug.userKeyUsed}</code></p>
-            )}
-            {storageDebug.role && <p><strong>Role:</strong> {storageDebug.role}</p>}
-            {storageDebug.shopId && <p><strong>Shop ID:</strong> {storageDebug.shopId}</p>}
-            <hr />
-            <p><strong>All localStorage keys:</strong></p>
-            <ul style={{ maxHeight: '150px', overflow: 'auto', paddingLeft: '20px' }}>
-              {storageDebug.allKeys?.map((item, idx) => (
-                <li key={idx}>
-                  <code>{item.key}</code> → <code>{item.value || '(empty)'}</code>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button
-              className="btn btn-primary"
-              style={{
-                padding: '10px 30px',
-                borderRadius: '40px',
-                border: 'none',
-                background: '#0d6efd',
-                color: '#fff',
-                fontWeight: '500',
-              }}
-              onClick={() => (window.location.href = '/login')}
-            >
-              Go to Login
-            </button>
-            <button
-              className="btn btn-secondary"
-              style={{
-                padding: '10px 30px',
-                borderRadius: '40px',
-                border: '1px solid #6c757d',
-                background: 'transparent',
-                color: 'var(--text-color)',
-                fontWeight: '500',
-              }}
-              onClick={() => {
-                initAuth();
-              }}
-            >
-              Refresh
-            </button>
-          </div>
-
-          <p style={{ marginTop: '30px', fontSize: '14px', color: '#6c757d' }}>
-            Expected token keys: <code>{TOKEN_KEYS.join(', ')}</code>
-            <br />
-            Expected user keys: <code>{USER_KEYS.join(', ')}</code>
-          </p>
+            Go to Login
+          </button>
         </div>
       </div>
     );
   }
 
-  // ============================================================
-  // 13. LOADING SCREEN
-  // ============================================================
   if (loading && requests.length === 0) {
     return (
       <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
-        <Header title="Shop Requests Management" onThemeChange={handleThemeChange} />
+        <Header title="Shop Management" onThemeChange={handleThemeChange} />
         <div style={{ textAlign: 'center', padding: '50px' }}>
-          <div className="spinner-border" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-          <p>Loading shop requests...</p>
+          <div className="spinner-border" role="status"><span className="visually-hidden">Loading...</span></div>
+          <p>Loading shops...</p>
         </div>
       </div>
     );
   }
 
-  // ============================================================
-  // 14. MAIN RENDER (logged in)
-  // ============================================================
+  // ===== 15. MAIN RENDER =====
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
-      <Header title="Shop Requests Management" onThemeChange={handleThemeChange} />
+      <Header title="Shop Management" onThemeChange={handleThemeChange} />
 
-      {/* 🟢 Screen အလယ် Toast Alert UI */}
+      {/* TOAST */}
       {toast.visible && (
         <div style={{
           position: 'fixed',
@@ -715,306 +526,149 @@ function Shop() {
           width: '420px',
           maxWidth: '90%',
           borderRadius: '16px',
-          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+          boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
           padding: '0',
           overflow: 'hidden',
-          backgroundColor: toast.type === 'success' ? (isDarkMode ? '#1e3a2e' : '#d4edda') : toast.type === 'error' ? (isDarkMode ? '#3e1f1f' : '#f8d7da') : toast.type === 'warning' ? (isDarkMode ? '#3d3512' : '#fff3cd') : (isDarkMode ? '#112b3c' : '#d1ecf1'),
-          color: toast.type === 'success' ? (isDarkMode ? '#b7eb8f' : '#155724') : toast.type === 'error' ? (isDarkMode ? '#ffa39e' : '#721c24') : toast.type === 'warning' ? (isDarkMode ? '#ffe58f' : '#856404') : (isDarkMode ? '#91d5ff' : '#0c5460'),
-          borderLeft: `5px solid ${toast.type === 'success' ? (isDarkMode ? '#52c41a' : '#28a745') : toast.type === 'error' ? (isDarkMode ? '#ff4d4f' : '#dc3545') : toast.type === 'warning' ? (isDarkMode ? '#faad14' : '#ffc107') : (isDarkMode ? '#1890ff' : '#17a2b8')}`
+          backgroundColor: toast.type === 'success' ? (isDarkMode ? '#1e3a2e' : '#d4edda') : '#f8d7da',
+          color: toast.type === 'success' ? (isDarkMode ? '#b7eb8f' : '#155724') : '#721c24',
+          borderLeft: `5px solid ${toast.type === 'success' ? (isDarkMode ? '#52c41a' : '#28a745') : '#dc3545'}`
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
             <div style={{ fontWeight: 'bold', fontSize: '16px' }}>Bagan 360</div>
-            <button onClick={() => { if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); setToast({ ...toast, visible: false }); }} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: '18px', cursor: 'pointer', opacity: 0.7, padding: '0 4px' }}>
+            <button onClick={() => { if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); setToast({ ...toast, visible: false }); }} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: '18px', cursor: 'pointer' }}>
               <i className="bi bi-x-lg"></i>
             </button>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', padding: '20px' }}>
-            <div style={{ fontSize: '28px' }}>
-              {toast.type === 'success' && <i className="bi bi-check-circle-fill"></i>}
-              {toast.type === 'error' && <i className="bi bi-x-circle-fill"></i>}
-              {toast.type === 'warning' && <i className="bi bi-exclamation-triangle-fill"></i>}
-              {toast.type === 'info' && <i className="bi bi-info-circle-fill"></i>}
-            </div>
+            <div style={{ fontSize: '28px' }}>{toast.type === 'success' ? <i className="bi bi-check-circle-fill"></i> : <i className="bi bi-x-circle-fill"></i>}</div>
             <div style={{ fontSize: '15px', lineHeight: '1.5' }}>{toast.message}</div>
           </div>
         </div>
       )}
 
-      {/* 🟢 Screen အလယ် Custom Confirm Modal (Alert အစားထိုးရန်) */}
+      {/* CONFIRM DIALOG */}
       {confirmDialog.visible && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: isDarkMode ? '#2d2d2d' : '#fff', padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%', boxShadow: '0 15px 40px rgba(0,0,0,0.2)' }}>
-            <h3 style={{ color: isDarkMode ? '#eee' : '#333', marginBottom: '12px' }}>Confirm Action</h3>
+          <div style={{ background: isDarkMode ? '#2d2d2d' : '#fff', padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%' }}>
+            <h3 style={{ color: isDarkMode ? '#eee' : '#333' }}>Confirm Action</h3>
             <p style={{ color: isDarkMode ? '#ccc' : '#555' }}>{confirmDialog.message}</p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
               <button onClick={() => setConfirmDialog({ ...confirmDialog, visible: false })} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', background: 'transparent', cursor: 'pointer', color: isDarkMode ? '#ccc' : '#333' }}>Cancel</button>
-              <button onClick={() => { if(confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({ ...confirmDialog, visible: false }); }} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc3545', color: '#fff', cursor: 'pointer' }}>Confirm</button>
+              <button onClick={() => { if (confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({ ...confirmDialog, visible: false }); }} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc3545', color: '#fff', cursor: 'pointer' }}>Confirm</button>
             </div>
           </div>
         </div>
       )}
 
-      <style>{`
-        .stat-cards-row { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
-        .stat-card { flex: 1; min-width: 120px; background: #2d2d2d; border-radius: 12px; padding: 15px 20px; display: flex; align-items: center; gap: 12px; border: 1px solid #444; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
-        .stat-icon { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px; flex-shrink: 0; }
-        .stat-info h4 { color: #fff; font-size: 18px; margin: 0; font-weight: bold; }
-        .stat-info p { color: #bbb; font-size: 12px; margin: 0; font-weight: 500; }
-        .search-filter-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
-        .search-bar-wrapper { flex: 1; min-width: 200px; position: relative; }
-        .search-input-full { width: 100%; padding: 8px 15px 8px 35px; border-radius: 40px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-color); font-size: 0.9rem; }
-        .search-input-full:focus { outline: none; border-color: #0d6efd; box-shadow: 0 0 0 2px rgba(13,110,253,0.25); }
-        .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #6c757d; }
-        .filter-select { padding: 8px 12px; border-radius: 40px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-color); font-size: 0.9rem; min-width: 130px; }
-        .table-wrapper { overflow-x: auto; background: var(--card-bg); border-radius: 16px; padding: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-        .shop-table { width: 100%; border-collapse: collapse; min-width: 900px; }
-        .shop-table th { text-align: left; padding: 12px 16px; background: var(--header-bg); color: var(--text-color); font-weight: 600; font-size: 13px; border-bottom: 2px solid var(--border-color); text-transform: uppercase; letter-spacing: 0.3px; }
-        .shop-table td { padding: 12px 16px; border-bottom: 1px solid var(--border-color); color: var(--text-color); font-size: 14px; vertical-align: middle; }
-        .shop-table tr:hover td { background: var(--hover-bg); }
-        .shop-cell { display: flex; align-items: center; gap: 10px; }
-        .shop-icon { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--icon-bg); color: var(--icon-color); font-size: 16px; flex-shrink: 0; }
-        .shop-name { font-weight: 600; font-size: 14px; }
-        .shop-owner { font-size: 12px; color: var(--text-secondary); }
-        .contact-email { font-size: 13px; }
-        .contact-phone { font-size: 12px; color: var(--text-secondary); }
-        .actions-cell { display: flex; gap: 4px; flex-wrap: wrap; }
-        .action-btn-icon { width: 32px; height: 32px; border: none; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; font-size: 14px; }
-        .action-btn-icon.approve { color: #198754; background: rgba(25, 135, 84, 0.1); }
-        .action-btn-icon.approve:hover { background: #198754; color: #fff; }
-        .action-btn-icon.reject { color: #dc3545; background: rgba(220, 53, 69, 0.1); }
-        .action-btn-icon.reject:hover { background: #dc3545; color: #fff; }
-        .action-btn-icon.view { color: #6f42c1; background: rgba(111, 66, 193, 0.1); }
-        .action-btn-icon.view:hover { background: #6f42c1; color: #fff; }
-        .action-btn-icon.edit { color: #0d6efd; background: rgba(13, 110, 253, 0.1); }
-        .action-btn-icon.edit:hover { background: #0d6efd; color: #fff; }
-        .action-btn-icon.delete { color: #dc3545; background: rgba(220, 53, 69, 0.1); }
-        .action-btn-icon.delete:hover { background: #dc3545; color: #fff; }
-        .dark-theme .stat-card { background: #2d2d2d; border-color: #444; }
-        .dark-theme .shop-table th { background: #1a1a1a; border-color: #333; }
-        .dark-theme .shop-table td { border-color: #333; }
-        .dark-theme .shop-table tr:hover td { background: #2a2a2a; }
-        .dark-theme .shop-icon { background: #3d3d3d; color: #ddd; }
-        .dark-theme .stat-info h4 { color: #fff; }
-        .dark-theme .stat-info p { color: #bbb; }
-        .light-theme .stat-card { background: #ffffff; border-color: #e9ecef; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-        .light-theme .stat-info h4 { color: #212529; }
-        .light-theme .stat-info p { color: #6c757d; }
-        .light-theme .shop-table th { background: #f8f9fa; border-color: #dee2e6; }
-        .light-theme .shop-table td { border-color: #f0f0f0; }
-        .light-theme .shop-table tr:hover td { background: #f8f9fa; }
-        .light-theme .shop-icon { background: #e9ecef; color: #495057; }
-        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 10000; }
-        .modal-content { background: var(--card-bg); border-radius: 24px; padding: 0; max-width: 90%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 40px rgba(0,0,0,0.2); z-index: 10001; }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid var(--border-color); }
-        .modal-header h2 { margin: 0; font-size: 20px; }
-        .close-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-color); }
-        .modal-body { padding: 24px; }
-        .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 10px; }
-        .discard-btn { padding: 8px 20px; border-radius: 8px; border: 1px solid var(--border-color); background: transparent; color: var(--text-color); cursor: pointer; }
-        .add-item-btn { padding: 8px 24px; border-radius: 8px; border: none; background: #0d6efd; color: #fff; cursor: pointer; }
-        .add-item-btn:hover { background: #0b5ed7; }
-        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .detail-grid .full-width { grid-column: 1 / -1; }
-        .detail-grid strong { display: inline-block; min-width: 120px; font-weight: 600; }
-        .doc-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
-        .doc-item { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 12px; background: var(--icon-bg); color: var(--text-color); font-size: 13px; border: 1px solid var(--border-color); }
-        .doc-item i { font-size: 16px; }
-        .doc-item .file-icon-image { color: #198754; }
-        .doc-item .file-icon-pdf { color: #dc3545; }
-        @media (max-width: 768px) { .detail-grid { grid-template-columns: 1fr; } .stat-card { min-width: 80px; padding: 10px 14px; } .filter-select { min-width: 100px; } }
-      `}</style>
-
-      {/* ===== STAT CARDS ===== */}
-      <div className="stat-cards-row">
-        <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: '#0d6efd' }}>
-            <i className="bi bi-box-seam"></i>
-          </div>
-          <div className="stat-info">
-            <h4>{stats.total}</h4>
-            <p>Total Requests</p>
-          </div>
+      {/* STATS CARDS */}
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <div className="stat-card" style={{ flex: 1, minWidth: '120px', background: '#2d2d2d', borderRadius: '12px', padding: '15px 20px', display: 'flex', alignItems: 'center', gap: '12px', border: '1px solid #444' }}>
+          <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: '#0d6efd', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '18px' }}><i className="bi bi-box-seam"></i></div>
+          <div><h4 style={{ color: '#fff', margin: 0 }}>{stats.total}</h4><p style={{ color: '#bbb', margin: 0, fontSize: '12px' }}>Total Shops</p></div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: '#ffc107' }}>
-            <i className="bi bi-clock-history"></i>
-          </div>
-          <div className="stat-info">
-            <h4>{stats.pending}</h4>
-            <p>Pending</p>
-          </div>
+        <div className="stat-card" style={{ flex: 1, minWidth: '120px', background: '#2d2d2d', borderRadius: '12px', padding: '15px 20px', display: 'flex', alignItems: 'center', gap: '12px', border: '1px solid #444' }}>
+          <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: '#ffc107', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '18px' }}><i className="bi bi-clock-history"></i></div>
+          <div><h4 style={{ color: '#fff', margin: 0 }}>{stats.pending}</h4><p style={{ color: '#bbb', margin: 0, fontSize: '12px' }}>Pending</p></div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: '#198754' }}>
-            <i className="bi bi-check-circle"></i>
-          </div>
-          <div className="stat-info">
-            <h4>{stats.approved}</h4>
-            <p>Approved</p>
-          </div>
+        <div className="stat-card" style={{ flex: 1, minWidth: '120px', background: '#2d2d2d', borderRadius: '12px', padding: '15px 20px', display: 'flex', alignItems: 'center', gap: '12px', border: '1px solid #444' }}>
+          <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: '#198754', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '18px' }}><i className="bi bi-check-circle"></i></div>
+          <div><h4 style={{ color: '#fff', margin: 0 }}>{stats.approved}</h4><p style={{ color: '#bbb', margin: 0, fontSize: '12px' }}>Approved</p></div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: '#dc3545' }}>
-            <i className="bi bi-x-circle"></i>
-          </div>
-          <div className="stat-info">
-            <h4>{stats.rejected}</h4>
-            <p>Rejected</p>
-          </div>
+        <div className="stat-card" style={{ flex: 1, minWidth: '120px', background: '#2d2d2d', borderRadius: '12px', padding: '15px 20px', display: 'flex', alignItems: 'center', gap: '12px', border: '1px solid #444' }}>
+          <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: '#dc3545', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '18px' }}><i className="bi bi-x-circle"></i></div>
+          <div><h4 style={{ color: '#fff', margin: 0 }}>{stats.rejected}</h4><p style={{ color: '#bbb', margin: 0, fontSize: '12px' }}>Rejected</p></div>
         </div>
       </div>
 
-      {/* ===== SEARCH, FILTER, SORT, and ADMIN ACTIONS ===== */}
-      <div className="search-filter-row">
-        <div className="search-bar-wrapper">
-          <i className="bi bi-search search-icon"></i>
-          <input
-            type="text"
-            placeholder="Search by shop name, owner or email..."
-            className="search-input-full"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+      {/* SEARCH & FILTER */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="search-bar-wrapper" style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
+          <i className="bi bi-search search-icon" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#6c757d' }}></i>
+          <input type="text" placeholder="Search by shop name, address, type..." className="search-input-full" style={{ width: '100%', padding: '8px 15px 8px 35px', borderRadius: '40px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: '0.9rem' }} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
-        <select
-          className="filter-select"
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-        >
+        <select className="filter-select" style={{ padding: '8px 12px', borderRadius: '40px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: '0.9rem', minWidth: '130px' }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
           <option value="all">All Status</option>
           <option value="pending">Pending</option>
           <option value="approved">Approved</option>
           <option value="rejected">Rejected</option>
+          <option value="cancelled">Cancelled</option>
         </select>
-        <select
-          className="filter-select"
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value)}
-        >
+        <select className="filter-select" style={{ padding: '8px 12px', borderRadius: '40px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: '0.9rem', minWidth: '130px' }} value={filterType} onChange={(e) => setFilterType(e.target.value)}>
           <option value="all">All Types</option>
-          {shopTypes.map((type) => (
-            <option key={type} value={type}>
-              {type}
-            </option>
-          ))}
+          <option value="hotel">Hotel</option>
+          <option value="restaurant">Restaurant</option>
+          <option value="thonebane">Thonebane</option>
+          <option value="car">Car</option>
+          <option value="ebike">E-Bike</option>
+          <option value="balloon">Balloon</option>
+          <option value="horsecart">Horse Cart</option>
         </select>
-        <select
-          className="filter-select"
-          value={sortById}
-          onChange={(e) => setSortById(e.target.value)}
-        >
+        <select className="filter-select" style={{ padding: '8px 12px', borderRadius: '40px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: '0.9rem', minWidth: '130px' }} value={sortById} onChange={(e) => setSortById(e.target.value)}>
           <option value="newest">Newest First</option>
           <option value="oldest">Oldest First</option>
         </select>
-
-        {userRole === 'admin' && (
-          <button
-            className="btn btn-primary"
-            style={{
-              padding: '8px 20px',
-              borderRadius: '40px',
-              border: 'none',
-              background: '#0d6efd',
-              color: '#fff',
-              fontWeight: '500',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-            onClick={() => setShowCreateHotelModal(true)}
-          >
-            <i className="bi bi-plus-circle"></i> Create Hotel
-          </button>
-        )}
       </div>
 
-      {/* ===== TABLE ===== */}
-      <div className="table-wrapper">
-        <table className="shop-table">
+      {/* TABLE */}
+      <div style={{ overflowX: 'auto', background: 'var(--card-bg)', borderRadius: '16px', padding: '0', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
           <thead>
             <tr>
-              <th>#</th>
-              <th>Shop</th>
-              <th>Contact</th>
-              <th>Type</th>
-              <th>Status</th>
-              <th>Date</th>
-              <th>Actions</th>
+              <th style={{ textAlign: 'left', padding: '12px 16px', background: 'var(--header-bg)', color: 'var(--text-color)', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid var(--border-color)' }}>#</th>
+              <th style={{ textAlign: 'left', padding: '12px 16px', background: 'var(--header-bg)', color: 'var(--text-color)', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid var(--border-color)' }}>Shop</th>
+              <th style={{ textAlign: 'left', padding: '12px 16px', background: 'var(--header-bg)', color: 'var(--text-color)', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid var(--border-color)' }}>Type</th>
+              <th style={{ textAlign: 'left', padding: '12px 16px', background: 'var(--header-bg)', color: 'var(--text-color)', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid var(--border-color)' }}>Phone</th>
+              <th style={{ textAlign: 'left', padding: '12px 16px', background: 'var(--header-bg)', color: 'var(--text-color)', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid var(--border-color)' }}>Status</th>
+              <th style={{ textAlign: 'left', padding: '12px 16px', background: 'var(--header-bg)', color: 'var(--text-color)', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid var(--border-color)' }}>Address</th>
+              <th style={{ textAlign: 'center', padding: '12px 16px', background: 'var(--header-bg)', color: 'var(--text-color)', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid var(--border-color)' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {finalSortedRequests.length > 0 ? (
               finalSortedRequests.map((req, index) => (
                 <tr key={req.id}>
-                  <td>{index + 1}</td>
-                  <td>
-                    <div className="shop-cell">
-                      <div className="shop-icon">
-                        <i className={getTypeIcon(req.shop_type)}></i>
+                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-color)', fontSize: '14px' }}>{index + 1}</td>
+                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-color)', fontSize: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--icon-bg)', color: 'var(--icon-color)', fontSize: '16px', flexShrink: 0 }}>
+                        <i className={getTypeIcon(req.type)}></i>
                       </div>
                       <div>
-                        <div className="shop-name">{req.shop_name}</div>
-                        <div className="shop-owner">{req.owner_name}</div>
+                        <div style={{ fontWeight: 600, fontSize: '14px' }}>{req.shop_name}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>ID: {req.id}</div>
                       </div>
                     </div>
                   </td>
-                  <td>
-                    <div className="contact-email">{req.email}</div>
-                    <div className="contact-phone">{req.phone}</div>
-                  </td>
-                  <td>{getTypeBadge(req.shop_type)}</td>
-                  <td>{getStatusBadge(req.status)}</td>
-                  <td style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                    {formatDate(req.created_at)}
-                  </td>
-                  <td className="actions-cell">
-                    {req.status === 'pending' && userRole === 'admin' && (
-                      <>
-                        <button
-                          className="action-btn-icon approve"
-                          title="Approve"
-                          onClick={() => updateRequestStatus(req.id, 'approved')}
-                        >
-                          <i className="bi bi-check-lg"></i>
-                        </button>
-                        <button
-                          className="action-btn-icon reject"
-                          title="Reject"
-                          onClick={() => updateRequestStatus(req.id, 'rejected')}
-                        >
-                          <i className="bi bi-x-lg"></i>
-                        </button>
-                      </>
-                    )}
-                    <button
-                      className="action-btn-icon view"
-                      title="View Details"
-                      onClick={() => {
-                        setSelectedRequest(req);
-                        setShowDetailModal(true);
-                      }}
-                    >
-                      <i className="bi bi-eye"></i>
-                    </button>
-                    {(userRole === 'admin' ||
-                      (userRole === 'shop_owner' && userShopId === req.id)) && (
-                      <button
-                        className="action-btn-icon edit"
-                        title="Edit"
-                        onClick={() => handleEdit(req)}
-                      >
-                        <i className="bi bi-pencil-square"></i>
+                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-color)', fontSize: '14px' }}>{getTypeBadge(req.type)}</td>
+                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-color)', fontSize: '14px' }}>{req.shop_phone}</td>
+                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-color)', fontSize: '14px' }}>{getStatusBadge(req.status)}</td>
+                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-color)', fontSize: '14px' }}>{req.shop_address}</td>
+                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-color)', fontSize: '14px', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                      {req.status === 'pending' && userRole === 'admin' && (
+                        <>
+                          <button className="action-btn-icon approve" title="Approve" onClick={() => updateRequestStatus(req.id, 'approved')} style={{ width: '32px', height: '32px', border: 'none', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', fontSize: '14px', color: '#198754', background: 'rgba(25, 135, 84, 0.1)' }}>
+                            <i className="bi bi-check-lg"></i>
+                          </button>
+                          <button className="action-btn-icon reject" title="Reject" onClick={() => updateRequestStatus(req.id, 'rejected')} style={{ width: '32px', height: '32px', border: 'none', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', fontSize: '14px', color: '#dc3545', background: 'rgba(220, 53, 69, 0.1)' }}>
+                            <i className="bi bi-x-lg"></i>
+                          </button>
+                        </>
+                      )}
+                      <button className="action-btn-icon view" title="View Details" onClick={() => { setSelectedRequest(req); setShowDetailModal(true); }} style={{ width: '32px', height: '32px', border: 'none', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', fontSize: '14px', color: '#6f42c1', background: 'rgba(111, 66, 193, 0.1)' }}>
+                        <i className="bi bi-eye"></i>
                       </button>
-                    )}
-                    {userRole === 'admin' && (
-                      <button
-                        className="action-btn-icon delete"
-                        title="Delete"
-                        onClick={() => handleDelete(req.id)}
-                      >
-                        <i className="bi bi-trash"></i>
-                      </button>
-                    )}
+                      {(userRole === 'admin') && (
+                        <>
+                          <button className="action-btn-icon edit" title="Edit" onClick={() => handleEdit(req)} style={{ width: '32px', height: '32px', border: 'none', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', fontSize: '14px', color: '#0d6efd', background: 'rgba(13, 110, 253, 0.1)' }}>
+                            <i className="bi bi-pencil-square"></i>
+                          </button>
+                          <button className="action-btn-icon delete" title="Delete" onClick={() => handleDelete(req.id)} style={{ width: '32px', height: '32px', border: 'none', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', fontSize: '14px', color: '#dc3545', background: 'rgba(220, 53, 69, 0.1)' }}>
+                            <i className="bi bi-trash"></i>
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))
@@ -1022,7 +676,7 @@ function Shop() {
               <tr>
                 <td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
                   <i className="bi bi-inbox" style={{ fontSize: '32px', display: 'block', marginBottom: '8px' }}></i>
-                  No shop requests found
+                  No shops found
                 </td>
               </tr>
             )}
@@ -1030,67 +684,41 @@ function Shop() {
         </table>
       </div>
 
-      {/* ===== DETAIL MODAL ===== */}
+      {/* DETAIL MODAL */}
       {showDetailModal && selectedRequest && (
-        <div className="modal-overlay" onClick={() => setShowDetailModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
-            <div className="modal-header">
-              <h2><i className="bi bi-shop"></i> Shop Details</h2>
-              <button className="close-btn" onClick={() => setShowDetailModal(false)}>
+        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }} onClick={() => setShowDetailModal(false)}>
+          <div className="modal-content" style={{ background: 'var(--card-bg)', borderRadius: '24px', padding: '0', maxWidth: '35%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', zIndex: 10001 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid var(--border-color)' }}>
+              <h2 style={{ margin: 0, fontSize: '20px' }}><i className="bi bi-shop"></i> Shop Details</h2>
+              <button className="close-btn" style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: 'var(--text-color)' }} onClick={() => setShowDetailModal(false)}>
                 <i className="bi bi-x-lg"></i>
               </button>
             </div>
-            <div className="modal-body">
-              <div className="detail-grid">
+            <div className="modal-body" style={{ padding: '24px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div><strong>Shop Name:</strong> {selectedRequest.shop_name}</div>
-                <div><strong>Owner:</strong> {selectedRequest.owner_name}</div>
-                <div><strong>Email:</strong> {selectedRequest.email}</div>
-                <div><strong>Phone:</strong> {selectedRequest.phone}</div>
-                <div><strong>Type:</strong> {getTypeBadge(selectedRequest.shop_type)}</div>
+                <div><strong>Type:</strong> {getTypeBadge(selectedRequest.type)}</div>
+                <div><strong>Phone:</strong> {selectedRequest.shop_phone}</div>
                 <div><strong>Status:</strong> {getStatusBadge(selectedRequest.status)}</div>
-                <div className="full-width"><strong>Address:</strong> {selectedRequest.address}</div>
-                <div className="full-width"><strong>Created:</strong> {formatDate(selectedRequest.created_at)}</div>
-                {selectedRequest.documents && selectedRequest.documents.length > 0 && (
-                  <div className="full-width">
-                    <strong>Documents:</strong>
-                    <div className="doc-list">
-                      {selectedRequest.documents.map((doc, idx) => {
-                        const ext = doc.split('.').pop().toLowerCase();
-                        const isImage = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico'].includes(ext);
-                        return (
-                          <span key={idx} className="doc-item">
-                            <i className={isImage ? 'bi bi-file-image file-icon-image' : 'bi bi-file-pdf file-icon-pdf'}></i>
-                            {doc}
-                          </span>
-                        );
-                      })}
-                    </div>
+                <div style={{ gridColumn: '1 / -1' }}><strong>Address:</strong> {selectedRequest.shop_address}</div>
+                <div><strong>NRC:</strong> {selectedRequest.nrc}</div>
+                <div><strong>User ID:</strong> {selectedRequest.user_id}</div>
+                {selectedRequest.image && (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <strong>Image:</strong><br />
+                    <img src={selectedRequest.image} alt="Shop" style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '8px', marginTop: '5px' }} />
                   </div>
                 )}
               </div>
             </div>
-            <div className="modal-footer">
-              <button className="discard-btn" onClick={() => setShowDetailModal(false)}>Close</button>
+            <div className="modal-footer" style={{ padding: '16px 24px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button className="discard-btn" style={{ padding: '8px 20px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-color)', cursor: 'pointer' }} onClick={() => setShowDetailModal(false)}>Close</button>
               {selectedRequest.status === 'pending' && userRole === 'admin' && (
                 <>
-                  <button
-                    className="add-item-btn"
-                    style={{ background: '#198754' }}
-                    onClick={() => {
-                      updateRequestStatus(selectedRequest.id, 'approved');
-                      setShowDetailModal(false);
-                    }}
-                  >
+                  <button className="add-item-btn" style={{ padding: '8px 24px', borderRadius: '8px', border: 'none', background: '#198754', color: '#fff', cursor: 'pointer' }} onClick={() => { updateRequestStatus(selectedRequest.id, 'approved'); setShowDetailModal(false); }}>
                     <i className="bi bi-check-circle"></i> Approve
                   </button>
-                  <button
-                    className="add-item-btn"
-                    style={{ background: '#dc3545' }}
-                    onClick={() => {
-                      updateRequestStatus(selectedRequest.id, 'rejected');
-                      setShowDetailModal(false);
-                    }}
-                  >
+                  <button className="add-item-btn" style={{ padding: '8px 24px', borderRadius: '8px', border: 'none', background: '#dc3545', color: '#fff', cursor: 'pointer' }} onClick={() => { updateRequestStatus(selectedRequest.id, 'rejected'); setShowDetailModal(false); }}>
                     <i className="bi bi-x-circle"></i> Reject
                   </button>
                 </>
@@ -1100,235 +728,50 @@ function Shop() {
         </div>
       )}
 
-      {/* ===== EDIT MODAL ===== */}
+      {/* EDIT MODAL */}
       {showEditModal && selectedRequestForEdit && (
-        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
-            <div className="modal-header">
-              <h2><i className="bi bi-pencil-square"></i> Edit Shop</h2>
-              <button className="close-btn" onClick={() => setShowEditModal(false)}>
+        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }} onClick={() => setShowEditModal(false)}>
+          <div className="modal-content" style={{ background: 'var(--card-bg)', borderRadius: '24px', padding: '0', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', zIndex: 10001 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid var(--border-color)' }}>
+              <h2 style={{ margin: 0, fontSize: '20px' }}><i className="bi bi-pencil-square"></i> Edit Shop</h2>
+              <button className="close-btn" style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: 'var(--text-color)' }} onClick={() => setShowEditModal(false)}>
                 <i className="bi bi-x-lg"></i>
               </button>
             </div>
-            <div className="modal-body">
-              <div className="alert alert-info mb-3">
-                Editing shop: <strong>{selectedRequestForEdit.shop_name}</strong>
+            <div className="modal-body" style={{ padding: '24px' }}>
+              <div className="form-group mb-3" style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500' }}>Shop Name</label>
+                <input type="text" className="form-control" value={selectedRequestForEdit.shop_name} onChange={(e) => setSelectedRequestForEdit({ ...selectedRequestForEdit, shop_name: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)' }} />
               </div>
-              <div className="form-group mb-3">
-                <label>Shop Name</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={selectedRequestForEdit.shop_name}
-                  onChange={(e) =>
-                    setSelectedRequestForEdit({
-                      ...selectedRequestForEdit,
-                      shop_name: e.target.value,
-                    })
-                  }
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color)',
-                    background: 'var(--input-bg)',
-                    color: 'var(--text-color)',
-                  }}
-                />
-              </div>
-              <div className="form-group mb-3">
-                <label>Owner Name</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={selectedRequestForEdit.owner_name}
-                  onChange={(e) =>
-                    setSelectedRequestForEdit({
-                      ...selectedRequestForEdit,
-                      owner_name: e.target.value,
-                    })
-                  }
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color)',
-                    background: 'var(--input-bg)',
-                    color: 'var(--text-color)',
-                  }}
-                />
-              </div>
-              <div className="form-group mb-3">
-                <label>Phone</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={selectedRequestForEdit.phone}
-                  onChange={(e) =>
-                    setSelectedRequestForEdit({
-                      ...selectedRequestForEdit,
-                      phone: e.target.value,
-                    })
-                  }
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color)',
-                    background: 'var(--input-bg)',
-                    color: 'var(--text-color)',
-                  }}
-                />
-              </div>
-              <div className="form-group mb-3">
-                <label>Address</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={selectedRequestForEdit.address}
-                  onChange={(e) =>
-                    setSelectedRequestForEdit({
-                      ...selectedRequestForEdit,
-                      address: e.target.value,
-                    })
-                  }
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color)',
-                    background: 'var(--input-bg)',
-                    color: 'var(--text-color)',
-                  }}
-                />
-              </div>
-              <div className="alert alert-secondary mt-3">
-                <small>Note: Only basic info can be edited here. Type and status changes require Approve/Reject actions.</small>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="discard-btn" onClick={() => setShowEditModal(false)}>Cancel</button>
-              <button className="add-item-btn" onClick={handleConfirmEdit} disabled={loading}>
-                {loading ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== CREATE HOTEL MODAL ===== */}
-      {showCreateHotelModal && userRole === 'admin' && (
-        <div className="modal-overlay" onClick={() => setShowCreateHotelModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
-            <div className="modal-header">
-              <h2><i className="bi bi-building"></i> Create Hotel</h2>
-              <button className="close-btn" onClick={() => setShowCreateHotelModal(false)}>
-                <i className="bi bi-x-lg"></i>
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group mb-3">
-                <label>Select Shop</label>
-                <select
-                  className="form-control"
-                  value={hotelForm.shop_id}
-                  onChange={(e) => setHotelForm({ ...hotelForm, shop_id: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color)',
-                    background: 'var(--input-bg)',
-                    color: 'var(--text-color)',
-                  }}
-                >
-                  <option value="">-- Choose a shop --</option>
-                  {requests
-                    .filter((r) => r.status === 'approved')
-                    .map((shop) => (
-                      <option key={shop.id} value={shop.id}>
-                        {shop.shop_name} (ID: {shop.id})
-                      </option>
-                    ))}
+              <div className="form-group mb-3" style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500' }}>Type</label>
+                <select className="form-control" value={selectedRequestForEdit.type} onChange={(e) => setSelectedRequestForEdit({ ...selectedRequestForEdit, type: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)' }}>
+                  <option value="hotel">Hotel</option>
+                  <option value="restaurant">Restaurant</option>
+                  <option value="thonebane">Thonebane</option>
+                  <option value="car">Car</option>
+                  <option value="ebike">E-Bike</option>
+                  <option value="balloon">Balloon</option>
+                  <option value="horsecart">Horse Cart</option>
                 </select>
               </div>
-              <div className="form-group mb-3">
-                <label>Hotel Name</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={hotelForm.name}
-                  onChange={(e) => setHotelForm({ ...hotelForm, name: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color)',
-                    background: 'var(--input-bg)',
-                    color: 'var(--text-color)',
-                  }}
-                  placeholder="e.g. Bagan Golden Hotel"
-                />
+              <div className="form-group mb-3" style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500' }}>Phone</label>
+                <input type="text" className="form-control" value={selectedRequestForEdit.shop_phone} onChange={(e) => setSelectedRequestForEdit({ ...selectedRequestForEdit, shop_phone: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)' }} />
               </div>
-              <div className="form-group mb-3">
-                <label>Description</label>
-                <textarea
-                  className="form-control"
-                  rows="2"
-                  value={hotelForm.description}
-                  onChange={(e) => setHotelForm({ ...hotelForm, description: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color)',
-                    background: 'var(--input-bg)',
-                    color: 'var(--text-color)',
-                  }}
-                  placeholder="Brief description"
-                />
+              <div className="form-group mb-3" style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500' }}>Address</label>
+                <input type="text" className="form-control" value={selectedRequestForEdit.shop_address} onChange={(e) => setSelectedRequestForEdit({ ...selectedRequestForEdit, shop_address: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)' }} />
               </div>
-              <div className="form-group mb-3">
-                <label>Address</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={hotelForm.address}
-                  onChange={(e) => setHotelForm({ ...hotelForm, address: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color)',
-                    background: 'var(--input-bg)',
-                    color: 'var(--text-color)',
-                  }}
-                  placeholder="Hotel address"
-                />
-              </div>
-              <div className="form-group mb-3">
-                <label>Phone</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={hotelForm.phone}
-                  onChange={(e) => setHotelForm({ ...hotelForm, phone: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color)',
-                    background: 'var(--input-bg)',
-                    color: 'var(--text-color)',
-                  }}
-                  placeholder="Contact phone"
-                />
+              <div className="form-group mb-3" style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500' }}>NRC</label>
+                <input type="text" className="form-control" value={selectedRequestForEdit.nrc} onChange={(e) => setSelectedRequestForEdit({ ...selectedRequestForEdit, nrc: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)' }} />
               </div>
             </div>
-            <div className="modal-footer">
-              <button className="discard-btn" onClick={() => setShowCreateHotelModal(false)}>Cancel</button>
-              <button className="add-item-btn" onClick={handleCreateHotel} disabled={loading}>
-                {loading ? 'Creating...' : 'Create Hotel'}
+            <div className="modal-footer" style={{ padding: '16px 24px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button className="discard-btn" style={{ padding: '8px 20px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-color)', cursor: 'pointer' }} onClick={() => setShowEditModal(false)}>Cancel</button>
+              <button className="add-item-btn" style={{ padding: '8px 24px', borderRadius: '8px', border: 'none', background: '#0d6efd', color: '#fff', cursor: 'pointer' }} onClick={handleConfirmEdit} disabled={loading}>
+                {loading ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>
