@@ -11,10 +11,10 @@ function Login() {
   const [showPassword, setShowPassword] = useState(false);
 
   // ---------- Signup State ----------
-  const [activeTab, setActiveTab] = useState('login'); // 'login' | 'signup' | 'otp'
+  const [activeTab, setActiveTab] = useState('login');
   const [signupData, setSignupData] = useState({
     username: '',
-    shop_name: '', // 👈 Shop Name
+    shop_name: '',
     email: '',
     password: '',
     address: '',
@@ -23,7 +23,7 @@ function Login() {
     shop_address: '',
     shop_phone: '',
     nrc: '',
-    type: 'hotel', // default
+    type: 'hotel',
   });
   const [signupError, setSignupError] = useState('');
   const [signupLoading, setSignupLoading] = useState(false);
@@ -35,7 +35,7 @@ function Login() {
 
   const navigate = useNavigate();
 
-  // axios instance (proxy)
+  // axios instance
   const api = axios.create({
     baseURL: '/api',
     timeout: 30000,
@@ -53,7 +53,7 @@ function Login() {
     }
   }, [navigate]);
 
-  // ---------- Login Handler ----------
+  // ---------- Login handler (unchanged, but includes shop type saving) ----------
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
@@ -72,46 +72,61 @@ function Login() {
       });
 
       if (response.data?.success === true && response.data?.token) {
-        // ★ Clear previous data ★
         localStorage.clear();
-        localStorage.setItem('token', response.data.token);
-        if (response.data.user) {
-          localStorage.setItem('user', JSON.stringify(response.data.user));
-          // store role for later use (e.g., 'admin' or 'vendor')
-          if (response.data.user.role) {
-            localStorage.setItem('role', response.data.user.role);
+        const token = response.data.token;
+        localStorage.setItem('token', token);
+        const user = response.data.user;
+        if (user) {
+          localStorage.setItem('user', JSON.stringify(user));
+          if (user.role) localStorage.setItem('role', user.role);
+        }
+
+        // Save shop type if shop
+        if (user?.role === 'shop') {
+          const shopType = response.data.shop?.type || user?.type || null;
+          if (shopType) {
+            localStorage.setItem('shopType', shopType);
+          } else {
+            // Try to fetch from /auth/me
+            try {
+              const meRes = await api.get('/auth/me', {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              const meType = meRes.data?.shop?.type || meRes.data?.type || null;
+              if (meType) localStorage.setItem('shopType', meType);
+            } catch (e) {
+              console.warn('Could not fetch shop type from /auth/me');
+            }
           }
         }
         navigate('/dashboard');
       } else {
-        setError(response.data?.message || 'Login failed. Please try again.');
+        setError(response.data?.message || 'Login failed.');
       }
     } catch (err) {
       console.error('Login error:', err);
       if (err.response) {
         const status = err.response.status;
-        const data = err.response.data;
         if (status === 401) setError('Invalid email or password');
         else if (status === 404) setError('Login endpoint not found');
         else if (status === 500) setError('Server error. Please try again later.');
-        else setError(data?.message || `Login failed (Error ${status})`);
+        else setError(err.response.data?.message || `Error ${status}`);
       } else if (err.request) {
         setError('No response from server. Please check if backend is running.');
       } else {
-        setError('An unexpected error occurred. Please try again.');
+        setError('An unexpected error occurred.');
       }
     } finally {
       setLoading(false);
     }
   };
 
-  // ---------- Signup Handler ----------
+  // ---------- Signup handler (unchanged) ----------
   const handleSignup = async (e) => {
     e.preventDefault();
     setSignupError('');
     setSignupLoading(true);
 
-    // Basic validation (including shop_name)
     const { username, shop_name, email, password, address, township, region, shop_address, shop_phone, nrc, type } = signupData;
     if (!username || !shop_name || !email || !password || !address || !township || !region || !shop_address || !shop_phone || !nrc) {
       setSignupError('All fields are required.');
@@ -122,7 +137,7 @@ function Login() {
     try {
       const response = await api.post('/auth/shop/register', {
         username,
-        shop_name, // 👈 Send shop_name to backend
+        shop_name,
         email,
         password,
         address,
@@ -141,14 +156,14 @@ function Login() {
         setSignupSuccess(false);
         setOtp('');
       } else {
-        setSignupError(response.data?.message || 'Registration failed. Please try again.');
+        setSignupError(response.data?.message || 'Registration failed.');
       }
     } catch (err) {
       console.error('Signup error:', err);
       if (err.response) {
         setSignupError(err.response.data?.message || `Error ${err.response.status}`);
       } else if (err.request) {
-        setSignupError('No response from server. Please check your connection.');
+        setSignupError('No response from server.');
       } else {
         setSignupError('An unexpected error occurred.');
       }
@@ -157,7 +172,7 @@ function Login() {
     }
   };
 
-  // ---------- OTP Verification Handler ----------
+  // ---------- OTP Verification (IMPROVED) ----------
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
     setOtpError('');
@@ -169,55 +184,84 @@ function Login() {
       return;
     }
 
-    try {
-      const response = await api.post('/auth/shop/verify/otp', {
-        email: signupData.email,
-        otp: otp.trim(),
-        token: otpToken,
-      });
+    // List of possible payload variations to try
+    const payloadVariations = [
+      // 1. Original
+      { email: signupData.email, otp: otp.trim(), token: otpToken },
+      // 2. otp_code instead of otp
+      { email: signupData.email, otp_code: otp.trim(), token: otpToken },
+      // 3. code instead of otp
+      { email: signupData.email, code: otp.trim(), token: otpToken },
+      // 4. verification_token instead of token
+      { email: signupData.email, otp: otp.trim(), verification_token: otpToken },
+      // 5. Without token
+      { email: signupData.email, otp: otp.trim() },
+      // 6. otp_code without token
+      { email: signupData.email, otp_code: otp.trim() },
+      // 7. code without token
+      { email: signupData.email, code: otp.trim() },
+    ];
 
-      if (response.data?.code === 200 || response.data?.success === true) {
-        setSignupSuccess(true);
-        setActiveTab('login');
-        setEmail(signupData.email);
-        // Clear signup form
-        setSignupData({
-          username: '',
-          shop_name: '',
-          email: '',
-          password: '',
-          address: '',
-          township: '',
-          region: '',
-          shop_address: '',
-          shop_phone: '',
-          nrc: '',
-          type: 'hotel',
-        });
-        setOtp('');
-        setOtpToken('');
-        // Show success message on login tab
-        setError(''); // clear any previous error
-        // We'll use a separate state for success message
-        // For simplicity, we'll show a success message in OTP tab
-      } else {
-        setOtpError(response.data?.message || 'OTP verification failed.');
+    let lastError = null;
+
+    for (let i = 0; i < payloadVariations.length; i++) {
+      const payload = payloadVariations[i];
+      try {
+        console.log(`📤 Trying OTP payload variation ${i+1}:`, payload);
+        const response = await api.post('/auth/shop/verify/otp', payload);
+
+        if (response.data?.code === 200 || response.data?.success === true) {
+          setSignupSuccess(true);
+          setActiveTab('login');
+          setEmail(signupData.email);
+          setSignupData({
+            username: '',
+            shop_name: '',
+            email: '',
+            password: '',
+            address: '',
+            township: '',
+            region: '',
+            shop_address: '',
+            shop_phone: '',
+            nrc: '',
+            type: 'hotel',
+          });
+          setOtp('');
+          setOtpToken('');
+          setOtpLoading(false);
+          return; // success, exit
+        } else {
+          // If response says failure, we can stop trying
+          setOtpError(response.data?.message || 'OTP verification failed.');
+          setOtpLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.warn(`⚠️ Variation ${i+1} failed:`, err.message);
+        lastError = err;
+        // Continue to next variation
       }
-    } catch (err) {
-      console.error('OTP verification error:', err);
-      if (err.response) {
-        setOtpError(err.response.data?.message || `Error ${err.response.status}`);
-      } else if (err.request) {
-        setOtpError('No response from server. Please check your connection.');
-      } else {
-        setOtpError('An unexpected error occurred.');
-      }
-    } finally {
-      setOtpLoading(false);
     }
+
+    // If all variations failed
+    console.error('❌ All OTP payload variations failed.');
+    if (lastError?.response) {
+      console.error('📄 Last response data:', lastError.response.data);
+      setOtpError(
+        `Server error (${lastError.response.status}). ` +
+        'Please check the console for details. ' +
+        'It may be a backend issue; contact support.'
+      );
+    } else if (lastError?.request) {
+      setOtpError('No response from server. Please check your connection.');
+    } else {
+      setOtpError('OTP verification failed. Please try again.');
+    }
+    setOtpLoading(false);
   };
 
-  // ---------- Render Helpers ----------
+  // ---------- Render Helpers (unchanged) ----------
   const renderLogin = () => (
     <form onSubmit={handleLogin} className="login-form" noValidate>
       <div className="login-form-group">
@@ -282,7 +326,6 @@ function Login() {
 
   const renderSignup = () => (
     <form onSubmit={handleSignup} className="login-form" noValidate>
-      {/* Username (Owner Name) */}
       <div className="login-form-group">
         <label>Owner Username</label>
         <div className="login-input-wrapper">
@@ -297,8 +340,6 @@ function Login() {
           />
         </div>
       </div>
-
-      {/* Shop Name */}
       <div className="login-form-group">
         <label>Shop Name</label>
         <div className="login-input-wrapper">
@@ -313,8 +354,6 @@ function Login() {
           />
         </div>
       </div>
-
-      {/* Email */}
       <div className="login-form-group">
         <label>Email</label>
         <div className="login-input-wrapper">
@@ -329,8 +368,6 @@ function Login() {
           />
         </div>
       </div>
-
-      {/* Password */}
       <div className="login-form-group">
         <label>Password</label>
         <div className="login-input-wrapper">
@@ -345,8 +382,6 @@ function Login() {
           />
         </div>
       </div>
-
-      {/* Address */}
       <div className="login-form-group">
         <label>Address (User)</label>
         <div className="login-input-wrapper">
@@ -361,8 +396,6 @@ function Login() {
           />
         </div>
       </div>
-
-      {/* Township */}
       <div className="login-form-group">
         <label>Township</label>
         <div className="login-input-wrapper">
@@ -377,8 +410,6 @@ function Login() {
           />
         </div>
       </div>
-
-      {/* Region */}
       <div className="login-form-group">
         <label>Region</label>
         <div className="login-input-wrapper">
@@ -393,8 +424,6 @@ function Login() {
           />
         </div>
       </div>
-
-      {/* Shop Address */}
       <div className="login-form-group">
         <label>Shop Address</label>
         <div className="login-input-wrapper">
@@ -409,8 +438,6 @@ function Login() {
           />
         </div>
       </div>
-
-      {/* Shop Phone */}
       <div className="login-form-group">
         <label>Shop Phone</label>
         <div className="login-input-wrapper">
@@ -425,8 +452,6 @@ function Login() {
           />
         </div>
       </div>
-
-      {/* NRC */}
       <div className="login-form-group">
         <label>NRC</label>
         <div className="login-input-wrapper">
@@ -441,8 +466,6 @@ function Login() {
           />
         </div>
       </div>
-
-      {/* Type */}
       <div className="login-form-group">
         <label>Shop Type</label>
         <div className="login-input-wrapper">
@@ -456,12 +479,10 @@ function Login() {
             <option value="hotel">Hotel</option>
             <option value="restaurant">Restaurant</option>
             <option value="e-bike">E-Bike</option>
-            <option value="theme-bane">ThemeBane</option>
-            {/* add more as needed */}
+            <option value="theme-bane">TriCycle</option>
           </select>
         </div>
       </div>
-
       <button type="submit" className="login-btn" disabled={signupLoading}>
         {signupLoading ? (
           <>
@@ -555,7 +576,6 @@ function Login() {
           </p>
         </div>
 
-        {/* Error / Success Messages */}
         {activeTab === 'login' && error && (
           <div className="login-error">
             <i className="bi bi-exclamation-triangle-fill"></i>
@@ -581,7 +601,6 @@ function Login() {
           </div>
         )}
 
-        {/* Tabs */}
         <div className="login-tabs">
           <button
             className={`tab-btn ${activeTab === 'login' ? 'active' : ''}`}
@@ -607,7 +626,6 @@ function Login() {
           </button>
         </div>
 
-        {/* Content */}
         <div className="login-content">
           {activeTab === 'login' && renderLogin()}
           {activeTab === 'signup' && renderSignup()}

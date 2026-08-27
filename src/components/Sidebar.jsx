@@ -7,17 +7,21 @@ function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // ---------- Get user data from localStorage ----------
-  const rawData = JSON.parse(localStorage.getItem('user') || '{}');
-  // Try to extract the user object (if the whole response was stored)
-  const user = rawData.user || rawData;
-  const shop = rawData.shop || user?.shop || null;
+  // ---------- Get user & shop type from localStorage ----------
+  const userData = JSON.parse(localStorage.getItem('user') || '{}');
+  const role = userData?.role || '';
 
-  const role = user?.role || rawData?.role;
-  const shopTypeRaw = shop?.type || user?.type || rawData?.shopType || '';
-  const shopType = shopTypeRaw.trim().toLowerCase(); // e.g., "hotel", "car", ...
+  // ✅ Read shop type from a dedicated key (set after login)
+  const shopTypeRaw = localStorage.getItem('shopType') || '';
+  const shopType = shopTypeRaw.trim().toLowerCase();
 
-  // ---------- Menu definitions ----------
+  // If shopType is still empty, try to get it from userData (fallback)
+  const finalShopType = shopType || userData?.shop?.type || userData?.type || '';
+
+  console.log('📦 User role:', role);
+  console.log('🏪 Shop type from localStorage:', finalShopType);
+
+  // ---------- Menu definitions (unchanged) ----------
   const addMenuItems = [
     { name: 'Travel To Do', icon: 'bi-list', path: '/traveltodos' },
     { name: 'History Of Pagodas', icon: 'bi-building', path: '/historyofpagodas' },
@@ -46,43 +50,48 @@ function Sidebar() {
     { name: 'Banner Order', icon: 'bi-image', path: '/bannerorder' },
   ];
 
-  // ---------- Helper: case‑insensitive search ----------
-  const findMenuItem = (items, name) => {
-    return items.find(item => item.name.toLowerCase() === name.toLowerCase());
-  };
+  // ---------- Helpers ----------
+  const findMenuItem = (items, name) =>
+    items.find(item => item.name.toLowerCase() === name.toLowerCase());
 
-  // ---------- Active path ----------
   const isActive = (path) => location.pathname === path;
 
-  // ---------- Logout ----------
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to log out?')) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      localStorage.removeItem('shopType'); // also clear shop type
       sessionStorage.clear();
       navigate('/login');
       alert('You have been logged out successfully!');
     }
   };
 
-  // ---------- Shop type → menu names (lowercase keys) ----------
+  // ---------- Mapping (plural and singular) ----------
   const shopTypeMap = {
+    hotels: { main: 'Hotels', order: 'Hotels Order' },
+    destinations: { main: 'Destinations', order: 'Destinations Order' },
+    restaurants: { main: 'Restaurants', order: 'Restaurants Order' },
+    cars: { main: 'Cars', order: 'Cars Order' },
+    ebikes: { main: 'E-Bikes', order: 'E-Bikes Order' },
+    hotairballoons: { main: 'Hot Air Balloons', order: 'Hot Air Balloons Order' },
+    tricycles: { main: 'Tricycles', order: 'Tricycles Order' },
+    horsecarts: { main: 'Horse Carts', order: 'Horse Carts Order' },
     hotel: { main: 'Hotels', order: 'Hotels Order' },
-    car: { main: 'Cars', order: 'Cars Order' },
     destination: { main: 'Destinations', order: 'Destinations Order' },
-    ebike: { main: 'E-Bikes', order: 'E-Bikes Order' },
-    horsecart: { main: 'Horse Carts', order: 'Horse Carts Order' },
-    hotairballoon: { main: 'Hot Air Balloons', order: 'Hot Air Balloons Order' },
     restaurant: { main: 'Restaurants', order: 'Restaurants Order' },
+    car: { main: 'Cars', order: 'Cars Order' },
+    ebike: { main: 'E-Bikes', order: 'E-Bikes Order' },
+    hotairballoon: { main: 'Hot Air Balloons', order: 'Hot Air Balloons Order' },
     tricycle: { main: 'Tricycles', order: 'Tricycles Order' },
+    horsecart: { main: 'Horse Carts', order: 'Horse Carts Order' },
   };
 
-  // ---------- Fallback: if type is unknown, use Hotels ----------
   const getMappedNames = (type) => {
     const mapped = shopTypeMap[type];
     if (mapped) return mapped;
-    // Default fallback – show Hotels & Hotels Order
-    console.warn(`Unknown shop type: "${type}". Using Hotels as fallback.`);
+    // If unknown, fallback to Hotels but show a warning
+    console.warn(`⚠️ Unknown shop type: "${type}". Using Hotels as fallback.`);
     return { main: 'Hotels', order: 'Hotels Order' };
   };
 
@@ -113,7 +122,6 @@ function Sidebar() {
           </div>
         </Link>
       </li>
-      {/* Add Dropdown */}
       <li className="nav-item" style={{ overflow: 'visible' }}>
         <div className="nav-link justify-between" onClick={() => setIsAddOpen(!isAddOpen)}>
           <div className="flex-items">
@@ -124,11 +132,7 @@ function Sidebar() {
         </div>
         <ul
           className={`submenu ${isAddOpen ? 'submenu-open' : 'submenu-closed'}`}
-          style={{
-            overflow: 'visible',
-            maxHeight: isAddOpen ? '2000px' : '0',
-            transition: 'max-height 0.3s ease-in-out',
-          }}
+          style={{ overflow: 'visible', maxHeight: isAddOpen ? '2000px' : '0', transition: 'max-height 0.3s ease-in-out' }}
         >
           {addMenuItems.map((item, index) => (
             <li key={index} className={`submenu-item ${isActive(item.path) ? 'active' : ''}`}>
@@ -140,7 +144,6 @@ function Sidebar() {
           ))}
         </ul>
       </li>
-      {/* Order Dropdown */}
       <li className="nav-item" style={{ overflow: 'visible' }}>
         <div className="nav-link justify-between" onClick={() => setIsOrderOpen(!isOrderOpen)}>
           <div className="flex-items">
@@ -151,11 +154,7 @@ function Sidebar() {
         </div>
         <ul
           className={`submenu ${isOrderOpen ? 'submenu-open' : 'submenu-closed'}`}
-          style={{
-            overflow: 'visible',
-            maxHeight: isOrderOpen ? '2000px' : '0',
-            transition: 'max-height 0.3s ease-in-out',
-          }}
+          style={{ overflow: 'visible', maxHeight: isOrderOpen ? '2000px' : '0', transition: 'max-height 0.3s ease-in-out' }}
         >
           {orderMenuItems.map((item, index) => (
             <li key={index} className={`submenu-item ${isActive(item.path) ? 'active' : ''}`}>
@@ -194,21 +193,17 @@ function Sidebar() {
     </>
   );
 
-  // ---------- Shop Menu (flat list) ----------
+  // ---------- Shop Menu ----------
   const renderShopMenu = () => {
-    // Get mapped names (with fallback)
-    const mapped = getMappedNames(shopType);
+    const mapped = getMappedNames(finalShopType);
     const mainItem = findMenuItem(addMenuItems, mapped.main);
     const orderItem = findMenuItem(orderMenuItems, mapped.order);
 
-    // If for some reason they are still null, we fallback to first item in list?
-    // But we have a fallback in getMappedNames, so they should exist.
     const main = mainItem || addMenuItems[2]; // Hotels
     const order = orderItem || orderMenuItems[0]; // Hotels Order
 
     return (
       <>
-        {/* 1. Dashboard – always */}
         <li className={`nav-item ${isActive('/') ? 'active' : ''}`}>
           <Link to="/" className="nav-link">
             <div className="flex-items">
@@ -217,8 +212,6 @@ function Sidebar() {
             </div>
           </Link>
         </li>
-
-        {/* 2. Main entity */}
         <li className={`nav-item ${isActive(main.path) ? 'active' : ''}`}>
           <Link to={main.path} className="nav-link">
             <div className="flex-items">
@@ -227,8 +220,6 @@ function Sidebar() {
             </div>
           </Link>
         </li>
-
-        {/* 3. Order entity */}
         <li className={`nav-item ${isActive(order.path) ? 'active' : ''}`}>
           <Link to={order.path} className="nav-link">
             <div className="flex-items">
@@ -237,8 +228,6 @@ function Sidebar() {
             </div>
           </Link>
         </li>
-
-        {/* 4. Settings – always */}
         <li className={`nav-item ${isActive('/settings') ? 'active' : ''}`}>
           <Link to="/settings" className="nav-link">
             <div className="flex-items">
