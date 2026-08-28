@@ -7,7 +7,7 @@ function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // ---------- Get user & shop type ----------
+  // ---------- Get user data ----------
   const userData = JSON.parse(localStorage.getItem('user') || '{}');
   const role = userData?.role || '';
   const shopTypeRaw = localStorage.getItem('shopType') || '';
@@ -62,28 +62,44 @@ function Sidebar() {
     }
   };
 
-  // ---------- Mapping: includes all possible variants ----------
+  // ---------- Mapping: E-Bike အပါအဝင် အကုန်ထည့်ထားပါ ----------
   const shopTypeMap = {
-    // Plural (most common)
+    // Hotel
     hotels: { main: 'Hotels', order: 'Hotels Order' },
-    destinations: { main: 'Destinations', order: 'Destinations Order' },
-    restaurants: { main: 'Restaurants', order: 'Restaurants Order' },
-    cars: { main: 'Cars', order: 'Cars Order' },
-    ebikes: { main: 'E-Bikes', order: 'E-Bikes Order' },
-    hotairballoons: { main: 'Hot Air Balloons', order: 'Hot Air Balloons Order' },
-    tricycles: { main: 'Tricycles', order: 'Tricycles Order' },
-    horsecarts: { main: 'Horse Carts', order: 'Horse Carts Order' },
-    // Singular aliases
     hotel: { main: 'Hotels', order: 'Hotels Order' },
+    
+    // Destination
+    destinations: { main: 'Destinations', order: 'Destinations Order' },
     destination: { main: 'Destinations', order: 'Destinations Order' },
+    
+    // Restaurant
+    restaurants: { main: 'Restaurants', order: 'Restaurants Order' },
     restaurant: { main: 'Restaurants', order: 'Restaurants Order' },
+    
+    // Car
+    cars: { main: 'Cars', order: 'Cars Order' },
     car: { main: 'Cars', order: 'Cars Order' },
+    
+    // E-Bike (အကုန်လုံးထည့်ထားပါ)
+    ebikes: { main: 'E-Bikes', order: 'E-Bikes Order' },
+    'e-bikes': { main: 'E-Bikes', order: 'E-Bikes Order' },
     ebike: { main: 'E-Bikes', order: 'E-Bikes Order' },
+    'e-bike': { main: 'E-Bikes', order: 'E-Bikes Order' },
+    e_bike: { main: 'E-Bikes', order: 'E-Bikes Order' },
+    'e bike': { main: 'E-Bikes', order: 'E-Bikes Order' },
+    
+    // Hot Air Balloon
+    hotairballoons: { main: 'Hot Air Balloons', order: 'Hot Air Balloons Order' },
     hotairballoon: { main: 'Hot Air Balloons', order: 'Hot Air Balloons Order' },
+    
+    // Tricycle
+    tricycles: { main: 'Tricycles', order: 'Tricycles Order' },
     tricycle: { main: 'Tricycles', order: 'Tricycles Order' },
-    horsecart: { main: 'Horse Carts', order: 'Horse Carts Order' },
-    // Special alias for your API (ThoneBane = Tricycle)
     thonebane: { main: 'Tricycles', order: 'Tricycles Order' },
+    
+    // Horse Cart
+    horsecarts: { main: 'Horse Carts', order: 'Horse Carts Order' },
+    horsecart: { main: 'Horse Carts', order: 'Horse Carts Order' },
   };
 
   const getMappedNames = (type) => {
@@ -93,7 +109,7 @@ function Sidebar() {
     return { main: 'Hotels', order: 'Hotels Order' };
   };
 
-  // ---------- Admin Menu (full) ----------
+  // ---------- Admin Menu ----------
   const renderAdminMenu = () => (
     <>
       <li className={`nav-item ${isActive('/') ? 'active' : ''}`}>

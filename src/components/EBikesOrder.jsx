@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
 // ===== HELPER FUNCTIONS =====
-// Parse date string like "23-08-2026" (DD-MM-YYYY) to Date object
 const parseDate = (dateStr) => {
   if (!dateStr) return null;
   const parts = dateStr.split('-');
@@ -20,13 +19,14 @@ const parseDate = (dateStr) => {
 };
 
 function EBikesOrder() {
-  // ===== User Role Check (added) =====
+  // ===== User & Shop =====
   const user = (() => {
     try { return JSON.parse(localStorage.getItem('user')); } 
     catch { return null; }
   })();
   const admin = user?.role === 'admin';
   const userId = user?.id;
+  const shopId = localStorage.getItem('shopId'); // 👈 ထည့်ပါ
 
   // ===== 1. THEME =====
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -45,7 +45,7 @@ function EBikesOrder() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [error, setError] = useState(null);
 
-  // ===== 3. E-Bike Data for Filtering (added) =====
+  // ===== 3. E-Bike Data for Filtering =====
   const [eBikes, setEBikes] = useState([]);
   const [myEBikeIds, setMyEBikeIds] = useState([]);
 
@@ -81,7 +81,7 @@ function EBikesOrder() {
 
   const API_BASE = '/api/admin/e-bike';
 
-  // ===== 6. FETCH E-BIKES (added) =====
+  // ===== 6. FETCH E-BIKES (ပြင်ဆင်ပြီး) =====
   const fetchEBikes = async () => {
     try {
       const response = await fetch(`${API_BASE}/list`, {
@@ -99,10 +99,10 @@ function EBikesOrder() {
       const list = result.data || result || [];
       setEBikes(list);
       
-      // Filter e-bikes created by current user (if not admin)
+      // Filter e-bikes by userId OR shop_id
       if (!admin) {
         const myIds = list
-          .filter(e => e.createdBy === userId)
+          .filter(e => e.createdBy === userId || e.shop_id === parseInt(shopId))
           .map(e => e.id);
         setMyEBikeIds(myIds);
         console.log('🔑 My e-bike IDs:', myIds);
@@ -116,9 +116,8 @@ function EBikesOrder() {
     }
   };
 
-  // ===== 7. FETCH ORDERS =====
+  // ===== 7. FETCH ORDERS (ပြင်ဆင်ပြီး) =====
   const fetchOrders = async () => {
-    // First fetch e-bikes to get ownership info
     await fetchEBikes();
 
     setLoading(true);
@@ -138,7 +137,6 @@ function EBikesOrder() {
       const result = await response.json();
       console.log('✅ E-Bike Orders response:', result);
 
-      // ---- 1. Extract array ----
       let rawOrders = [];
       if (Array.isArray(result.booking)) {
         rawOrders = result.booking;
@@ -158,7 +156,6 @@ function EBikesOrder() {
         }
       }
 
-      // ---- 2. Map to component shape ----
       const mappedOrders = rawOrders.map((item) => ({
         id: item.booking_id || item.id,
         status: item.status || 'pending',
@@ -168,8 +165,8 @@ function EBikesOrder() {
         createdAt: parseDate(item.created_at || item.createdAt),
         specialRequests: item.note || item.special_requests || '',
         passenger_count: item.passenger_count || 0,
+        shop_id: item.shop_id, // 👈 ထည့်ပါ
 
-        // Customer info
         user: {
           id: item.user_id,
           name: item.customer_name || 'Guest',
@@ -177,7 +174,6 @@ function EBikesOrder() {
           phone: item.customer_phone || '',
         },
 
-        // E-Bike info (direct from API)
         ebike: {
           id: item.e_bike_id,
           name: item.e_bike_name || 'E-Bike',
@@ -197,7 +193,6 @@ function EBikesOrder() {
           distance: item.distance || '',
         },
 
-        // Price details
         priceDetails: {
           price_id: item.price_id,
           selected_price_type: item.selected_price_type || '',
@@ -205,7 +200,6 @@ function EBikesOrder() {
           end_time: item.end_time || '',
         },
 
-        // Shop
         shop: {
           id: item.shop_id,
           name: item.shop_name || '',
@@ -275,14 +269,13 @@ function EBikesOrder() {
     }
   };
 
-  // ===== 10. FILTER LOGIC (UPDATED with User Role Filter) =====
+  // ===== 10. FILTER LOGIC (ပြင်ဆင်ပြီး) =====
   const filteredOrders = orders
-    // Step 1: Filter by user role (only show orders for e-bikes user owns)
     .filter((order) => {
       if (admin) return true;
-      return myEBikeIds.includes(order.ebike?.id);
+      // shop_id နဲ့ စစ် (ဒါမှမဟုတ် ebike.id က myEBikeIds ထဲမှာရှိလား)
+      return order.shop_id === parseInt(shopId) || myEBikeIds.includes(order.ebike?.id);
     })
-    // Step 2: Search, status, time filters
     .filter((order) => {
       const searchStr = `${order.id} ${order.user?.name || ''} ${order.ebike?.name || ''} ${order.ebike?.brand || ''}`.toLowerCase();
       const matchesSearch = searchStr.includes(searchTerm.toLowerCase());
@@ -359,6 +352,9 @@ function EBikesOrder() {
       </span>
     );
   };
+
+  // ===== 12-17: CardActions, DetailModal, OrderCard, Loading, Summary, Main Render (အထက်ပါအတိုင်း) =====
+  // ဒီနေရာမှာ ကျန်တဲ့ Code တွေကို ထည့်ပါ (အထက်ပါအတိုင်း ပြန်ကူးထည့်ပါ)
 
   // ===== 12. CARD ACTIONS =====
   const CardActions = ({ order }) => {
@@ -598,7 +594,6 @@ function EBikesOrder() {
         </div>
       )}
 
-      {/* Summary Boxes */}
       <div
         style={{
           display: 'grid',
@@ -650,7 +645,6 @@ function EBikesOrder() {
         ))}
       </div>
 
-      {/* Search + Filters */}
       <div className="search-actions-row" style={{ flexWrap: 'wrap', gap: '12px' }}>
         <div className="search-bar-wrapper" style={{ flex: 1, minWidth: '200px' }}>
           <i className="bi bi-search search-icon"></i>
@@ -703,7 +697,6 @@ function EBikesOrder() {
         </div>
       </div>
 
-      {/* Orders Grid */}
       <div className="hotels-two-columns">
         <div className="hotels-cards-column" style={{ gridColumn: '1 / -1' }}>
           <div className="hotels-scroll-area">
