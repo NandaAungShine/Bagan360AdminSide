@@ -53,7 +53,7 @@ function Login() {
     }
   }, [navigate]);
 
-  // ---------- Login handler (unchanged, but includes shop type saving) ----------
+  // ---------- Login handler (with shopId & shopType) ----------
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
@@ -81,8 +81,14 @@ function Login() {
           if (user.role) localStorage.setItem('role', user.role);
         }
 
-        // Save shop type if shop
+        // Save shop type & shop ID if shop
         if (user?.role === 'shop') {
+          const shopId = response.data.shop?.id || user?.shop_id || null;
+          if (shopId) {
+            localStorage.setItem('shopId', String(shopId));
+            console.log('✅ Shop ID saved:', shopId);
+          }
+
           const shopType = response.data.shop?.type || user?.type || null;
           if (shopType) {
             localStorage.setItem('shopType', shopType);
@@ -92,13 +98,20 @@ function Login() {
               const meRes = await api.get('/auth/me', {
                 headers: { Authorization: `Bearer ${token}` },
               });
+              const meShopId = meRes.data?.shop?.id || meRes.data?.id || null;
+              if (meShopId) localStorage.setItem('shopId', String(meShopId));
+              
               const meType = meRes.data?.shop?.type || meRes.data?.type || null;
               if (meType) localStorage.setItem('shopType', meType);
             } catch (e) {
-              console.warn('Could not fetch shop type from /auth/me');
+              console.warn('Could not fetch shop data from /auth/me');
             }
           }
+        } else {
+          localStorage.removeItem('shopId');
+          localStorage.removeItem('shopType');
         }
+
         navigate('/dashboard');
       } else {
         setError(response.data?.message || 'Login failed.');
@@ -121,7 +134,7 @@ function Login() {
     }
   };
 
-  // ---------- Signup handler (unchanged) ----------
+  // ---------- Signup handler ----------
   const handleSignup = async (e) => {
     e.preventDefault();
     setSignupError('');
@@ -172,7 +185,7 @@ function Login() {
     }
   };
 
-  // ---------- OTP Verification (IMPROVED) ----------
+  // ---------- OTP Verification ----------
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
     setOtpError('');
@@ -184,21 +197,13 @@ function Login() {
       return;
     }
 
-    // List of possible payload variations to try
     const payloadVariations = [
-      // 1. Original
       { email: signupData.email, otp: otp.trim(), token: otpToken },
-      // 2. otp_code instead of otp
       { email: signupData.email, otp_code: otp.trim(), token: otpToken },
-      // 3. code instead of otp
       { email: signupData.email, code: otp.trim(), token: otpToken },
-      // 4. verification_token instead of token
       { email: signupData.email, otp: otp.trim(), verification_token: otpToken },
-      // 5. Without token
       { email: signupData.email, otp: otp.trim() },
-      // 6. otp_code without token
       { email: signupData.email, otp_code: otp.trim() },
-      // 7. code without token
       { email: signupData.email, code: otp.trim() },
     ];
 
@@ -230,9 +235,8 @@ function Login() {
           setOtp('');
           setOtpToken('');
           setOtpLoading(false);
-          return; // success, exit
+          return;
         } else {
-          // If response says failure, we can stop trying
           setOtpError(response.data?.message || 'OTP verification failed.');
           setOtpLoading(false);
           return;
@@ -240,18 +244,15 @@ function Login() {
       } catch (err) {
         console.warn(`⚠️ Variation ${i+1} failed:`, err.message);
         lastError = err;
-        // Continue to next variation
       }
     }
 
-    // If all variations failed
     console.error('❌ All OTP payload variations failed.');
     if (lastError?.response) {
       console.error('📄 Last response data:', lastError.response.data);
       setOtpError(
         `Server error (${lastError.response.status}). ` +
-        'Please check the console for details. ' +
-        'It may be a backend issue; contact support.'
+        'Please check the console for details.'
       );
     } else if (lastError?.request) {
       setOtpError('No response from server. Please check your connection.');
@@ -261,7 +262,7 @@ function Login() {
     setOtpLoading(false);
   };
 
-  // ---------- Render Helpers (unchanged) ----------
+  // ---------- Render Helpers ----------
   const renderLogin = () => (
     <form onSubmit={handleLogin} className="login-form" noValidate>
       <div className="login-form-group">

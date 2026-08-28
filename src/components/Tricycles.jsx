@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
 function Tricycles() {
-  // ===== User Role Check (added) =====
+  // ===== User Role Check =====
   const user = (() => {
     try { return JSON.parse(localStorage.getItem('user')); } 
     catch { return null; }
@@ -22,6 +22,7 @@ function Tricycles() {
   const [selectedItemForEdit, setSelectedItemForEdit] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAllDropdown, setShowAllDropdown] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
 
   // ===== Image States =====
   const [imageFile, setImageFile] = useState(null);
@@ -29,8 +30,11 @@ function Tricycles() {
 
   // ===== API States =====
   const [tricycles, setTricycles] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingCategories, setLoadingCategories] = useState(false);
   const [error, setError] = useState(null);
+  const [categoryFormData, setCategoryFormData] = useState({ name: '', description: '' });
 
   // ===== Toast & Confirm States =====
   const [toast, setToast] = useState({
@@ -68,10 +72,10 @@ function Tricycles() {
     }, 1500);
   };
 
-  // ===== Form State (discount removed) =====
+  // ===== Form State =====
   const [formData, setFormData] = useState({
     name: '',           
-    type: '',
+    type: '',           // category_id အတွက်
     capacity: '',
     price: '',          
     pricePerDay: '',
@@ -91,6 +95,85 @@ function Tricycles() {
     'Authorization': `Bearer ${getToken()}`,
     'Content-Type': 'application/json',
   });
+
+  // ========== FETCH CATEGORIES ==========
+  const fetchCategories = async () => {
+    setLoadingCategories(true);
+    try {
+      const response = await fetch(`${API_BASE}/category/list`, {
+        method: 'GET',
+        headers: getHeaders(),
+      });
+
+      if (response.status === 401) return handle401Error();
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Categories loaded:', result);
+      
+      const list = result.data || result || [];
+      setCategories(list);
+      
+      if (list.length === 0) {
+        showToast('info', 'No categories found. Please add a category first.');
+      }
+    } catch (err) {
+      console.error('❌ Fetch Categories Error:', err);
+      showToast('error', 'Failed to load categories. Please refresh.');
+      setCategories([]);
+    } finally {
+      setLoadingCategories(false);
+    }
+  };
+
+  // ========== CREATE CATEGORY ==========
+  const handleCreateCategory = async () => {
+    if (!categoryFormData.name.trim()) {
+      showToast('warning', 'Category name is required.');
+      return;
+    }
+
+    const token = getToken();
+    if (!token) {
+      showToast('error', 'Please login first');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/category/create`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: categoryFormData.name.trim(),
+          description: categoryFormData.description.trim() || '',
+        }),
+      });
+
+      if (response.status === 401) return handle401Error();
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text.substring(0, 100) || 'Failed to create category');
+      }
+
+      const result = await response.json();
+      console.log('✅ Category created:', result);
+      
+      showToast('success', 'Category created successfully!');
+      setShowCategoryModal(false);
+      setCategoryFormData({ name: '', description: '' });
+      await fetchCategories(); // Refresh category list
+    } catch (err) {
+      console.error('❌ Create Category Error:', err);
+      showToast('error', 'Error: ' + err.message);
+    }
+  };
 
   // ========== FETCH TRICYCLES ==========
   const fetchTricycles = async () => {
@@ -117,12 +200,13 @@ function Tricycles() {
     } catch (err) {
       setError(err.message);
       console.error('❌ Fetch Error:', err);
-      showToast('error', 'Failed to load tricycles.');
+      showToast('error', 'Failed to load tricycles. Please check network and try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  // Initial data load
   useEffect(() => {
     const token = getToken();
     if (!token) {
@@ -130,6 +214,7 @@ function Tricycles() {
       showToast('error', 'Please login first');
       return;
     }
+    fetchCategories();
     fetchTricycles();
   }, []);
 
@@ -142,6 +227,11 @@ function Tricycles() {
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
+  };
+
+  const handleCategoryInputChange = (e) => {
+    const { name, value } = e.target;
+    setCategoryFormData({ ...categoryFormData, [name]: value });
   };
 
   // ========== IMAGE HANDLERS ==========
@@ -176,33 +266,47 @@ function Tricycles() {
 
   // ========== CREATE TRICYCLE ==========
   const handleAddTricycle = async () => {
-    if (!formData.name || !formData.price) {
-      showToast('warning', 'Please fill in Name and Price.');
+    if (!formData.name || !formData.price || !formData.type) {
+      showToast('warning', 'Please fill in Name, Price, and select a Type.');
       return;
     }
+
     const token = getToken();
     if (!token) {
       showToast('error', 'Please login first');
       return;
     }
 
+    const shopId = localStorage.getItem('shopId');
+    const role = localStorage.getItem('role');
+
     setLoading(true);
     setError(null);
     try {
       const form = new FormData();
+      
       form.append('name', String(formData.name || '').trim());
-      form.append('type', String(formData.type || '').trim());
+      form.append('category_id', String(formData.type || '').trim());
       form.append('capacity', String(formData.capacity || '').trim());
       form.append('price', String(formData.price || '').trim());
-      form.append('pricePerDay', String(formData.pricePerDay || '').trim());
-      // discount omitted
+      form.append('price_per_day', String(formData.pricePerDay || '').trim());
       form.append('description', String(formData.description || '').trim());
       form.append('features', String(formData.features || '').trim());
       form.append('location', String(formData.location || '').trim());
-      form.append('contactNumber', String(formData.contactNumber || '').trim());
+      form.append('phone', String(formData.contactNumber || '').trim());
+      form.append('status', 'available');
       
       if (imageFile) {
         form.append('image', imageFile);
+      }
+
+      if (role === 'shop' && shopId) {
+        form.append('shop_id', shopId);
+      }
+
+      console.log('📤 Sending FormData fields:');
+      for (let [key, value] of form.entries()) {
+        console.log(key, '=', value);
       }
 
       const response = await fetch(`${API_BASE}/create`, {
@@ -215,7 +319,14 @@ function Tricycles() {
 
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
+        let errorMsg = `Server error ${response.status}`;
+        try {
+          const json = JSON.parse(text);
+          errorMsg = json.message || json.error || errorMsg;
+        } catch (e) {
+          errorMsg = text.substring(0, 100) || errorMsg;
+        }
+        throw new Error(errorMsg);
       }
       
       const result = await response.json();
@@ -253,7 +364,10 @@ function Tricycles() {
       });
       
       if (response.status === 401) return handle401Error();
-      if (!response.ok) throw new Error('Delete failed');
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text.substring(0, 100) || 'Delete failed');
+      }
       
       await fetchTricycles();
       setSelectedId(null);
@@ -292,7 +406,10 @@ function Tricycles() {
       });
       
       if (response.status === 401) return handle401Error();
-      if (!response.ok) throw new Error('Delete failed');
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text.substring(0, 100) || 'Delete failed');
+      }
       
       await fetchTricycles();
       showToast('success', 'Tricycle deleted successfully!');
@@ -316,15 +433,14 @@ function Tricycles() {
     setSelectedItemForEdit(item);
     setFormData({
       name: item.name || '',
-      type: item.type || '',
+      type: item.category_id || '',
       capacity: item.capacity || '',
       price: item.price || '',
-      pricePerDay: item.pricePerDay || '',
-      // discount omitted
+      pricePerDay: item.price_per_day || '',
       description: item.description || '',
       features: item.features || '',
       location: item.location || '',
-      contactNumber: item.contactNumber || '',
+      contactNumber: item.phone || '',
     });
     if (item.image) {
       const imgUrl = item.image.startsWith('http') ? item.image : `${BACKEND_URL}/${item.image}`;
@@ -353,8 +469,8 @@ function Tricycles() {
   // ========== CONFIRM EDIT ==========
   const handleConfirmEdit = async () => {
     if (!selectedItemForEdit) return;
-    if (!formData.name) {
-      showToast('warning', 'Name is required.');
+    if (!formData.name || !formData.type) {
+      showToast('warning', 'Name and Type are required.');
       return;
     }
     const token = getToken();
@@ -362,24 +478,37 @@ function Tricycles() {
       showToast('error', 'Please login first');
       return;
     }
+
+    const shopId = localStorage.getItem('shopId');
+    const role = localStorage.getItem('role');
     
     setLoading(true);
     setError(null);
     try {
       const form = new FormData();
+      
       form.append('name', String(formData.name || '').trim());
-      form.append('type', String(formData.type || '').trim());
+      form.append('category_id', String(formData.type || '').trim());
       form.append('capacity', String(formData.capacity || '').trim());
       form.append('price', String(formData.price || '').trim());
-      form.append('pricePerDay', String(formData.pricePerDay || '').trim());
-      // discount omitted
+      form.append('price_per_day', String(formData.pricePerDay || '').trim());
       form.append('description', String(formData.description || '').trim());
       form.append('features', String(formData.features || '').trim());
       form.append('location', String(formData.location || '').trim());
-      form.append('contactNumber', String(formData.contactNumber || '').trim());
+      form.append('phone', String(formData.contactNumber || '').trim());
+      form.append('status', 'available');
       
       if (imageFile) {
         form.append('image', imageFile);
+      }
+
+      if (role === 'shop' && shopId) {
+        form.append('shop_id', shopId);
+      }
+
+      console.log('📤 Updating FormData fields:');
+      for (let [key, value] of form.entries()) {
+        console.log(key, '=', value);
       }
 
       const response = await fetch(`${API_BASE}/update/${selectedItemForEdit.id}`, {
@@ -392,7 +521,14 @@ function Tricycles() {
 
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
+        let errorMsg = `Server error ${response.status}`;
+        try {
+          const json = JSON.parse(text);
+          errorMsg = json.message || json.error || errorMsg;
+        } catch (e) {
+          errorMsg = text.substring(0, 100) || errorMsg;
+        }
+        throw new Error(errorMsg);
       }
       
       const result = await response.json();
@@ -427,15 +563,24 @@ function Tricycles() {
     setSelectedId(prev => prev === id ? null : id);
   };
 
-  // ===== Modified filteredTricycles (added user role filter) =====
+  // ===== FILTER =====
   const filteredTricycles = tricycles
     .filter(item => {
       if (admin) return true;
-      return item.createdBy === userId;
+
+      const shopId = localStorage.getItem('shopId');
+      if (item.shop_id && shopId) {
+        return String(item.shop_id) === String(shopId);
+      }
+
+      if (item.createdBy) {
+        return item.createdBy === userId;
+      }
+
+      return false;
     })
     .filter(item =>
       (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.type || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.location || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
@@ -600,32 +745,56 @@ function Tricycles() {
             {/* Form Fields */}
             <div className="form-fields-section">
               <div className="add-form-group">
-                <label>Tricycle Name</label>
+                <label>Tricycle Name <span style={{ color: 'red' }}>*</span></label>
                 <input type="text" name="name" placeholder="eg. Bagan Traditional Trishaw" value={formData.name} onChange={handleInputChange} />
               </div>
 
               <div className="add-form-row">
                 <div className="add-form-group half">
-                  <label>Type</label>
-                  <select name="type" value={formData.type} onChange={handleInputChange}>
-                    <option value="">Select Type</option>
-                    <option value="Traditional">Traditional</option>
-                    <option value="Electric">Electric</option>
-                    <option value="Modern">Modern</option>
-                    <option value="Family">Family</option>
-                    <option value="Tourist">Tourist</option>
-                    <option value="Luxury">Luxury</option>
-                  </select>
+                  <label>Category / Type <span style={{ color: 'red' }}>*</span></label>
+                  {loadingCategories ? (
+                    <div style={{ padding: '8px', color: '#888' }}>Loading categories...</div>
+                  ) : categories.length === 0 ? (
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <select name="type" value={formData.type} onChange={handleInputChange} style={{ borderColor: '#dc3545', flex: 1 }}>
+                        <option value="">⚠️ No categories available</option>
+                      </select>
+                      <button
+                        onClick={() => setShowCategoryModal(true)}
+                        style={{
+                          padding: '6px 12px',
+                          background: '#28a745',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          fontSize: '12px',
+                        }}
+                      >
+                        <i className="bi bi-plus-circle"></i> Add
+                      </button>
+                    </div>
+                  ) : (
+                    <select name="type" value={formData.type} onChange={handleInputChange}>
+                      <option value="">-- Select Type --</option>
+                      {categories.map(cat => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div className="add-form-group half">
                   <label>Capacity</label>
-                  <input type="text" name="capacity" placeholder="eg. 2 passengers" value={formData.capacity} onChange={handleInputChange} />
+                  <input type="text" name="capacity" placeholder="eg. 2" value={formData.capacity} onChange={handleInputChange} />
                 </div>
               </div>
 
               <div className="add-form-row">
                 <div className="add-form-group half">
-                  <label>Price Per Hour (MMK)</label>
+                  <label>Price Per Hour (MMK) <span style={{ color: 'red' }}>*</span></label>
                   <input type="text" name="price" placeholder="eg. 15000" value={formData.price} onChange={handleInputChange} />
                 </div>
                 <div className="add-form-group half">
@@ -636,17 +805,17 @@ function Tricycles() {
 
               <div className="add-form-group">
                 <label>Location</label>
-                <input type="text" name="location" placeholder="eg. Old Bagan, New Bagan" value={formData.location} onChange={handleInputChange} />
+                <input type="text" name="location" placeholder="eg. Old Bagan" value={formData.location} onChange={handleInputChange} />
               </div>
 
               <div className="add-form-group">
-                <label>Contact Number</label>
+                <label>Contact Phone</label>
                 <input type="text" name="contactNumber" placeholder="eg. 09-123456789" value={formData.contactNumber} onChange={handleInputChange} />
               </div>
 
               <div className="add-form-group">
                 <label>Features</label>
-                <textarea name="features" rows="2" placeholder="Comfortable seating, canopy roof, local guide driver..." value={formData.features} onChange={handleInputChange}></textarea>
+                <textarea name="features" rows="2" placeholder="Comfortable seating, canopy roof..." value={formData.features} onChange={handleInputChange}></textarea>
               </div>
 
               <div className="add-form-group">
@@ -654,7 +823,7 @@ function Tricycles() {
                 <textarea name="description" rows="3" placeholder="Describe the tricycle experience..." value={formData.description} onChange={handleInputChange}></textarea>
               </div>
 
-              <button className="add-item-btn-full" onClick={handleAddTricycle} disabled={loading}>
+              <button className="add-item-btn-full" onClick={handleAddTricycle} disabled={loading || loadingCategories}>
                 {loading ? 'Adding...' : 'Add Tricycle'}
               </button>
             </div>
@@ -693,7 +862,7 @@ function Tricycles() {
                       <div className="hotel-card-info">
                         <h3 className="hotel-name">{item.name}</h3>
                         <div className="tricycle-type">
-                          <span className="type-badge">{item.type || 'Standard'}</span>
+                          <span className="type-badge">{item.category_name || item.type || 'Standard'}</span>
                         </div>
                         <p className="hotel-location">
                           <i className="bi bi-geo-alt-fill"></i> {item.location || 'N/A'}
@@ -703,8 +872,8 @@ function Tricycles() {
                         </div>
                         <div className="tricycle-pricing">
                           <span className="price-hour">Hour: MMK {item.price || '0'}</span>
-                          {item.pricePerDay && (
-                            <span className="price-day">Day: MMK {item.pricePerDay}</span>
+                          {item.price_per_day && (
+                            <span className="price-day">Day: MMK {item.price_per_day}</span>
                           )}
                         </div>
                         {item.features && (
@@ -716,9 +885,9 @@ function Tricycles() {
                           {renderStars(item.rating || 4.0)}
                           <span className="rating-count">({item.reviews || '0'})</span>
                         </div>
-                        {item.contactNumber && (
+                        {item.phone && (
                           <p className="contact-info">
-                            <i className="bi bi-telephone"></i> {item.contactNumber}
+                            <i className="bi bi-telephone"></i> {item.phone}
                           </p>
                         )}
                       </div>
@@ -762,21 +931,45 @@ function Tricycles() {
               </div>
 
               <div className="form-group">
-                <label>Tricycle Name</label>
+                <label>Tricycle Name <span style={{ color: 'red' }}>*</span></label>
                 <input type="text" name="name" value={formData.name} onChange={handleInputChange} />
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Type</label>
-                  <select name="type" value={formData.type} onChange={handleInputChange}>
-                    <option value="">Select Type</option>
-                    <option value="Traditional">Traditional</option>
-                    <option value="Electric">Electric</option>
-                    <option value="Modern">Modern</option>
-                    <option value="Family">Family</option>
-                    <option value="Tourist">Tourist</option>
-                    <option value="Luxury">Luxury</option>
-                  </select>
+                  <label>Category / Type <span style={{ color: 'red' }}>*</span></label>
+                  {loadingCategories ? (
+                    <div>Loading categories...</div>
+                  ) : categories.length === 0 ? (
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <select name="type" value={formData.type} onChange={handleInputChange} style={{ borderColor: '#dc3545', flex: 1 }}>
+                        <option value="">⚠️ No categories available</option>
+                      </select>
+                      <button
+                        onClick={() => setShowCategoryModal(true)}
+                        style={{
+                          padding: '6px 12px',
+                          background: '#28a745',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          fontSize: '12px',
+                        }}
+                      >
+                        <i className="bi bi-plus-circle"></i> Add
+                      </button>
+                    </div>
+                  ) : (
+                    <select name="type" value={formData.type} onChange={handleInputChange}>
+                      <option value="">-- Select Type --</option>
+                      {categories.map(cat => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div className="form-group">
                   <label>Capacity</label>
@@ -785,7 +978,7 @@ function Tricycles() {
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Price Per Hour (MMK)</label>
+                  <label>Price Per Hour (MMK) <span style={{ color: 'red' }}>*</span></label>
                   <input type="text" name="price" value={formData.price} onChange={handleInputChange} />
                 </div>
                 <div className="form-group">
@@ -799,7 +992,7 @@ function Tricycles() {
                 <input type="text" name="location" value={formData.location} onChange={handleInputChange} />
               </div>
               <div className="form-group">
-                <label>Contact Number</label>
+                <label>Contact Phone</label>
                 <input type="text" name="contactNumber" value={formData.contactNumber} onChange={handleInputChange} />
               </div>
               <div className="form-group">
@@ -813,8 +1006,52 @@ function Tricycles() {
             </div>
             <div className="modal-footer">
               <button className="discard-btn" onClick={() => setShowEditModal(false)}>Cancel</button>
-              <button className="add-item-btn" onClick={handleConfirmEdit} disabled={loading}>
+              <button className="add-item-btn" onClick={handleConfirmEdit} disabled={loading || loadingCategories}>
                 {loading ? 'Saving...' : 'Confirm Edit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Category Create Modal */}
+      {showCategoryModal && (
+        <div className="modal-overlay" onClick={() => setShowCategoryModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+            <div className="modal-header">
+              <h2>Create New Category</h2>
+              <button className="close-btn" onClick={() => setShowCategoryModal(false)}>
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Category Name <span style={{ color: 'red' }}>*</span></label>
+                <input
+                  type="text"
+                  name="name"
+                  placeholder="eg. Traditional, Electric, Modern"
+                  value={categoryFormData.name}
+                  onChange={handleCategoryInputChange}
+                />
+              </div>
+              <div className="form-group">
+                <label>Description (Optional)</label>
+                <textarea
+                  name="description"
+                  rows="2"
+                  placeholder="Brief description of this category..."
+                  value={categoryFormData.description}
+                  onChange={handleCategoryInputChange}
+                ></textarea>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="discard-btn" onClick={() => setShowCategoryModal(false)}>
+                Cancel
+              </button>
+              <button className="add-item-btn" onClick={handleCreateCategory}>
+                Create Category
               </button>
             </div>
           </div>

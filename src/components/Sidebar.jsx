@@ -7,21 +7,16 @@ function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // ---------- Get user & shop type from localStorage ----------
+  // ---------- Get user & shop type ----------
   const userData = JSON.parse(localStorage.getItem('user') || '{}');
   const role = userData?.role || '';
-
-  // ✅ Read shop type from a dedicated key (set after login)
   const shopTypeRaw = localStorage.getItem('shopType') || '';
   const shopType = shopTypeRaw.trim().toLowerCase();
 
-  // If shopType is still empty, try to get it from userData (fallback)
-  const finalShopType = shopType || userData?.shop?.type || userData?.type || '';
-
   console.log('📦 User role:', role);
-  console.log('🏪 Shop type from localStorage:', finalShopType);
+  console.log('🏪 Shop type from localStorage:', shopType);
 
-  // ---------- Menu definitions (unchanged) ----------
+  // ---------- Menu definitions ----------
   const addMenuItems = [
     { name: 'Travel To Do', icon: 'bi-list', path: '/traveltodos' },
     { name: 'History Of Pagodas', icon: 'bi-building', path: '/historyofpagodas' },
@@ -60,15 +55,16 @@ function Sidebar() {
     if (window.confirm('Are you sure you want to log out?')) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      localStorage.removeItem('shopType'); // also clear shop type
+      localStorage.removeItem('shopType');
       sessionStorage.clear();
       navigate('/login');
       alert('You have been logged out successfully!');
     }
   };
 
-  // ---------- Mapping (plural and singular) ----------
+  // ---------- Mapping: includes all possible variants ----------
   const shopTypeMap = {
+    // Plural (most common)
     hotels: { main: 'Hotels', order: 'Hotels Order' },
     destinations: { main: 'Destinations', order: 'Destinations Order' },
     restaurants: { main: 'Restaurants', order: 'Restaurants Order' },
@@ -77,6 +73,7 @@ function Sidebar() {
     hotairballoons: { main: 'Hot Air Balloons', order: 'Hot Air Balloons Order' },
     tricycles: { main: 'Tricycles', order: 'Tricycles Order' },
     horsecarts: { main: 'Horse Carts', order: 'Horse Carts Order' },
+    // Singular aliases
     hotel: { main: 'Hotels', order: 'Hotels Order' },
     destination: { main: 'Destinations', order: 'Destinations Order' },
     restaurant: { main: 'Restaurants', order: 'Restaurants Order' },
@@ -85,12 +82,13 @@ function Sidebar() {
     hotairballoon: { main: 'Hot Air Balloons', order: 'Hot Air Balloons Order' },
     tricycle: { main: 'Tricycles', order: 'Tricycles Order' },
     horsecart: { main: 'Horse Carts', order: 'Horse Carts Order' },
+    // Special alias for your API (ThoneBane = Tricycle)
+    thonebane: { main: 'Tricycles', order: 'Tricycles Order' },
   };
 
   const getMappedNames = (type) => {
     const mapped = shopTypeMap[type];
     if (mapped) return mapped;
-    // If unknown, fallback to Hotels but show a warning
     console.warn(`⚠️ Unknown shop type: "${type}". Using Hotels as fallback.`);
     return { main: 'Hotels', order: 'Hotels Order' };
   };
@@ -195,7 +193,7 @@ function Sidebar() {
 
   // ---------- Shop Menu ----------
   const renderShopMenu = () => {
-    const mapped = getMappedNames(finalShopType);
+    const mapped = getMappedNames(shopType);
     const mainItem = findMenuItem(addMenuItems, mapped.main);
     const orderItem = findMenuItem(orderMenuItems, mapped.order);
 

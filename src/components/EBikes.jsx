@@ -237,11 +237,22 @@ function EBikes() {
     setImagePreview(null);
   };
 
+  // ===== ADD E-BIKE (with shop_id logic) =====
   const handleAddEBike = async () => {
     if (!formData.type_id || !formData.name || !formData.price) {
       showToast('warning', 'Please fill in required fields: Type, Name, Price.');
       return;
     }
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      showToast('error', 'Please login first');
+      return;
+    }
+
+    // 👇 Get shopId and role from localStorage
+    const shopId = localStorage.getItem('shopId');
+    const role = localStorage.getItem('role');
 
     const form = new FormData();
     form.append('type_id', formData.type_id);
@@ -262,8 +273,12 @@ function EBikes() {
       form.append('image', imageFile);
     }
 
+    // 👇 If shop, add shop_id to payload
+    if (role === 'shop' && shopId) {
+      form.append('shop_id', shopId);
+    }
+
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(`${API_BASE}/e-bike/create`, {
         method: 'POST',
         headers: {
@@ -416,12 +431,23 @@ function EBikes() {
     setShowEditModal(true);
   };
 
+  // ===== CONFIRM EDIT (with shop_id logic) =====
   const handleConfirmEdit = async () => {
     if (!selectedEBikeForEdit) return;
     if (!formData.type_id || !formData.name || !formData.price) {
       showToast('warning', 'Please fill in required fields (Type, Name, Price).');
       return;
     }
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      showToast('error', 'Please login first');
+      return;
+    }
+
+    // 👇 Get shopId and role from localStorage
+    const shopId = localStorage.getItem('shopId');
+    const role = localStorage.getItem('role');
 
     const form = new FormData();
     form.append('type_id', formData.type_id);
@@ -442,8 +468,12 @@ function EBikes() {
       form.append('image', imageFile);
     }
 
+    // 👇 If shop, add shop_id to payload
+    if (role === 'shop' && shopId) {
+      form.append('shop_id', shopId);
+    }
+
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(`${API_BASE}/e-bike/update/${selectedEBikeForEdit.id}`, {
         method: 'PUT',
         headers: {
@@ -621,11 +651,25 @@ function EBikes() {
     setCardMenuBikeId(cardMenuBikeId === id ? null : id);
   };
 
-  // ----- Modified filteredEBikes (added user role filter) -----
+  // ===== Modified filteredEBikes – filter by shop_id (priority) or createdBy =====
   const filteredEBikes = eBikes
     .filter(ebike => {
-      if (admin) return true;
-      return ebike.createdBy === userId;
+      if (admin) return true; // Admin sees all
+
+      // For shop accounts: first check if item has shop_id and matches localStorage shopId
+      const shopId = localStorage.getItem('shopId');
+      if (ebike.shop_id && shopId) {
+        // Convert both to string for safe comparison
+        return String(ebike.shop_id) === String(shopId);
+      }
+
+      // Fallback: filter by createdBy (if backend sends that)
+      if (ebike.createdBy) {
+        return ebike.createdBy === userId;
+      }
+
+      // If neither, don't show (should not happen)
+      return false;
     })
     .filter(ebike =>
       ebike.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||

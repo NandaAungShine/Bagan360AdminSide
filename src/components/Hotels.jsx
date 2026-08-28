@@ -41,7 +41,7 @@ function Hotels() {
     facilities: '',
   });
 
-  // ===== Toast & Confirm States (Alert အစားထိုးရန်) =====
+  // ===== Toast & Confirm States =====
   const [toast, setToast] = useState({
     visible: false,
     type: 'success',
@@ -55,7 +55,7 @@ function Hotels() {
     onConfirm: null,
   });
 
-  // ===== User role check (added) =====
+  // ===== User role check =====
   const user = (() => {
     try { return JSON.parse(localStorage.getItem('user')); } 
     catch { return null; }
@@ -63,7 +63,7 @@ function Hotels() {
   const admin = user?.role === 'admin';
   const userId = user?.id;
 
-  // ===== Toast Helper (3s အကြာမှာ အလိုအလျောက်ပျောက်မယ်) =====
+  // ===== Toast Helper =====
   const showToast = (type, message) => {
     if (toastTimeoutRef.current) {
       clearTimeout(toastTimeoutRef.current);
@@ -131,7 +131,6 @@ function Hotels() {
       return response;
     },
     (error) => {
-      // 🔥 401 ရှိရင် အလိုအလျောက် Login ခေါ်သွားမယ်
       if (error.response && error.response.status === 401) {
         handle401Error();
       }
@@ -169,7 +168,6 @@ function Hotels() {
       setHotels(hotelData);
     } catch (err) {
       console.error('Fetch Error:', err);
-      // 401 error ကို interceptor က handle လုပ်သွားမှာပါ။
       setError('Failed to fetch hotels. Please try again.');
     } finally {
       setLoading(false);
@@ -223,8 +221,9 @@ function Hotels() {
     setImageFile(null);
   };
 
-  // ===== ADD HOTEL =====
+  // ===== ADD HOTEL (shop_id အမြဲပို့မယ်) =====
   const handleAddHotel = async () => {
+    // Validation
     if (!formData.name || !formData.type || !formData.location || !formData.price ||
         !formData.start_date || !formData.end_date || !formData.description ||
         !formData.facilities) {
@@ -243,6 +242,10 @@ function Hotels() {
       return;
     }
 
+    // 👇 Get role and shopId
+    const shopId = localStorage.getItem('shopId');
+    const role = localStorage.getItem('role');
+
     setLoading(true);
     try {
       const form = new FormData();
@@ -256,6 +259,19 @@ function Hotels() {
       form.append('description', formData.description);
       form.append('facilities', formData.facilities);
       form.append('image', imageFile);
+      
+      // ✅ shop_id ကို အမြဲပို့မယ် (Backend က required လုပ်ထားလို့)
+      if (role === 'shop' && shopId) {
+        form.append('shop_id', shopId);
+      } else {
+        // Admin အတွက် shop_id ကို '0' ပို့မယ်
+        form.append('shop_id', '0');
+      }
+
+      console.log('📤 Sending FormData:');
+      for (let [key, value] of form.entries()) {
+        console.log(key, '=', value);
+      }
 
       const response = await axios.post(`${API_BASE}/create`, form, {
         headers: {
@@ -274,14 +290,15 @@ function Hotels() {
       }
     } catch (err) {
       console.error('Add Error:', err);
-      if (err.response?.status === 401) return; // Interceptor က handle လုပ်သွားပြီးသားပါ
-      showToast('error', `Error: ${err.response?.data?.message || err.message}`);
+      if (err.response?.status === 401) return;
+      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
+      showToast('error', `Error: ${errorMsg}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // ===== DELETE HOTEL (With Custom Confirm) =====
+  // ===== DELETE HOTEL =====
   const performDeleteHotel = async (id) => {
     const token = getToken();
     if (!token) {
@@ -317,7 +334,7 @@ function Hotels() {
     });
   };
 
-  // ===== Helper: Format date for input (Supports any format) =====
+  // ===== Helper: Format date for input =====
   const formatDateForInput = (dateStr) => {
     if (!dateStr) return '';
     
@@ -363,7 +380,7 @@ function Hotels() {
     setShowEditModal(true);
   };
 
-  // ===== CONFIRM EDIT =====
+  // ===== CONFIRM EDIT (shop_id အမြဲပို့မယ်) =====
   const handleConfirmEdit = async () => {
     if (!formData.name || !formData.type || !formData.location || !formData.price ||
         !formData.description || !formData.facilities) {
@@ -376,6 +393,9 @@ function Hotels() {
       showToast('error', 'Please login first');
       return;
     }
+
+    const shopId = localStorage.getItem('shopId');
+    const role = localStorage.getItem('role');
 
     setLoading(true);
     try {
@@ -392,6 +412,13 @@ function Hotels() {
       
       if (imageFile) {
         form.append('image', imageFile);
+      }
+
+      // ✅ shop_id ကို အမြဲပို့မယ်
+      if (role === 'shop' && shopId) {
+        form.append('shop_id', shopId);
+      } else {
+        form.append('shop_id', '0');
       }
 
       const response = await axios.put(`${API_BASE}/update/${selectedHotelForEdit.id}`, form, {
@@ -419,11 +446,21 @@ function Hotels() {
     }
   };
 
-  // ===== FILTER & RENDER (modified: add role filter) =====
+  // ===== FILTER & RENDER – filter by shop_id (priority) or createdBy =====
   const filteredHotels = hotels
     .filter(hotel => {
       if (admin) return true;
-      return hotel.createdBy === userId;
+
+      const shopId = localStorage.getItem('shopId');
+      if (hotel.shop_id && shopId) {
+        return String(hotel.shop_id) === String(shopId);
+      }
+
+      if (hotel.createdBy) {
+        return hotel.createdBy === userId;
+      }
+
+      return false;
     })
     .filter(hotel =>
       hotel.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -515,7 +552,7 @@ function Hotels() {
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Hotels Management" onThemeChange={handleThemeChange} />
 
-      {/* 🟢 Screen အလယ် Toast Alert UI */}
+      {/* Toast Alert */}
       {toast.visible && (
         <div style={{
           position: 'fixed',
@@ -551,7 +588,7 @@ function Hotels() {
         </div>
       )}
 
-      {/* 🟢 Screen အလယ် Confirm Delete Modal */}
+      {/* Confirm Delete Modal */}
       {confirmDialog.visible && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: isDarkMode ? '#2d2d2d' : '#fff', padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%', boxShadow: '0 15px 40px rgba(0,0,0,0.2)' }}>

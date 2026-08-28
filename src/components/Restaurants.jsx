@@ -62,7 +62,7 @@ function Restaurants() {
     onConfirm: null,
   });
 
-  // ===== Toast Helper (3s အကြာမှာ အလိုအလျောက်ပျောက်မယ်) =====
+  // ===== Toast Helper =====
   const showToast = (type, message) => {
     if (toastTimeoutRef.current) {
       clearTimeout(toastTimeoutRef.current);
@@ -186,7 +186,7 @@ function Restaurants() {
     removeImage();
   };
 
-  // ========== ADD RESTAURANT ==========
+  // ========== ADD RESTAURANT (with shop_id logic) ==========
   const handleAddRestaurant = async () => {
     if (!formData.restaurantName || !formData.location) {
       showToast('warning', 'Please fill in Restaurant Name and Location.');
@@ -198,6 +198,10 @@ function Restaurants() {
       showToast('error', 'Please login first');
       return;
     }
+
+    // 👇 Get shopId and role from localStorage
+    const shopId = localStorage.getItem('shopId');
+    const role = localStorage.getItem('role');
 
     setLoading(true);
     setError(null);
@@ -215,6 +219,11 @@ function Restaurants() {
       
       if (imageFile) {
         form.append('image', imageFile);
+      }
+
+      // 👇 If shop, add shop_id to payload
+      if (role === 'shop' && shopId) {
+        form.append('shop_id', shopId);
       }
 
       console.log('📤 Sending FormData...');
@@ -370,7 +379,7 @@ function Restaurants() {
     if (restaurant) openEditModal(restaurant);
   };
 
-  // ========== CONFIRM EDIT ==========
+  // ========== CONFIRM EDIT (with shop_id logic) ==========
   const handleConfirmEdit = async () => {
     if (!selectedRestaurantForEdit) return;
     if (!formData.restaurantName) {
@@ -383,6 +392,10 @@ function Restaurants() {
       showToast('error', 'Please login first');
       return;
     }
+
+    // 👇 Get shopId and role from localStorage
+    const shopId = localStorage.getItem('shopId');
+    const role = localStorage.getItem('role');
 
     setLoading(true);
     setError(null);
@@ -401,6 +414,11 @@ function Restaurants() {
       // Only send image if a new file is selected
       if (imageFile) {
         form.append('image', imageFile);
+      }
+
+      // 👇 If shop, add shop_id to payload
+      if (role === 'shop' && shopId) {
+        form.append('shop_id', shopId);
       }
 
       console.log('📤 Updating with FormData...');
@@ -452,11 +470,25 @@ function Restaurants() {
     setSelectedRestaurantId(prev => prev === id ? null : id);
   };
 
-  // ===== Modified filteredRestaurants (added user role filter) =====
+  // ===== Modified filteredRestaurants – filter by shop_id (priority) or createdBy =====
   const filteredRestaurants = restaurants
     .filter(restaurant => {
-      if (admin) return true;
-      return restaurant.createdBy === userId;
+      if (admin) return true; // Admin sees all
+
+      // For shop accounts: first check if item has shop_id and matches localStorage shopId
+      const shopId = localStorage.getItem('shopId');
+      if (restaurant.shop_id && shopId) {
+        // Convert both to string for safe comparison
+        return String(restaurant.shop_id) === String(shopId);
+      }
+
+      // Fallback: filter by createdBy (if backend sends that)
+      if (restaurant.createdBy) {
+        return restaurant.createdBy === userId;
+      }
+
+      // If neither, don't show (should not happen)
+      return false;
     })
     .filter(restaurant =>
       (restaurant.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||

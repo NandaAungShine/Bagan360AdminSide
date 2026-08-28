@@ -9,11 +9,14 @@ const parseDate = (dateStr) => {
   const parts = dateStr.split('-');
   if (parts.length === 3) {
     const day = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+    const month = parseInt(parts[1], 10) - 1;
     const year = parseInt(parts[2], 10);
-    return new Date(year, month, day);
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) return d;
   }
-  return new Date(dateStr); // fallback
+  const d = new Date(dateStr);
+  if (!isNaN(d.getTime())) return d;
+  return null;
 };
 
 // Map backend status to frontend status
@@ -23,7 +26,7 @@ const mapStatus = (backendStatus) => {
 };
 
 function TricycleOrder() {
-  // ===== 0. USER ROLE CHECK (added) =====
+  // ===== 0. USER ROLE CHECK =====
   const user = (() => {
     try { return JSON.parse(localStorage.getItem('user')); } 
     catch { return null; }
@@ -41,13 +44,13 @@ function TricycleOrder() {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [timeFilter, setTimeFilter] = useState('all'); // 'all', 'daily', 'weekly', 'monthly', 'yearly'
+  const [timeFilter, setTimeFilter] = useState('all');
   const [bookings, setBookings] = useState([]);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [error, setError] = useState(null);
   
-  // ===== 2a. USER TRICYCLE IDs (added) =====
+  // ===== 2a. USER TRICYCLE IDs =====
   const [userTricycleIds, setUserTricycleIds] = useState([]);
 
   // ===== 3. TOAST =====
@@ -84,11 +87,10 @@ function TricycleOrder() {
   const API_BASE = '/api/admin/thonebane';
   const TRICYCLE_API = '/api/admin/thonebane';
 
-  // ===== 6. FETCH USER'S TRICYCLES (added) =====
+  // ===== 6. FETCH USER'S TRICYCLES (FIXED - using shop_id) =====
   const fetchUserTricycles = async () => {
     if (admin) {
-      // Admin ဆိုရင် အားလုံးကို ခွင့်ပြုပါတယ်။ filter မလုပ်ပါ
-      setUserTricycleIds([]); // empty array means "all allowed" for admin
+      setUserTricycleIds([]);
       return;
     }
     try {
@@ -113,13 +115,28 @@ function TricycleOrder() {
         tricycles = [];
       }
       
-      // User ရဲ့ tricycle IDs ကိုယူပါ (createdBy နဲ့ စစ်)
+      const shopId = localStorage.getItem('shopId');
+      console.log('🏪 Shop ID from localStorage:', shopId);
+      
+      // 🔑 Filter tricycles by shop_id (priority) or createdBy (fallback)
       const ids = tricycles
-        .filter(t => t.createdBy === userId)
+        .filter(t => {
+          // Priority: match by shop_id
+          if (shopId && t.shop_id) {
+            return String(t.shop_id) === String(shopId);
+          }
+          // Fallback: match by createdBy
+          if (t.createdBy) {
+            return t.createdBy === userId;
+          }
+          return false;
+        })
         .map(t => t.id);
       
       setUserTricycleIds(ids);
-      console.log('User Tricycle IDs:', ids);
+      console.log('🔑 User Tricycle IDs:', ids);
+      console.log('👤 User ID:', userId);
+      console.log('📊 Admin:', admin);
     } catch (err) {
       console.error('❌ Fetch User Tricycles Error:', err);
       showToast('error', 'Failed to load your tricycles.');
@@ -161,21 +178,23 @@ function TricycleOrder() {
         }
       }
 
+      console.log('📦 Raw Bookings Count:', rawBookings.length);
+
       // ---- 2. Map to component shape ----
       const mappedBookings = rawBookings.map((item) => ({
-        id: item.booking_id,
+        id: item.booking_id || item.id,
         customerName: item.customer_name || 'Guest',
         customerPhone: item.customer_phone || '',
         customerEmail: '',
         tricycleName: item.thonebane_name || 'Tricycle',
+        tricycleId: item.thonebane_id,
         tricycle: {
           id: item.thonebane_id,
           name: item.thonebane_name || 'Tricycle',
         },
-        tricycleId: item.thonebane_id, // added for filter
         status: mapStatus(item.status),
-        startDate: parseDate(item.booking_date),
-        endDate: null,
+        startDate: parseDate(item.booking_date || item.start_date),
+        endDate: item.end_date ? parseDate(item.end_date) : null,
         totalPrice: item.price || 0,
         notes: item.note || '',
         shopName: item.shop_name || '',
@@ -183,20 +202,12 @@ function TricycleOrder() {
         image: item.image || '',
         passengerCount: item.passenger_count || 0,
         _raw: item,
-        createdBy: item.createdBy || null, // booking creator? If not present, fallback
       }));
 
-      // ---- 3. Filter by user's tricycle IDs (if not admin) ----
-      let filteredBookings = mappedBookings;
-      if (!admin) {
-        // userTricycleIds ကို သုံးပြီး filter လုပ်
-        filteredBookings = mappedBookings.filter(
-          booking => userTricycleIds.includes(booking.tricycleId)
-        );
-        console.log('Filtered bookings for user:', filteredBookings.length);
-      }
+      console.log('📦 Mapped Bookings:', mappedBookings);
+      console.log('📊 Tricycle IDs in bookings:', mappedBookings.map(b => b.tricycleId));
 
-      setBookings(filteredBookings);
+      setBookings(mappedBookings);
     } catch (err) {
       setError(err.message);
       console.error('❌ Fetch Bookings Error:', err);
@@ -216,11 +227,9 @@ function TricycleOrder() {
     }
     
     const loadData = async () => {
-      if (!admin) {
-        // Admin မဟုတ်ရင် user ရဲ့ tricycles ကို အရင်ယူပါ
-        await fetchUserTricycles();
-      }
-      // ပြီးမှ bookings ကို ယူပါ
+      // First get user's tricycle IDs (if not admin)
+      await fetchUserTricycles();
+      // Then fetch all bookings
       await fetchBookings();
     };
     
@@ -257,7 +266,6 @@ function TricycleOrder() {
         const text = await response.text();
         throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
       }
-      // Re-fetch bookings after update
       await fetchBookings();
       showToast('success', `Booking ${action} successfully!`);
     } catch (err) {
@@ -268,22 +276,29 @@ function TricycleOrder() {
     }
   };
 
-  // ===== 11. FILTER LOGIC =====
-  const filteredBookings = bookings.filter((booking) => {
-    // 11a. Search filter
-    const customerName = booking.customerName || '';
-    const tricycleName = booking.tricycleName || '';
-    const status = booking.status || '';
+  // ===== 11. FILTER LOGIC (FIXED) =====
+  // Step 1: Filter by user role (admin sees all, shop sees only their tricycle bookings)
+  const roleFilteredBookings = admin 
+    ? bookings 
+    : bookings.filter(booking => {
+        const tricycleId = String(booking.tricycleId || '');
+        // Check if this tricycle is in the user's allowed list
+        const isAllowed = userTricycleIds.some(id => String(id) === tricycleId);
+        if (!isAllowed && tricycleId) {
+          console.log('❌ Booking filtered out:', booking.id, 'Tricycle ID:', tricycleId, 'My IDs:', userTricycleIds);
+        }
+        return isAllowed;
+      });
 
-    const matchesSearch =
-      customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      tricycleName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.id?.toString().includes(searchTerm);
+  console.log('📊 Role Filtered Bookings Count:', roleFilteredBookings.length);
 
-    // 11b. Status filter
-    const matchesStatus = statusFilter ? status === statusFilter : true;
+  // Step 2: Apply search, status & time filters
+  const filteredBookings = roleFilteredBookings.filter((booking) => {
+    const searchStr = `${booking.id} ${booking.customerName || ''} ${booking.tricycleName || ''}`.toLowerCase();
+    const matchesSearch = searchStr.includes(searchTerm.toLowerCase());
 
-    // 11c. Time filter
+    const matchesStatus = statusFilter ? booking.status === statusFilter : true;
+
     let matchesTime = true;
     if (timeFilter !== 'all') {
       const date = booking.startDate;
@@ -329,7 +344,32 @@ function TricycleOrder() {
     return matchesSearch && matchesStatus && matchesTime;
   });
 
-  // ===== 12. STATUS BADGE =====
+  console.log('🔍 Final Filtered Bookings Count:', filteredBookings.length);
+  console.log('📊 User Tricycle IDs:', userTricycleIds);
+  console.log('📊 Total Bookings:', bookings.length);
+
+  // ===== 12. SUMMARY DATA (based on filtered bookings) =====
+  const totalBookings = filteredBookings.length;
+  const pendingCount = filteredBookings.filter(b => 
+    (b.status || '').toLowerCase() === 'pending' || (b.status || '').toLowerCase() === 'available'
+  ).length;
+  const approvedCount = filteredBookings.filter(b => 
+    ['approved', 'confirmed', 'completed'].includes((b.status || '').toLowerCase())
+  ).length;
+  const cancelledCount = filteredBookings.filter(b => 
+    (b.status || '').toLowerCase() === 'cancelled'
+  ).length;
+  const tricycleCount = new Set(filteredBookings.map(b => b.tricycle?.id || b.tricycleId)).size;
+
+  const summaryData = [
+    { label: 'Total Bookings', count: totalBookings, icon: 'bi-box-seam', color: '#0d6efd' },
+    { label: 'Pending', count: pendingCount, icon: 'bi-clock-history', color: '#ffc107' },
+    { label: 'Approved', count: approvedCount, icon: 'bi-check-circle', color: '#198754' },
+    { label: 'Cancelled', count: cancelledCount, icon: 'bi-x-circle', color: '#dc3545' },
+    { label: 'Tricycles', count: tricycleCount, icon: 'bi-bicycle', color: '#6f42c1' },
+  ];
+
+  // ===== 13. STATUS BADGE =====
   const getStatusBadge = (status) => {
     const statusMap = {
       pending: { label: 'Pending', color: '#ffc107', bg: '#fff3cd' },
@@ -357,7 +397,7 @@ function TricycleOrder() {
     );
   };
 
-  // ===== 13. CARD ACTIONS =====
+  // ===== 14. CARD ACTIONS =====
   const CardActions = ({ booking }) => {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -395,7 +435,7 @@ function TricycleOrder() {
       return () => document.removeEventListener('click', handleClickOutside);
     }, [isOpen]);
 
-    const isApproved = booking.status?.toLowerCase() === 'approved' || booking.status?.toLowerCase() === 'confirmed' || booking.status?.toLowerCase() === 'completed';
+    const isApproved = ['approved', 'confirmed', 'completed'].includes(booking.status?.toLowerCase());
     const isCancelled = booking.status?.toLowerCase() === 'cancelled';
 
     return (
@@ -418,7 +458,7 @@ function TricycleOrder() {
     );
   };
 
-  // ===== 14. DETAIL MODAL =====
+  // ===== 15. DETAIL MODAL =====
   const DetailModal = ({ booking, onClose }) => {
     if (!booking) return null;
 
@@ -462,7 +502,7 @@ function TricycleOrder() {
     );
   };
 
-  // ===== 15. BOOKING CARD =====
+  // ===== 16. BOOKING CARD =====
   const BookingCard = ({ booking }) => {
     const tricycleName = booking.tricycleName || 'Tricycle';
     const customerName = booking.customerName || 'Guest';
@@ -506,7 +546,7 @@ function TricycleOrder() {
     );
   };
 
-  // ===== 16. LOADING / ERROR =====
+  // ===== 17. LOADING / ERROR =====
   if (loading && bookings.length === 0) {
     return (
       <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
@@ -533,15 +573,6 @@ function TricycleOrder() {
       </div>
     );
   }
-
-  // ===== 17. SUMMARY DATA =====
-  const summaryData = [
-    { label: 'Total Bookings', count: bookings.length, icon: 'bi-box-seam', color: '#0d6efd' },
-    { label: 'Pending', count: bookings.filter(b => (b.status || '').toLowerCase() === 'pending' || (b.status || '').toLowerCase() === 'available').length, icon: 'bi-clock-history', color: '#ffc107' },
-    { label: 'Approved', count: bookings.filter(b => (b.status || '').toLowerCase() === 'approved' || (b.status || '').toLowerCase() === 'confirmed' || (b.status || '').toLowerCase() === 'completed').length, icon: 'bi-check-circle', color: '#198754' },
-    { label: 'Cancelled', count: bookings.filter(b => (b.status || '').toLowerCase() === 'cancelled').length, icon: 'bi-x-circle', color: '#dc3545' },
-    { label: 'Tricycles', count: new Set(bookings.map(b => b.tricycle?.id || b.tricycleName)).size || bookings.length, icon: 'bi-bicycle', color: '#6f42c1' },
-  ];
 
   // ===== 18. MAIN RENDER =====
   return (
@@ -573,7 +604,7 @@ function TricycleOrder() {
         </div>
       )}
 
-      {/* ===== SUMMARY BOXES ===== */}
+      {/* ===== SUMMARY BOXES (based on filtered bookings) ===== */}
       <div
         style={{
           display: 'grid',
@@ -708,6 +739,9 @@ function TricycleOrder() {
                     style={{ fontSize: '48px', display: 'block', marginBottom: '10px' }}
                   ></i>
                   <p>No bookings match the current filters.</p>
+                  <p style={{ fontSize: '12px', color: '#666' }}>
+                    Total Bookings: {bookings.length} | Your Tricycle IDs: {JSON.stringify(userTricycleIds)}
+                  </p>
                 </div>
               )}
             </div>

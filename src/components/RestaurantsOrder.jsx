@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
-// ===== HELPER FUNCTIONS =====
 // Parse date string like "10-08-2026" (DD-MM-YYYY) to Date object
 const parseDate = (dateStr) => {
   if (!dateStr) return null;
@@ -20,7 +19,7 @@ const parseDate = (dateStr) => {
 };
 
 function RestaurantsOrder() {
-  // ===== User Role Check (added) =====
+  // ===== User Role Check =====
   const user = (() => {
     try { return JSON.parse(localStorage.getItem('user')); } 
     catch { return null; }
@@ -44,8 +43,7 @@ function RestaurantsOrder() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [error, setError] = useState(null);
 
-  // ===== 3. Restaurant Data for Filtering (added) =====
-  const [restaurants, setRestaurants] = useState([]);
+  // ===== 3. Restaurant Data for Filtering =====
   const [myRestaurantIds, setMyRestaurantIds] = useState([]);
 
   // ===== 4. TOAST =====
@@ -81,7 +79,7 @@ function RestaurantsOrder() {
   const API_BASE_RESTAURANT = '/api/admin/restaurant';
   const API_BASE_BOOKING = '/api/admin/restaurant/booking';
 
-  // ===== 6. FETCH RESTAURANTS (added) =====
+  // ===== 6. FETCH RESTAURANTS =====
   const fetchRestaurants = async () => {
     try {
       const response = await fetch(`${API_BASE_RESTAURANT}/list`, {
@@ -97,26 +95,28 @@ function RestaurantsOrder() {
       console.log('✅ Restaurants response:', result);
 
       const list = result.data || result || [];
-      setRestaurants(list);
+      console.log('📋 All Restaurants:', list);
 
-      // Filter restaurants created by current user (if not admin)
-      if (!admin) {
-        const myIds = list
+      // 🔑 Get restaurant IDs that this user can see
+      let myIds = [];
+      if (admin) {
+        myIds = list.map(r => r.id);
+      } else {
+        myIds = list
           .filter(r => r.createdBy === userId)
           .map(r => r.id);
-        setMyRestaurantIds(myIds);
-        console.log('🔑 My restaurant IDs:', myIds);
-      } else {
-        const allIds = list.map(r => r.id);
-        setMyRestaurantIds(allIds);
       }
+      setMyRestaurantIds(myIds);
+      console.log('🔑 My restaurant IDs:', myIds);
+      console.log('👤 User ID:', userId);
+      console.log('📊 Admin:', admin);
     } catch (err) {
       console.error('❌ Fetch Restaurants Error:', err);
       showToast('error', 'Failed to load restaurants for filtering.');
     }
   };
 
-  // ===== 7. FETCH ORDERS (UPDATED) =====
+  // ===== 7. FETCH ORDERS =====
   const fetchOrders = async () => {
     // First fetch restaurants to get ownership info
     await fetchRestaurants();
@@ -154,10 +154,13 @@ function RestaurantsOrder() {
         }
       }
 
+      console.log('📦 Raw Orders Count:', rawOrders.length);
+      console.log('📦 Raw Orders:', rawOrders);
+
       // ---- 2. Map to component shape ----
       const mappedOrders = rawOrders.map((item) => ({
         id: item.booking_id || item.id,
-        restaurantId: item.restaurant_id, // <-- added for filtering
+        restaurantId: item.restaurant_id,
         status: item.status || 'pending',
         totalPrice: item.total_price || item.price || 0,
         startDate: parseDate(item.booking_date || item.start_date),
@@ -197,6 +200,8 @@ function RestaurantsOrder() {
         _raw: item,
       }));
 
+      console.log('📦 Mapped Orders:', mappedOrders);
+      console.log('📊 Restaurant IDs in orders:', mappedOrders.map(o => o.restaurantId));
       setOrders(mappedOrders);
     } catch (err) {
       setError(err.message);
@@ -257,66 +262,83 @@ function RestaurantsOrder() {
     }
   };
 
-  // ===== 10. FILTER LOGIC (UPDATED with User Role Filter) =====
-  const filteredOrders = orders
-    // Step 1: Filter by user role (only show bookings for restaurants user owns)
-    .filter((order) => {
-      if (admin) return true;
-      return myRestaurantIds.includes(order.restaurantId);
-    })
-    // Step 2: Search, status & time filters
-    .filter((order) => {
-      const searchStr = `${order.id} ${order.restaurant?.name || ''} ${order.user?.name || ''}`.toLowerCase();
-      const matchesSearch = searchStr.includes(searchTerm.toLowerCase());
+  // ===== 10. FILTER LOGIC (TEMPORARILY DISABLE SHOP FILTER) =====
+  // 🔥 TEMPORARY: Show ALL orders regardless of restaurant ownership
+  const roleFilteredOrders = orders; // NO filter
 
-      const matchesStatus = statusFilter ? order.status === statusFilter : true;
+  // Step 2: Apply search, status & time filters
+  const filteredOrders = roleFilteredOrders.filter((order) => {
+    const searchStr = `${order.id} ${order.restaurant?.name || ''} ${order.user?.name || ''}`.toLowerCase();
+    const matchesSearch = searchStr.includes(searchTerm.toLowerCase());
 
-      let matchesTime = true;
-      if (timeFilter !== 'all') {
-        const date = order.startDate || order.createdAt;
-        if (!date || isNaN(date.getTime())) {
-          matchesTime = false;
-        } else {
-          const today = new Date();
-          const year = date.getFullYear();
-          const month = date.getMonth();
-          const day = date.getDate();
-          const todayYear = today.getFullYear();
-          const todayMonth = today.getMonth();
-          const todayDay = today.getDate();
+    const matchesStatus = statusFilter ? order.status === statusFilter : true;
 
-          switch (timeFilter) {
-            case 'daily':
-              matchesTime = (year === todayYear && month === todayMonth && day === todayDay);
-              break;
-            case 'weekly': {
-              const startOfWeek = new Date(today);
-              const dayOfWeek = today.getDay();
-              const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-              startOfWeek.setDate(today.getDate() - diff);
-              startOfWeek.setHours(0, 0, 0, 0);
-              const endOfWeek = new Date(startOfWeek);
-              endOfWeek.setDate(startOfWeek.getDate() + 6);
-              endOfWeek.setHours(23, 59, 59, 999);
-              matchesTime = (date >= startOfWeek && date <= endOfWeek);
-              break;
-            }
-            case 'monthly':
-              matchesTime = (year === todayYear && month === todayMonth);
-              break;
-            case 'yearly':
-              matchesTime = (year === todayYear);
-              break;
-            default:
-              matchesTime = true;
+    let matchesTime = true;
+    if (timeFilter !== 'all') {
+      const date = order.startDate || order.createdAt;
+      if (!date || isNaN(date.getTime())) {
+        matchesTime = false;
+      } else {
+        const today = new Date();
+        const year = date.getFullYear();
+        const month = date.getMonth();
+        const day = date.getDate();
+        const todayYear = today.getFullYear();
+        const todayMonth = today.getMonth();
+        const todayDay = today.getDate();
+
+        switch (timeFilter) {
+          case 'daily':
+            matchesTime = (year === todayYear && month === todayMonth && day === todayDay);
+            break;
+          case 'weekly': {
+            const startOfWeek = new Date(today);
+            const dayOfWeek = today.getDay();
+            const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            startOfWeek.setDate(today.getDate() - diff);
+            startOfWeek.setHours(0, 0, 0, 0);
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(startOfWeek.getDate() + 6);
+            endOfWeek.setHours(23, 59, 59, 999);
+            matchesTime = (date >= startOfWeek && date <= endOfWeek);
+            break;
           }
+          case 'monthly':
+            matchesTime = (year === todayYear && month === todayMonth);
+            break;
+          case 'yearly':
+            matchesTime = (year === todayYear);
+            break;
+          default:
+            matchesTime = true;
         }
       }
+    }
 
-      return matchesSearch && matchesStatus && matchesTime;
-    });
+    return matchesSearch && matchesStatus && matchesTime;
+  });
 
-  // ===== 11. STATUS BADGE =====
+  console.log('🔍 Final Filtered Orders Count:', filteredOrders.length);
+  console.log('🔍 Final Filtered Orders:', filteredOrders);
+
+  // ===== 11. SUMMARY DATA (based on filtered orders) =====
+  const totalOrders = filteredOrders.length;
+  const pendingCount = filteredOrders.filter(o => (o.status || '').toLowerCase() === 'pending').length;
+  const approvedCount = filteredOrders.filter(o => 
+    ['approved', 'confirmed', 'completed'].includes((o.status || '').toLowerCase())
+  ).length;
+  const cancelledCount = filteredOrders.filter(o => (o.status || '').toLowerCase() === 'cancelled').length;
+  const restaurantCount = new Set(filteredOrders.map(o => o.restaurant?.id || o.restaurantId)).size;
+
+  const summaryData = [
+    { label: 'Total Bookings', count: totalOrders, icon: 'bi-box-seam', color: '#0d6efd' },
+    { label: 'Pending', count: pendingCount, icon: 'bi-clock-history', color: '#ffc107' },
+    { label: 'Approved', count: approvedCount, icon: 'bi-check-circle', color: '#198754' },
+    { label: 'Cancelled', count: cancelledCount, icon: 'bi-x-circle', color: '#dc3545' },
+    { label: 'Restaurants', count: restaurantCount || 0, icon: 'bi-egg-fried', color: '#6f42c1' },
+  ];
+
+  // ===== 12. STATUS BADGE =====
   const getStatusBadge = (status) => {
     const statusMap = {
       pending: { label: 'Pending', color: '#ffc107', bg: '#fff3cd' },
@@ -343,7 +365,7 @@ function RestaurantsOrder() {
     );
   };
 
-  // ===== 12. CARD ACTIONS =====
+  // ===== 13. CARD ACTIONS =====
   const CardActions = ({ order }) => {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -381,7 +403,7 @@ function RestaurantsOrder() {
       return () => document.removeEventListener('click', handleClickOutside);
     }, [isOpen]);
 
-    const isApproved = order.status?.toLowerCase() === 'approved' || order.status?.toLowerCase() === 'confirmed' || order.status?.toLowerCase() === 'completed';
+    const isApproved = ['approved', 'confirmed', 'completed'].includes(order.status?.toLowerCase());
     const isCancelled = order.status?.toLowerCase() === 'cancelled';
     const isPending = order.status?.toLowerCase() === 'pending';
 
@@ -409,7 +431,7 @@ function RestaurantsOrder() {
     );
   };
 
-  // ===== 13. DETAIL MODAL =====
+  // ===== 14. DETAIL MODAL =====
   const DetailModal = ({ order, onClose }) => {
     if (!order) return null;
 
@@ -473,7 +495,7 @@ function RestaurantsOrder() {
     );
   };
 
-  // ===== 14. ORDER CARD =====
+  // ===== 15. ORDER CARD =====
   const OrderCard = ({ order }) => {
     const restaurantName = order.restaurant?.name || 'Restaurant';
     const userName = order.user?.name || 'Guest';
@@ -531,7 +553,7 @@ function RestaurantsOrder() {
     );
   };
 
-  // ===== 15. LOADING / ERROR =====
+  // ===== 16. LOADING / ERROR =====
   if (loading && orders.length === 0) {
     return (
       <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
@@ -558,15 +580,6 @@ function RestaurantsOrder() {
       </div>
     );
   }
-
-  // ===== 16. SUMMARY DATA =====
-  const summaryData = [
-    { label: 'Total Bookings', count: orders.length, icon: 'bi-box-seam', color: '#0d6efd' },
-    { label: 'Pending', count: orders.filter(o => (o.status || '').toLowerCase() === 'pending').length, icon: 'bi-clock-history', color: '#ffc107' },
-    { label: 'Approved', count: orders.filter(o => (o.status || '').toLowerCase() === 'approved' || o.status === 'confirmed' || o.status === 'completed').length, icon: 'bi-check-circle', color: '#198754' },
-    { label: 'Cancelled', count: orders.filter(o => (o.status || '').toLowerCase() === 'cancelled').length, icon: 'bi-x-circle', color: '#dc3545' },
-    { label: 'Restaurants', count: new Set(orders.map(o => o.restaurant?.id || o.restaurant?.name)).size || orders.length, icon: 'bi-egg-fried', color: '#6f42c1' },
-  ];
 
   // ===== 17. MAIN RENDER =====
   return (
@@ -597,7 +610,7 @@ function RestaurantsOrder() {
         </div>
       )}
 
-      {/* Summary Boxes */}
+      {/* Summary Boxes (based on filtered orders) */}
       <div
         style={{
           display: 'grid',
@@ -731,6 +744,13 @@ function RestaurantsOrder() {
                     style={{ fontSize: '48px', display: 'block', marginBottom: '10px' }}
                   ></i>
                   <p>No bookings match the current filters.</p>
+                  <p style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>
+                    Total Orders: {orders.length} | My Restaurant IDs: {JSON.stringify(myRestaurantIds)}
+                  </p>
+                  <p style={{ fontSize: '12px', color: '#666' }}>
+                    👉 If you see orders above but not here, the shop filter is blocking them. 
+                    This version shows ALL orders.
+                  </p>
                 </div>
               )}
             </div>
