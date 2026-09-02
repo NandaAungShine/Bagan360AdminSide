@@ -1,5 +1,5 @@
 // components/DestinationsOrder.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
 function DestinationsOrder() {
@@ -9,9 +9,34 @@ function DestinationsOrder() {
     return savedTheme === 'dark';
   });
 
-  
+  // ===== 2. TOAST & CONFIRM STATES (Alert အစားထိုးရန်) =====
+  const [toast, setToast] = useState({
+    visible: false,
+    type: 'success',
+    message: '',
+  });
+  const toastTimeoutRef = useRef(null);
 
-  // ===== 2. UI STATES =====
+  const [confirmDialog, setConfirmDialog] = useState({
+    visible: false,
+    message: '',
+    onConfirm: null,
+  });
+
+  // ===== Toast Helper (3s အကြာမှာ အလိုအလျောက်ပျောက်မယ်) =====
+  const showToast = (type, message) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
+    setToast({ visible: true, type, message });
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(prev => ({ ...prev, visible: false }));
+      toastTimeoutRef.current = null;
+    }, 3000);
+  };
+
+  // ===== 3. UI STATES =====
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -19,13 +44,13 @@ function DestinationsOrder() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
-  // ===== 3. SAMPLE DATA (Destinations) =====
+  // ===== 4. SAMPLE DATA (Destinations) =====
   const sampleOrders = [
     {
       id: 1,
       destination: {
         name: 'Bagan Ancient City',
-        image: '/images/destination1.jpg',
+        image: '/images/destinations1.webp',
         description: 'Thousands of pagodas and temples spread across the plains.',
       },
       user: { name: 'John Doe', email: 'john@example.com' },
@@ -40,7 +65,7 @@ function DestinationsOrder() {
       id: 2,
       destination: {
         name: 'Inle Lake',
-        image: '/images/destination2.jpg',
+        image: '/images/1.jpg',
         description: 'Floating gardens, stilt houses, and unique leg-rowing fishermen.',
       },
       user: { name: 'Jane Smith', email: 'jane@example.com' },
@@ -98,7 +123,7 @@ function DestinationsOrder() {
     },
   ];
 
-  // ===== 4. THEME HANDLER =====
+  // ===== 5. THEME HANDLER =====
   const handleThemeChange = (isDark) => {
     setIsDarkMode(isDark);
   };
@@ -113,7 +138,7 @@ function DestinationsOrder() {
     }
   }, [isDarkMode]);
 
-  // ===== 5. FETCH (Simulate) =====
+  // ===== 6. FETCH (Simulate) =====
   const fetchOrders = () => {
     setLoading(true);
     setTimeout(() => {
@@ -126,9 +151,8 @@ function DestinationsOrder() {
     fetchOrders();
   }, []);
 
-  // ===== 6. UPDATE STATUS (Simulate) =====
-  const updateOrderStatus = (orderId, newStatus) => {
-    if (!window.confirm(`Change status to "${newStatus}"?`)) return;
+  // ===== 7. UPDATE STATUS (Confirm Modal နဲ့ Toast သုံးရန် ပြောင်းထားပါတယ်) =====
+  const performStatusUpdate = (orderId, newStatus) => {
     setLoading(true);
     setTimeout(() => {
       setOrders((prev) =>
@@ -137,11 +161,19 @@ function DestinationsOrder() {
         )
       );
       setLoading(false);
-      alert(`Order status updated to ${newStatus}`);
+      showToast('success', `Order status updated to ${newStatus}`);
     }, 400);
   };
 
-  // ===== 7. FILTER =====
+  const updateOrderStatus = (orderId, newStatus) => {
+    setConfirmDialog({
+      visible: true,
+      message: `Change status to "${newStatus}"?`,
+      onConfirm: () => performStatusUpdate(orderId, newStatus)
+    });
+  };
+
+  // ===== 8. FILTER =====
   const filteredOrders = orders.filter((order) => {
     const matchesSearch =
       order.id.toString().includes(searchTerm) ||
@@ -151,7 +183,7 @@ function DestinationsOrder() {
     return matchesSearch && matchesStatus;
   });
 
-  // ===== 8. STATUS BADGE =====
+  // ===== 9. STATUS BADGE =====
   const getStatusBadge = (status) => {
     const statusMap = {
       pending: { label: 'Pending', color: '#ffc107', bg: '#fff3cd' },
@@ -177,7 +209,7 @@ function DestinationsOrder() {
     );
   };
 
-  // ===== 9. CARD ACTIONS =====
+  // ===== 10. CARD ACTIONS =====
   const CardActions = ({ order }) => {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -232,7 +264,7 @@ function DestinationsOrder() {
     );
   };
 
-  // ===== 10. DETAIL MODAL =====
+  // ===== 11. DETAIL MODAL =====
   const DetailModal = ({ order, onClose }) => {
     if (!order) return null;
 
@@ -272,7 +304,7 @@ function DestinationsOrder() {
     );
   };
 
-  // ===== 11. ORDER CARD =====
+  // ===== 12. ORDER CARD =====
   const OrderCard = ({ order }) => (
     <div className="hotel-card-vertical" style={{ cursor: 'default' }}>
       <div className="hotel-card-image" style={{ height : '200px'}}>
@@ -311,7 +343,7 @@ function DestinationsOrder() {
     </div>
   );
 
-  // ===== 12. LOADING =====
+  // ===== 13. LOADING =====
   if (loading && orders.length === 0) {
     return (
       <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
@@ -326,7 +358,7 @@ function DestinationsOrder() {
     );
   }
 
-  // ===== 13. SUMMARY DATA =====
+  // ===== 14. SUMMARY DATA =====
   const summaryData = [
     { label: 'Total Orders', count: orders.length, icon: 'bi-box-seam', color: '#0d6efd' },
     { label: 'Pending', count: orders.filter(o => o.status === 'pending').length, icon: 'bi-clock-history', color: '#ffc107' },
@@ -335,10 +367,60 @@ function DestinationsOrder() {
     { label: 'Destinations', count: orders.length, icon: 'bi-geo-alt-fill', color: '#6f42c1' },
   ];
 
-  // ===== 14. MAIN RENDER =====
+  // ===== 15. MAIN RENDER =====
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Destination Orders" onThemeChange={handleThemeChange} />
+
+      {/* 🟢 Screen အလယ် Toast Alert UI (Bagan 360 Header ပါ) */}
+      {toast.visible && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 999999,
+          width: '420px',
+          maxWidth: '90%',
+          borderRadius: '16px',
+          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+          padding: '0',
+          overflow: 'hidden',
+          backgroundColor: toast.type === 'success' ? (isDarkMode ? '#1e3a2e' : '#d4edda') : toast.type === 'error' ? (isDarkMode ? '#3e1f1f' : '#f8d7da') : toast.type === 'warning' ? (isDarkMode ? '#3d3512' : '#fff3cd') : (isDarkMode ? '#112b3c' : '#d1ecf1'),
+          color: toast.type === 'success' ? (isDarkMode ? '#b7eb8f' : '#155724') : toast.type === 'error' ? (isDarkMode ? '#ffa39e' : '#721c24') : toast.type === 'warning' ? (isDarkMode ? '#ffe58f' : '#856404') : (isDarkMode ? '#91d5ff' : '#0c5460'),
+          borderLeft: `5px solid ${toast.type === 'success' ? (isDarkMode ? '#52c41a' : '#28a745') : toast.type === 'error' ? (isDarkMode ? '#ff4d4f' : '#dc3545') : toast.type === 'warning' ? (isDarkMode ? '#faad14' : '#ffc107') : (isDarkMode ? '#1890ff' : '#17a2b8')}`
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
+            <div style={{ fontWeight: 'bold', fontSize: '16px' }}>Bagan 360</div>
+            <button onClick={() => { if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); setToast({ ...toast, visible: false }); }} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: '18px', cursor: 'pointer', opacity: 0.7, padding: '0 4px' }}>
+              <i className="bi bi-x-lg"></i>
+            </button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', padding: '20px' }}>
+            <div style={{ fontSize: '28px' }}>
+              {toast.type === 'success' && <i className="bi bi-check-circle-fill"></i>}
+              {toast.type === 'error' && <i className="bi bi-x-circle-fill"></i>}
+              {toast.type === 'warning' && <i className="bi bi-exclamation-triangle-fill"></i>}
+              {toast.type === 'info' && <i className="bi bi-info-circle-fill"></i>}
+            </div>
+            <div style={{ fontSize: '15px', lineHeight: '1.5' }}>{toast.message}</div>
+          </div>
+        </div>
+      )}
+
+      {/* 🟢 Screen အလယ် Custom Confirm Modal (Confirm/Complete/Cancel အတွက်) */}
+      {confirmDialog.visible && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: isDarkMode ? '#2d2d2d' : '#fff', padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%', boxShadow: '0 15px 40px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ color: isDarkMode ? '#eee' : '#333', marginBottom: '12px' }}>Confirm Action</h3>
+            <p style={{ color: isDarkMode ? '#ccc' : '#555' }}>{confirmDialog.message}</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+              <button onClick={() => setConfirmDialog({ ...confirmDialog, visible: false })} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', background: 'transparent', cursor: 'pointer', color: isDarkMode ? '#ccc' : '#333' }}>Cancel</button>
+              <button onClick={() => { if(confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({ ...confirmDialog, visible: false }); }} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc3545', color: '#fff', cursor: 'pointer' }}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== SUMMARY BOXES (5 Cards with Fixed Dark Background) ===== */}
       <div

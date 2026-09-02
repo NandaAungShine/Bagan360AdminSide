@@ -2,8 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import Header from './Header';
 
+// ============================================================
+//  BASE API URL (adjust if your backend uses a different port)
+// ============================================================
+const API_BASE = 'http://130.94.21.185:8000/api';
+
 function HotelsOrder() {
-  // ===== User Role Check (added) =====
+  // ===== User Role Check =====
   const user = (() => {
     try { return JSON.parse(localStorage.getItem('user')); } 
     catch { return null; }
@@ -22,8 +27,6 @@ function HotelsOrder() {
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
-
-  // ===== Hotel Data for Filtering (added) =====
   const [hotels, setHotels] = useState([]);
   const [myHotelIds, setMyHotelIds] = useState([]);
 
@@ -40,14 +43,10 @@ function HotelsOrder() {
     setTimeout(() => window.location.href = '/login', 1500);
   };
 
-  // ===== API BASE =====
-  const API_BASE = '/api/admin/hotel';
-  const ORDER_API_BASE = '/api/admin/hotel/booking';
-
-  // ===== FETCH HOTELS (added) =====
+  // ===== FETCH HOTELS (to determine ownership) =====
   const fetchHotels = async () => {
     try {
-      const response = await fetch(`${API_BASE}/list`, {
+      const response = await fetch(`${API_BASE}/admin/hotel/list`, {
         method: 'GET',
         headers: getHeaders(),
       });
@@ -62,7 +61,6 @@ function HotelsOrder() {
       const list = result.data || result.hotels || result || [];
       setHotels(list);
       
-      // Filter hotels created by current user (if not admin)
       if (!admin) {
         const myIds = list
           .filter(h => h.createdBy === userId)
@@ -80,12 +78,11 @@ function HotelsOrder() {
 
   // ===== FETCH ORDERS =====
   const fetchOrders = async () => {
-    // First fetch hotels to get ownership info
-    await fetchHotels();
+    await fetchHotels(); // needed for ownership filter
 
     setLoading(true);
     try {
-      const response = await fetch(`${ORDER_API_BASE}/list/`, {
+      const response = await fetch(`${API_BASE}/admin/hotel/booking/list`, {
         method: 'GET',
         headers: getHeaders(),
       });
@@ -97,7 +94,6 @@ function HotelsOrder() {
       const result = await response.json();
       console.log('✅ Orders response:', result);
 
-      // Extract orders from response
       let rawOrders = [];
       if (Array.isArray(result.data)) {
         rawOrders = result.data;
@@ -109,7 +105,6 @@ function HotelsOrder() {
         rawOrders = [];
       }
 
-      // Map to component shape
       const mappedOrders = rawOrders.map((item) => ({
         id: item.id || item.booking_id,
         hotelId: item.hotel_id,
@@ -135,6 +130,7 @@ function HotelsOrder() {
       setOrders(mappedOrders);
     } catch (err) {
       console.error('❌ Fetch Orders Error:', err);
+      alert('Failed to load orders.');
     } finally {
       setLoading(false);
     }
@@ -149,6 +145,7 @@ function HotelsOrder() {
     fetchOrders();
   }, []);
 
+  // ===== THEME =====
   const handleThemeChange = (isDark) => {
     setIsDarkMode(isDark);
   };
@@ -163,41 +160,61 @@ function HotelsOrder() {
     }
   }, [isDarkMode]);
 
+  // ===== UPDATE ORDER STATUS (USING PROVIDED ENDPOINTS) =====
   const updateOrderStatus = async (orderId, newStatus) => {
     if (!window.confirm(`Change status to "${newStatus}"?`)) return;
+
+    let endpoint = '';
+    let method = 'PUT';
+
+    if (newStatus === 'confirmed') {
+      endpoint = `${API_BASE}/mobile/hotel/booking/approvd/${orderId}`; // note: "approvd"
+    } else if (newStatus === 'cancelled') {
+      endpoint = `${API_BASE}/mobile/hotel/booking/cancelled/${orderId}`;
+    } else if (newStatus === 'completed') {
+      // No API endpoint for "completed" – update locally only
+      setOrders((prev) =>
+        prev.map((order) =>
+          order.id === orderId ? { ...order, status: 'completed' } : order
+        )
+      );
+      alert('Order marked as completed (local only – no API endpoint).');
+      return;
+    } else {
+      alert(`Unsupported status: ${newStatus}`);
+      return;
+    }
+
     setLoading(true);
     try {
-      const response = await fetch(`${ORDER_API_BASE}/status/${orderId}`, {
-        method: 'PUT',
-        headers: {
-          ...getHeaders(),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ status: newStatus }),
+      const response = await fetch(endpoint, {
+        method: method,
+        headers: getHeaders(),
+        // If your API expects a body, add it here; otherwise omit
+        // body: JSON.stringify({ status: newStatus }),
       });
       if (response.status === 401) return handle401Error();
       if (!response.ok) {
         const text = await response.text();
         throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
       }
+      // Refresh the order list to reflect the change
       await fetchOrders();
       alert(`Order status updated to ${newStatus}`);
     } catch (err) {
       console.error('❌ Update Status Error:', err);
-      alert('Failed to update status');
+      alert('Failed to update status. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // ===== FILTER LOGIC (UPDATED with User Role Filter) =====
+  // ===== FILTER (respects ownership + search + status) =====
   const filteredOrders = orders
-    // Step 1: Filter by user role (only show orders for hotels user owns)
     .filter((order) => {
       if (admin) return true;
       return myHotelIds.includes(order.hotelId);
     })
-    // Step 2: Search filter
     .filter((order) => {
       const matchesSearch =
         order.id.toString().includes(searchTerm) ||
@@ -207,6 +224,7 @@ function HotelsOrder() {
       return matchesSearch && matchesStatus;
     });
 
+  // ===== STATUS BADGE =====
   const getStatusBadge = (status) => {
     const statusMap = {
       pending: { label: 'Pending', color: '#ffc107', bg: '#fff3cd' },
@@ -232,6 +250,7 @@ function HotelsOrder() {
     );
   };
 
+  // ===== CARD ACTIONS =====
   const CardActions = ({ order }) => {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -286,6 +305,7 @@ function HotelsOrder() {
     );
   };
 
+  // ===== DETAIL MODAL =====
   const DetailModal = ({ order, onClose }) => {
     if (!order) return null;
 
@@ -325,9 +345,10 @@ function HotelsOrder() {
     );
   };
 
+  // ===== ORDER CARD =====
   const OrderCard = ({ order }) => (
     <div className="hotel-card-vertical" style={{ cursor: 'default' }}>
-      <div className="hotel-card-image" style={{ height : '200px'}}>
+      <div className="hotel-card-image" style={{ height: '200px' }}>
         <div className="image-slider">
           <img
             src={order.hotel.image || '/default-hotel.jpg'}
@@ -363,6 +384,7 @@ function HotelsOrder() {
     </div>
   );
 
+  // ===== LOADING =====
   if (loading && orders.length === 0) {
     return (
       <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
@@ -377,6 +399,7 @@ function HotelsOrder() {
     );
   }
 
+  // ===== SUMMARY =====
   const summaryData = [
     { label: 'Total Orders', count: orders.length, icon: 'bi-box-seam', color: '#0d6efd' },
     { label: 'Pending', count: orders.filter(o => o.status === 'pending').length, icon: 'bi-clock-history', color: '#ffc107' },
@@ -385,11 +408,12 @@ function HotelsOrder() {
     { label: 'Hotels', count: new Set(orders.map(o => o.hotelId)).size, icon: 'bi-building', color: '#6f42c1' },
   ];
 
+  // ===== MAIN RENDER =====
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Hotel Orders" onThemeChange={handleThemeChange} />
 
-      {/* ===== Summary Boxes ===== */}
+      {/* Summary Boxes */}
       <div
         style={{
           display: 'grid',
@@ -457,7 +481,7 @@ function HotelsOrder() {
         ))}
       </div>
 
-      {/* ===== Search + Filter ===== */}
+      {/* Search + Filter */}
       <div className="search-actions-row">
         <div className="search-bar-wrapper">
           <i className="bi bi-search search-icon"></i>
@@ -486,7 +510,7 @@ function HotelsOrder() {
         </div>
       </div>
 
-      {/* ===== Order Cards (3 per row) ===== */}
+      {/* Cards */}
       <div className="hotels-two-columns">
         <div className="hotels-cards-column" style={{ gridColumn: '1 / -1' }}>
           <div className="hotels-scroll-area">

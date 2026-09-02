@@ -12,14 +12,15 @@ function TravelTodos() {
   const [todos, setTodos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState('lifo'); // lifo, fifo, az, za
+  const [sortBy, setSortBy] = useState('lifo');
   const [showSortDropdown, setShowSortDropdown] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    status: 'Active'
+    status: 'Active',
+    imageUrl: ''  // 👈 added
   });
 
   // Edit modal
@@ -65,11 +66,11 @@ function TravelTodos() {
 
   // ===== 5. SAMPLE DATA =====
   const sampleTodos = [
-    { id: 1, title: 'Bring comfortable walking shoes', description: 'Bagan has many temples to explore on foot.', status: 'Active', created_at: '2024-03-20' },
-    { id: 2, title: 'Reserve hot air balloon in advance', description: 'Balloon rides fill up quickly during peak season.', status: 'Active', created_at: '2024-03-18' },
-    { id: 3, title: 'Carry sunscreen and a hat', description: 'The sun can be very strong during the day.', status: 'Inactive', created_at: '2024-03-15' },
-    { id: 4, title: 'Book accommodation early', description: 'Hotels get fully booked during festival seasons.', status: 'Active', created_at: '2024-03-25' },
-    { id: 5, title: 'Learn basic Burmese phrases', description: 'Locals appreciate when tourists try to speak their language.', status: 'Active', created_at: '2024-03-22' },
+    { id: 1, title: 'Bring comfortable walking shoes', description: 'Bagan has many temples to explore on foot.', status: 'Active', created_at: '2024-03-20', imageUrl: '' },
+    { id: 2, title: 'Reserve hot air balloon in advance', description: 'Balloon rides fill up quickly during peak season.', status: 'Active', created_at: '2024-03-18', imageUrl: '' },
+    { id: 3, title: 'Carry sunscreen and a hat', description: 'The sun can be very strong during the day.', status: 'Inactive', created_at: '2024-03-15', imageUrl: '' },
+    { id: 4, title: 'Book accommodation early', description: 'Hotels get fully booked during festival seasons.', status: 'Active', created_at: '2024-03-25', imageUrl: '' },
+    { id: 5, title: 'Learn basic Burmese phrases', description: 'Locals appreciate when tourists try to speak their language.', status: 'Active', created_at: '2024-03-22', imageUrl: '' },
   ];
 
   // Load from localStorage or use sample
@@ -139,10 +140,11 @@ function TravelTodos() {
         description: formData.description.trim() || 'No description provided.',
         status: formData.status || 'Active',
         created_at: new Date().toISOString().split('T')[0],
+        imageUrl: formData.imageUrl || '',  // 👈 added
       };
 
       setTodos([newTodo, ...todos]);
-      setFormData({ title: '', description: '', status: 'Active' });
+      setFormData({ title: '', description: '', status: 'Active', imageUrl: '' });
       setImages([]);
       showToast('success', 'To-Do added successfully!');
     } catch (err) {
@@ -173,6 +175,7 @@ function TravelTodos() {
       title: todo.title,
       description: todo.description || '',
       status: todo.status || 'Active',
+      imageUrl: todo.imageUrl || '',
     });
     setImages(todo.imageUrl ? [todo.imageUrl] : []);
     setShowEditModal(true);
@@ -189,13 +192,14 @@ function TravelTodos() {
                 title: formData.title.trim(),
                 description: formData.description.trim() || 'No description provided.',
                 status: formData.status,
+                imageUrl: formData.imageUrl || todo.imageUrl,
               }
             : todo
         );
         setTodos(updatedTodos);
         setShowEditModal(false);
         setSelectedTodoForEdit(null);
-        setFormData({ title: '', description: '', status: 'Active' });
+        setFormData({ title: '', description: '', status: 'Active', imageUrl: '' });
         setImages([]);
         showToast('success', 'To-Do updated successfully!');
       } else {
@@ -213,9 +217,9 @@ function TravelTodos() {
     const sorted = [...todoList];
     switch (sortBy) {
       case 'lifo':
-        return sorted.sort((a, b) => b.id - a.id); // Newest first
+        return sorted.sort((a, b) => b.id - a.id);
       case 'fifo':
-        return sorted.sort((a, b) => a.id - b.id); // Oldest first
+        return sorted.sort((a, b) => a.id - b.id);
       case 'az':
         return sorted.sort((a, b) => a.title.localeCompare(b.title));
       case 'za':
@@ -249,6 +253,7 @@ function TravelTodos() {
   // ===== 14. CARD ACTIONS (Dropdown) =====
   const CardActions = ({ todoId }) => {
     const [isOpen, setIsOpen] = useState(false);
+    const wrapperRef = useRef(null);
 
     const handleToggle = (e) => {
       e.stopPropagation();
@@ -265,22 +270,21 @@ function TravelTodos() {
     const handleDelete = (e) => {
       e.stopPropagation();
       setIsOpen(false);
-      const todo = todos.find(t => t.id === todoId);
-      if (todo) handleDeleteTodo(todoId);
+      handleDeleteTodo(todoId);
     };
 
     useEffect(() => {
       const handleClickOutside = (event) => {
-        if (isOpen && !event.target.closest('.card-actions-wrapper')) {
+        if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
           setIsOpen(false);
         }
       };
-      document.addEventListener('click', handleClickOutside);
-      return () => document.removeEventListener('click', handleClickOutside);
-    }, [isOpen]);
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     return (
-      <div className="card-actions-wrapper">
+      <div className="card-actions-wrapper" ref={wrapperRef}>
         <button className="card-actions-btn" onClick={handleToggle}>
           <i className="bi bi-three-dots-vertical"></i>
         </button>
@@ -502,8 +506,12 @@ function TravelTodos() {
               ) : (
                 sortedTodos.map((todo) => (
                   <div key={todo.id} className="hotel-card-vertical" style={{ borderLeft: `4px solid ${todo.status === 'Active' ? '#28a745' : '#dc3545'}` }}>
-                    <div className="hotel-card-image" style={{ minHeight: '80px', background: isDarkMode ? '#2d2d2d' : '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
-                      <div style={{ fontSize: '32px' }}>📋</div>
+                    <div className="hotel-card-image" style={{ minHeight: '80px', background: isDarkMode ? '#2d2d2d' : '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px', position: 'relative' }}>
+                      {todo.imageUrl ? (
+                        <img src={todo.imageUrl} alt={todo.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <div style={{ fontSize: '32px' }}>📋</div>
+                      )}
                       {/* Status Badge - LEFT TOP */}
                       <div style={{
                         position: 'absolute',
