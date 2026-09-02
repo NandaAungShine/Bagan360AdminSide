@@ -72,8 +72,10 @@ const CategoryItemList = React.memo(({
   categoryLabel,
   addButtonLabel,
   isDarkMode,
+  readOnly = false,     // NEW: if true, show only display mode
 }) => {
   const handleImageChange = (index, e) => {
+    if (readOnly) return;
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
@@ -87,6 +89,7 @@ const CategoryItemList = React.memo(({
   };
 
   const handleRemoveImage = (index) => {
+    if (readOnly) return;
     const updated = [...items];
     updated[index].image = null;
     updated[index].imageFile = null;
@@ -94,6 +97,7 @@ const CategoryItemList = React.memo(({
   };
 
   const handleTextChange = (index, field, value) => {
+    if (readOnly) return;
     const updated = [...items];
     updated[index][field] = value;
     onUpdate(updated);
@@ -107,27 +111,35 @@ const CategoryItemList = React.memo(({
       {items.map((item, idx) => (
         <div key={item.id} className="category-item" style={{ border: '1px solid #ddd', borderRadius: '8px', padding: '15px', marginBottom: '15px', background: isDarkMode ? '#2a2a2a' : '#f9f9f9' }}>
           <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-            {/* Image upload */}
+            {/* Image display */}
             <div style={{ flex: '0 0 120px' }}>
               <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Image</label>
               {item.image ? (
                 <div style={{ position: 'relative' }}>
                   <img src={item.image} alt="preview" style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '4px' }} />
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveImage(idx)}
-                    style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '50%', width: '20px', height: '20px', fontSize: '12px', cursor: 'pointer' }}
-                  >
-                    ×
-                  </button>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveImage(idx)}
+                      style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '50%', width: '20px', height: '20px', fontSize: '12px', cursor: 'pointer' }}
+                    >
+                      ×
+                    </button>
+                  )}
                 </div>
               ) : (
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => handleImageChange(idx, e)}
-                  style={{ width: '100%' }}
-                />
+                !readOnly ? (
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleImageChange(idx, e)}
+                    style={{ width: '100%' }}
+                  />
+                ) : (
+                  <div style={{ width: '100%', height: '80px', background: '#e9ecef', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6c757d', fontSize: '14px' }}>
+                    No image
+                  </div>
+                )
               )}
             </div>
 
@@ -139,7 +151,8 @@ const CategoryItemList = React.memo(({
                   placeholder="Title"
                   value={item.title}
                   onChange={(e) => handleTextChange(idx, 'title', e.target.value)}
-                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ced4da', background: isDarkMode ? '#333' : '#fff', color: isDarkMode ? '#eee' : '#333' }}
+                  disabled={readOnly}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ced4da', background: readOnly ? (isDarkMode ? '#3a3a3a' : '#e9ecef') : (isDarkMode ? '#333' : '#fff'), color: isDarkMode ? '#eee' : '#333', cursor: readOnly ? 'default' : 'text' }}
                 />
               </div>
               <div style={{ marginBottom: '8px' }}>
@@ -148,7 +161,8 @@ const CategoryItemList = React.memo(({
                   rows="2"
                   value={item.description}
                   onChange={(e) => handleTextChange(idx, 'description', e.target.value)}
-                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ced4da', background: isDarkMode ? '#333' : '#fff', color: isDarkMode ? '#eee' : '#333' }}
+                  disabled={readOnly}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ced4da', background: readOnly ? (isDarkMode ? '#3a3a3a' : '#e9ecef') : (isDarkMode ? '#333' : '#fff'), color: isDarkMode ? '#eee' : '#333', cursor: readOnly ? 'default' : 'text' }}
                 />
               </div>
               <div>
@@ -157,13 +171,14 @@ const CategoryItemList = React.memo(({
                   placeholder="Link (URL)"
                   value={item.link}
                   onChange={(e) => handleTextChange(idx, 'link', e.target.value)}
-                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ced4da', background: isDarkMode ? '#333' : '#fff', color: isDarkMode ? '#eee' : '#333' }}
+                  disabled={readOnly}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ced4da', background: readOnly ? (isDarkMode ? '#3a3a3a' : '#e9ecef') : (isDarkMode ? '#333' : '#fff'), color: isDarkMode ? '#eee' : '#333', cursor: readOnly ? 'default' : 'text' }}
                 />
               </div>
             </div>
 
-            {/* Remove item button (only if more than one) */}
-            {items.length > 1 && (
+            {/* Remove item button (only if not readOnly and more than one) */}
+            {!readOnly && items.length > 1 && (
               <button
                 type="button"
                 onClick={() => onRemove(idx)}
@@ -175,13 +190,15 @@ const CategoryItemList = React.memo(({
           </div>
         </div>
       ))}
-      <button
-        type="button"
-        onClick={onAdd}
-        style={{ background: 'transparent', border: '1px dashed #6c757d', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer', color: '#6c757d' }}
-      >
-        <i className="bi bi-plus-lg"></i> {addButtonLabel}
-      </button>
+      {!readOnly && (
+        <button
+          type="button"
+          onClick={onAdd}
+          style={{ background: 'transparent', border: '1px dashed #6c757d', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer', color: '#6c757d' }}
+        >
+          <i className="bi bi-plus-lg"></i> {addButtonLabel}
+        </button>
+      )}
     </div>
   );
 });
@@ -305,6 +322,10 @@ function PackagePlan() {
   const [formData, setFormData] = useState(emptyPackage());
   const [selectedPackageForEdit, setSelectedPackageForEdit] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // ==================== VIEW DETAILS STATE ====================
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [selectedPackageForView, setSelectedPackageForView] = useState(null);
 
   // ==================== TOAST & CONFIRM ====================
   const [toast, setToast] = useState({ visible: false, type: 'success', message: '' });
@@ -567,6 +588,12 @@ function PackagePlan() {
     }
   };
 
+  // ---- VIEW ----
+  const handleViewPackage = (pkg) => {
+    setSelectedPackageForView(pkg);
+    setShowViewModal(true);
+  };
+
   // ==================== LOAD DATA ON MOUNT ====================
   useEffect(() => {
     fetchPackages();
@@ -577,6 +604,12 @@ function PackagePlan() {
   const CardActions = ({ packageId }) => {
     const [isOpen, setIsOpen] = useState(false);
     const handleToggle = (e) => { e.stopPropagation(); setIsOpen(!isOpen); };
+    const handleView = (e) => {
+      e.stopPropagation();
+      setIsOpen(false);
+      const pkg = dataRef.current.find(p => p.id === packageId);
+      if (pkg) handleViewPackage(pkg);
+    };
     const handleEdit = (e) => {
       e.stopPropagation();
       setIsOpen(false);
@@ -601,6 +634,9 @@ function PackagePlan() {
           <i className="bi bi-three-dots-vertical"></i>
         </button>
         <div className={`card-actions-dropdown ${isOpen ? 'show' : ''}`}>
+          <button className="view-btn" onClick={handleView}>
+            <i className="bi bi-eye"></i> View Details
+          </button>
           <button className="edit-btn" onClick={handleEdit}>
             <i className="bi bi-pencil-square"></i> Edit
           </button>
@@ -686,6 +722,7 @@ function PackagePlan() {
                 categoryLabel="🏨 Hotels"
                 addButtonLabel="Add more Hotel"
                 isDarkMode={isDarkMode}
+                readOnly={false}
               />
 
               {/* Restaurants Section */}
@@ -697,6 +734,7 @@ function PackagePlan() {
                 categoryLabel="🍽️ Restaurants"
                 addButtonLabel="Add more Restaurant"
                 isDarkMode={isDarkMode}
+                readOnly={false}
               />
 
               {/* Transports Section */}
@@ -708,6 +746,7 @@ function PackagePlan() {
                 categoryLabel="🚗 Transportation"
                 addButtonLabel="Add more Transportation"
                 isDarkMode={isDarkMode}
+                readOnly={false}
               />
 
               <button className="add-item-btn-full" onClick={handleAddPackage} disabled={loading}>
@@ -797,6 +836,7 @@ function PackagePlan() {
                 categoryLabel="🏨 Hotels"
                 addButtonLabel="Add more Hotel"
                 isDarkMode={isDarkMode}
+                readOnly={false}
               />
 
               <CategoryItemList
@@ -807,6 +847,7 @@ function PackagePlan() {
                 categoryLabel="🍽️ Restaurants"
                 addButtonLabel="Add more Restaurant"
                 isDarkMode={isDarkMode}
+                readOnly={false}
               />
 
               <CategoryItemList
@@ -817,6 +858,7 @@ function PackagePlan() {
                 categoryLabel="🚗 Transportation"
                 addButtonLabel="Add more Transportation"
                 isDarkMode={isDarkMode}
+                readOnly={false}
               />
             </div>
             <div className="modal-footer">
@@ -824,6 +866,71 @@ function PackagePlan() {
               <button className="add-item-btn" onClick={handleConfirmEdit} disabled={loading}>
                 {loading ? 'Updating...' : 'Confirm Edit'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== VIEW DETAILS MODAL ==================== */}
+      {showViewModal && selectedPackageForView && (
+        <div className="modal-overlay" onClick={() => setShowViewModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
+            <div className="modal-header">
+              <h2>👁️ Package Details</h2>
+              <button className="close-btn" onClick={() => setShowViewModal(false)}><i className="bi bi-x-lg"></i></button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Title</label>
+                <p style={{ fontWeight: 'bold', margin: '5px 0 10px', color: isDarkMode ? '#eee' : '#333' }}>{selectedPackageForView.title}</p>
+              </div>
+              <div className="form-group">
+                <label>Description</label>
+                <p style={{ margin: '5px 0 10px', color: isDarkMode ? '#ddd' : '#555' }}>{selectedPackageForView.description || '—'}</p>
+              </div>
+              <div className="form-group">
+                <label>Created At</label>
+                <p style={{ margin: '5px 0 10px', color: isDarkMode ? '#ddd' : '#555' }}>{selectedPackageForView.created_at || '—'}</p>
+              </div>
+
+              {/* Hotels */}
+              <CategoryItemList
+                items={selectedPackageForView.hotels || []}
+                onUpdate={() => {}}
+                onRemove={() => {}}
+                onAdd={() => {}}
+                categoryLabel="🏨 Hotels"
+                addButtonLabel=""
+                isDarkMode={isDarkMode}
+                readOnly={true}
+              />
+
+              {/* Restaurants */}
+              <CategoryItemList
+                items={selectedPackageForView.restaurants || []}
+                onUpdate={() => {}}
+                onRemove={() => {}}
+                onAdd={() => {}}
+                categoryLabel="🍽️ Restaurants"
+                addButtonLabel=""
+                isDarkMode={isDarkMode}
+                readOnly={true}
+              />
+
+              {/* Transports */}
+              <CategoryItemList
+                items={selectedPackageForView.transports || []}
+                onUpdate={() => {}}
+                onRemove={() => {}}
+                onAdd={() => {}}
+                categoryLabel="🚗 Transportation"
+                addButtonLabel=""
+                isDarkMode={isDarkMode}
+                readOnly={true}
+              />
+            </div>
+            <div className="modal-footer">
+              <button className="discard-btn" onClick={() => setShowViewModal(false)}>Close</button>
             </div>
           </div>
         </div>

@@ -23,7 +23,7 @@ function Sidebar() {
     { name: 'History Of Pagodas', icon: 'bi-building', path: '/historyofpagodas' },
     { name: 'Hotels', icon: 'bi-building', path: '/hotels' },
     { name: 'Destinations', icon: 'bi-geo-alt', path: '/destinations' },
-    { name: 'Package Plans', icon: 'bi-pin-map', path: '/destination-plans' },
+    { name: 'Package Plans', icon: 'bi-pin-map', path: '/PackagePlan' },
     { name: 'Restaurants', icon: 'bi-egg-fried', path: '/restaurants' },
     { name: 'Cars', icon: 'bi-car-front', path: '/cars' },
     { name: 'E-Bikes', icon: 'bi-bicycle', path: '/ebikes' },
