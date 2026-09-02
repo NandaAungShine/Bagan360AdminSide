@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 function Sidebar() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isOrderOpen, setIsOrderOpen] = useState(false);
+  const [showLogoutAlert, setShowLogoutAlert] = useState(false); // 👈 Alert ပြရန်/ဖျောက်ရန်
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -51,53 +52,45 @@ function Sidebar() {
 
   const isActive = (path) => location.pathname === path;
 
+  // ---------- Logout Handlers ----------
   const handleLogout = () => {
-    if (window.confirm('Are you sure you want to log out?')) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      localStorage.removeItem('shopType');
-      sessionStorage.clear();
-      navigate('/login');
-      alert('You have been logged out successfully!');
-    }
+    setShowLogoutAlert(true); // 👈 Alert ပေါ်လာစေရန်
+  };
+
+  const confirmLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('shopType');
+    sessionStorage.clear();
+    navigate('/login');
+    setShowLogoutAlert(false);
+  };
+
+  const cancelLogout = () => {
+    setShowLogoutAlert(false);
   };
 
   // ---------- Mapping: E-Bike အပါအဝင် အကုန်ထည့်ထားပါ ----------
   const shopTypeMap = {
-    // Hotel
     hotels: { main: 'Hotels', order: 'Hotels Order' },
     hotel: { main: 'Hotels', order: 'Hotels Order' },
-    
-    // Destination
     destinations: { main: 'Destinations', order: 'Destinations Order' },
     destination: { main: 'Destinations', order: 'Destinations Order' },
-    
-    // Restaurant
     restaurants: { main: 'Restaurants', order: 'Restaurants Order' },
     restaurant: { main: 'Restaurants', order: 'Restaurants Order' },
-    
-    // Car
     cars: { main: 'Cars', order: 'Cars Order' },
     car: { main: 'Cars', order: 'Cars Order' },
-    
-    // E-Bike (အကုန်လုံးထည့်ထားပါ)
     ebikes: { main: 'E-Bikes', order: 'E-Bikes Order' },
     'e-bikes': { main: 'E-Bikes', order: 'E-Bikes Order' },
     ebike: { main: 'E-Bikes', order: 'E-Bikes Order' },
     'e-bike': { main: 'E-Bikes', order: 'E-Bikes Order' },
     e_bike: { main: 'E-Bikes', order: 'E-Bikes Order' },
     'e bike': { main: 'E-Bikes', order: 'E-Bikes Order' },
-    
-    // Hot Air Balloon
     hotairballoons: { main: 'Hot Air Balloons', order: 'Hot Air Balloons Order' },
     hotairballoon: { main: 'Hot Air Balloons', order: 'Hot Air Balloons Order' },
-    
-    // Tricycle
     tricycles: { main: 'Tricycles', order: 'Tricycles Order' },
     tricycle: { main: 'Tricycles', order: 'Tricycles Order' },
     thonebane: { main: 'Tricycles', order: 'Tricycles Order' },
-    
-    // Horse Cart
     horsecarts: { main: 'Horse Carts', order: 'Horse Carts Order' },
     horsecart: { main: 'Horse Carts', order: 'Horse Carts Order' },
   };
@@ -213,8 +206,8 @@ function Sidebar() {
     const mainItem = findMenuItem(addMenuItems, mapped.main);
     const orderItem = findMenuItem(orderMenuItems, mapped.order);
 
-    const main = mainItem || addMenuItems[2]; // Hotels
-    const order = orderItem || orderMenuItems[0]; // Hotels Order
+    const main = mainItem || addMenuItems[2];
+    const order = orderItem || orderMenuItems[0];
 
     return (
       <>
@@ -302,6 +295,162 @@ function Sidebar() {
           <span>Log Out</span>
         </button>
       </div>
+
+      {/* ============================================================ */}
+      {/* 👇 CUSTOM ALERT - ဒီနေရာမှာပဲ ထည့်ထားတယ်၊ ဘာဖိုင်မှမဆောက်ဘူး */}
+      {/* ============================================================ */}
+      {showLogoutAlert && (
+        <div className="custom-alert-overlay">
+          <div className="custom-alert-box">
+            <div className="custom-alert-icon">
+              <i className="bi bi-exclamation-triangle-fill"></i>
+            </div>
+            <h3 className="custom-alert-title">Are you sure you want to log out?</h3>
+            <p className="custom-alert-message">Log Out Now</p>
+            <div className="custom-alert-actions">
+              <button className="alert-btn alert-btn-cancel" onClick={cancelLogout}>
+                Cancel
+              </button>
+              <button className="alert-btn alert-btn-confirm" onClick={confirmLogout}>
+                Ok
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ============================================================ */}
+
+      {/* ============================================================ */}
+      {/* 👇 CUSTOM ALERT STYLES - ဒီမှာပဲ CSS ထည့်ထားတယ် */}
+      {/* ============================================================ */}
+      <style>{`
+        /* Overlay */
+        .custom-alert-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.5);
+          backdrop-filter: blur(5px);
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          z-index: 99999;
+          animation: customFadeIn 0.3s ease;
+        }
+
+        /* Alert Box */
+        .custom-alert-box {
+          background: #ffffff;
+          border-radius: 20px;
+          padding: 40px 45px 35px;
+          max-width: 420px;
+          width: 90%;
+          text-align: center;
+          box-shadow: 0 25px 60px rgba(0, 0, 0, 0.3);
+          animation: customSlideUp 0.3s ease;
+        }
+
+        /* Icon */
+        .custom-alert-icon {
+          font-size: 52px;
+          color: #f39c12;
+          margin-bottom: 12px;
+        }
+        .custom-alert-icon i {
+          background: #fff3e0;
+          padding: 15px;
+          border-radius: 50%;
+        }
+
+        /* Title */
+        .custom-alert-title {
+          font-size: 22px;
+          font-weight: 700;
+          color: #2d3748;
+          margin-bottom: 8px;
+          font-family: 'Segoe UI', sans-serif;
+        }
+
+        /* Message */
+        .custom-alert-message {
+          font-size: 16px;
+          color: #4a5568;
+          margin-bottom: 28px;
+          line-height: 1.5;
+        }
+
+        /* Buttons */
+        .custom-alert-actions {
+          display: flex;
+          gap: 14px;
+          justify-content: center;
+        }
+        .alert-btn {
+          padding: 12px 30px;
+          border: none;
+          border-radius: 50px;
+          font-size: 15px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.25s ease;
+          flex: 1;
+          max-width: 140px;
+        }
+        .alert-btn-cancel {
+          background: #edf2f7;
+          color: #2d3748;
+        }
+        .alert-btn-cancel:hover {
+          background: #e2e8f0;
+          transform: scale(1.02);
+        }
+        .alert-btn-confirm {
+          background: #e53e3e;
+          color: #fff;
+        }
+        .alert-btn-confirm:hover {
+          background: #c53030;
+          transform: scale(1.02);
+          box-shadow: 0 8px 20px rgba(229, 62, 62, 0.3);
+        }
+
+        /* Animations */
+        @keyframes customFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes customSlideUp {
+          from {
+            opacity: 0;
+            transform: translateY(30px) scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        /* Mobile */
+        @media (max-width: 480px) {
+          .custom-alert-box {
+            padding: 30px 20px 25px;
+          }
+          .custom-alert-icon {
+            font-size: 40px;
+          }
+          .custom-alert-title {
+            font-size: 19px;
+          }
+          .alert-btn {
+            padding: 10px 20px;
+            font-size: 14px;
+          }
+        }
+      `}</style>
+      {/* ============================================================ */}
+
     </div>
   );
 }
