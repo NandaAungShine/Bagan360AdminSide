@@ -8,8 +8,8 @@ const generateItemId = () => `item-${++idCounter}`;
 
 const emptyHotel = () => ({
   id: generateItemId(),
-  image: null,          // base64 preview
-  imageFile: null,      // actual File object for upload
+  image: null,
+  imageFile: null,
   title: '',
   description: '',
   link: '',
@@ -63,7 +63,7 @@ const INITIAL_MOCK_PACKAGES = [
   },
 ];
 
-// ==================== ITEM BUILDER (reusable for each category) ====================
+// ==================== ITEM BUILDER ====================
 const CategoryItemList = React.memo(({
   items,
   onUpdate,
@@ -72,7 +72,7 @@ const CategoryItemList = React.memo(({
   categoryLabel,
   addButtonLabel,
   isDarkMode,
-  readOnly = false,     // NEW: if true, show only display mode
+  readOnly = false,
 }) => {
   const handleImageChange = (index, e) => {
     if (readOnly) return;
@@ -177,7 +177,6 @@ const CategoryItemList = React.memo(({
               </div>
             </div>
 
-            {/* Remove item button (only if not readOnly and more than one) */}
             {!readOnly && items.length > 1 && (
               <button
                 type="button"
@@ -205,31 +204,27 @@ const CategoryItemList = React.memo(({
 
 // ==================== MAIN COMPONENT ====================
 function PackagePlan() {
-  // ==================== THEME ====================
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
     return savedTheme === 'dark';
   });
 
-  // ==================== UI STATES ====================
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [limit] = useState(10);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // ==================== DATA STATE ====================
   const [packages, setPackages] = useState([]);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const dataRef = useRef([]);
 
-  // ==================== API CONFIG ====================
-  const API_BASE = 'http://130.94.21.185:8000/api/admin/package'; // new endpoint
+  const API_BASE = 'http://130.94.21.185:8000/api/admin/package';
   const BACKEND_URL = 'http://130.94.21.185:8000';
   const getToken = () => localStorage.getItem('token');
 
-  // ==================== FETCH PACKAGES ====================
+  // ==================== FETCH PACKAGES (MAPPED TO UI STRUCTURE) ====================
   const fetchPackages = async () => {
     const token = getToken();
     if (!token) {
@@ -254,23 +249,56 @@ function PackagePlan() {
       }
 
       const result = await response.json();
-      console.log('✅ API Response:', result);
+      console.log('✅ Raw API response:', result);
 
-      if (result.success && Array.isArray(result.data)) {
-        const mapped = result.data.map((item) => ({
+      // The API returns { message, data: [...] }
+      let packagesArray = result.data || [];
+      if (!Array.isArray(packagesArray)) packagesArray = [];
+
+      // Map to our internal structure (arrays with single item)
+      const mapped = packagesArray.map((item) => {
+        // Extract images from the images array (if any)
+        const images = item.images || [];
+        return {
           id: item.id,
           title: item.title || '',
           description: item.description || '',
-          hotels: Array.isArray(item.hotels) ? item.hotels : [],
-          restaurants: Array.isArray(item.restaurants) ? item.restaurants : [],
-          transports: Array.isArray(item.transports) ? item.transports : [],
+          hotels: [
+            {
+              id: generateItemId(),
+              title: item.hotel_title || '',
+              description: item.hotel_description || '',
+              link: item.hotel_url || '',
+              image: images[0] ? `${BACKEND_URL}/${images[0]}` : null,
+              imageFile: null,
+            },
+          ],
+          restaurants: [
+            {
+              id: generateItemId(),
+              title: item.restaurant_title || '',
+              description: item.restaurant_description || '',
+              link: item.restaurant_url || '',
+              image: images[1] ? `${BACKEND_URL}/${images[1]}` : null,
+              imageFile: null,
+            },
+          ],
+          transports: [
+            {
+              id: generateItemId(),
+              title: item.transport_title || '',
+              description: item.transport_description || '',
+              link: item.transport_url || '',
+              image: images[2] ? `${BACKEND_URL}/${images[2]}` : null,
+              imageFile: null,
+            },
+          ],
           created_at: item.created_at || '',
-        }));
-        dataRef.current = mapped;
-        applyFilters(searchTerm, 1);
-      } else {
-        throw new Error('Unexpected API response format');
-      }
+        };
+      });
+
+      dataRef.current = mapped;
+      applyFilters(searchTerm, 1);
     } catch (err) {
       console.error('❌ Fetch Error:', err);
       setError('Failed to fetch packages. Showing sample data.');
@@ -280,13 +308,11 @@ function PackagePlan() {
     }
   };
 
-  // ==================== LOAD SAMPLE DATA ====================
   const loadSampleData = () => {
     dataRef.current = [...INITIAL_MOCK_PACKAGES];
     applyFilters(searchTerm, 1);
   };
 
-  // ==================== FILTER / SEARCH / PAGINATION ====================
   const applyFilters = (search = searchTerm, pageNum = 1) => {
     let filtered = [...dataRef.current];
     if (search) {
@@ -318,16 +344,13 @@ function PackagePlan() {
     applyFilters(searchTerm, newPage);
   };
 
-  // ==================== FORM STATE ====================
   const [formData, setFormData] = useState(emptyPackage());
   const [selectedPackageForEdit, setSelectedPackageForEdit] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
 
-  // ==================== VIEW DETAILS STATE ====================
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedPackageForView, setSelectedPackageForView] = useState(null);
 
-  // ==================== TOAST & CONFIRM ====================
   const [toast, setToast] = useState({ visible: false, type: 'success', message: '' });
   const toastTimeoutRef = useRef(null);
   const [confirmDialog, setConfirmDialog] = useState({ visible: false, message: '', onConfirm: null });
@@ -341,13 +364,11 @@ function PackagePlan() {
     }, 3000);
   };
 
-  // ==================== THEME HANDLER ====================
   const handleThemeChange = (isDark) => {
     setIsDarkMode(isDark);
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
   };
 
-  // ==================== FORM HANDLERS FOR CATEGORIES ====================
   // Hotels
   const updateHotels = (newHotels) => setFormData({ ...formData, hotels: newHotels });
   const addHotel = () => setFormData({ ...formData, hotels: [...formData.hotels, emptyHotel()] });
@@ -360,7 +381,6 @@ function PackagePlan() {
     setFormData({ ...formData, hotels: updated });
   };
 
-  // Restaurants
   const updateRestaurants = (newRestaurants) => setFormData({ ...formData, restaurants: newRestaurants });
   const addRestaurant = () => setFormData({ ...formData, restaurants: [...formData.restaurants, emptyRestaurant()] });
   const removeRestaurant = (index) => {
@@ -372,7 +392,6 @@ function PackagePlan() {
     setFormData({ ...formData, restaurants: updated });
   };
 
-  // Transports
   const updateTransports = (newTransports) => setFormData({ ...formData, transports: newTransports });
   const addTransport = () => setFormData({ ...formData, transports: [...formData.transports, emptyTransport()] });
   const removeTransport = (index) => {
@@ -384,60 +403,65 @@ function PackagePlan() {
     setFormData({ ...formData, transports: updated });
   };
 
-  // Top-level fields
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
   };
 
-  // ==================== BUILD FORM DATA FOR API ====================
+  // ==================== BUILD FORM DATA (MATCHES YOUR API) ====================
   const buildPackageFormData = (isEdit = false) => {
     const form = new FormData();
     form.append('title', formData.title.trim());
     form.append('description', formData.description.trim() || '');
 
-    // Helper to append category items as JSON
-    const appendCategory = (category, items) => {
-      const payload = items.map(({ id, image, imageFile, ...rest }) => {
-        // remove imageFile and image preview from JSON, we'll send files separately
-        return { ...rest }; // title, description, link
-      });
-      form.append(category, JSON.stringify(payload));
-    };
+    // Take the first item from each category (or empty strings)
+    const hotel = formData.hotels[0] || {};
+    const restaurant = formData.restaurants[0] || {};
+    const transport = formData.transports[0] || {};
 
-    appendCategory('hotels', formData.hotels);
-    appendCategory('restaurants', formData.restaurants);
-    appendCategory('transports', formData.transports);
+    form.append('hotel_title', hotel.title || '');
+    form.append('hotel_description', hotel.description || '');
+    form.append('hotel_url', hotel.link || '');
 
-    // Append image files for each item
-    const appendImages = (category, items) => {
-      items.forEach((item, idx) => {
-        if (item.imageFile) {
-          form.append(`${category}[${idx}][image]`, item.imageFile);
-        }
-      });
-    };
+    form.append('restaurant_title', restaurant.title || '');
+    form.append('restaurant_description', restaurant.description || '');
+    form.append('restaurant_url', restaurant.link || '');
 
-    appendImages('hotels', formData.hotels);
-    appendImages('restaurants', formData.restaurants);
-    appendImages('transports', formData.transports);
+    form.append('transport_title', transport.title || '');
+    form.append('transport_description', transport.description || '');
+    form.append('transport_url', transport.link || '');
+
+    // Collect all image files from all categories (if any)
+    const allImageFiles = [
+      ...formData.hotels.map(item => item.imageFile).filter(Boolean),
+      ...formData.restaurants.map(item => item.imageFile).filter(Boolean),
+      ...formData.transports.map(item => item.imageFile).filter(Boolean),
+    ];
+
+    // Append each image file under the field name 'images' (matches your API)
+    allImageFiles.forEach(file => {
+      form.append('images', file);
+    });
+
+    // For debugging, log the fields
+    console.log('📦 FormData entries:');
+    for (let pair of form.entries()) {
+      console.log(pair[0], pair[1]);
+    }
 
     return form;
   };
 
-  // ==================== CRUD OPERATIONS ====================
-  // ---- ADD ----
+  // ==================== CRUD ====================
   const handleAddPackage = async () => {
     if (!formData.title.trim()) {
       showToast('warning', 'Please enter a package title.');
       return;
     }
-    // Validate that at least one item in each category has a title (optional)
-    const hasEmpty = (items) => items.some(item => !item.title.trim());
-    if (hasEmpty(formData.hotels) || hasEmpty(formData.restaurants) || hasEmpty(formData.transports)) {
-      showToast('warning', 'Please fill in all titles for each category item.');
-      return;
-    }
+    // Validate that each category has at least one item with a title (or we can skip validation)
+    // We'll just check if the first item has a title? Actually we send empty strings if not,
+    // so we can skip validation for categories.
+    // But we'll keep a light check: if the user added multiple items, we only use the first.
 
     const token = getToken();
     if (!token) {
@@ -460,7 +484,7 @@ function PackagePlan() {
       }
 
       const result = await response.json();
-      if (!result.success) {
+      if (result.success === false) {
         throw new Error(result.message || 'Create failed');
       }
 
@@ -475,7 +499,6 @@ function PackagePlan() {
     }
   };
 
-  // ---- DELETE ----
   const performDeletePackage = async (id) => {
     const token = getToken();
     if (!token) {
@@ -491,12 +514,11 @@ function PackagePlan() {
       });
       if (!response.ok) throw new Error('Delete failed');
       const result = await response.json();
-      if (result.success) {
-        showToast('success', 'Package deleted successfully!');
-        await fetchPackages();
-      } else {
+      if (result.success === false) {
         throw new Error(result.message || 'Delete failed');
       }
+      showToast('success', 'Package deleted successfully!');
+      await fetchPackages();
     } catch (err) {
       console.error('❌ Delete Error:', err);
       showToast('error', 'Failed to delete package: ' + err.message);
@@ -514,25 +536,15 @@ function PackagePlan() {
     });
   };
 
-  // ---- EDIT ----
   const handleEditPackage = (pkg) => {
     setSelectedPackageForEdit(pkg);
-    // Map existing items to form structure (with image previews from URL)
-    const mapItems = (items) => items.map(item => ({
-      id: item.id || generateItemId(),
-      image: item.image || null,
-      imageFile: null,
-      title: item.title || '',
-      description: item.description || '',
-      link: item.link || '',
-    }));
-
+    // pkg already has the structure with arrays
     setFormData({
       title: pkg.title || '',
       description: pkg.description || '',
-      hotels: mapItems(pkg.hotels || []),
-      restaurants: mapItems(pkg.restaurants || []),
-      transports: mapItems(pkg.transports || []),
+      hotels: pkg.hotels.map(h => ({ ...h, imageFile: null })),
+      restaurants: pkg.restaurants.map(r => ({ ...r, imageFile: null })),
+      transports: pkg.transports.map(t => ({ ...t, imageFile: null })),
     });
     setShowEditModal(true);
   };
@@ -540,11 +552,6 @@ function PackagePlan() {
   const handleConfirmEdit = async () => {
     if (!formData.title.trim()) {
       showToast('warning', 'Please enter a package title.');
-      return;
-    }
-    const hasEmpty = (items) => items.some(item => !item.title.trim());
-    if (hasEmpty(formData.hotels) || hasEmpty(formData.restaurants) || hasEmpty(formData.transports)) {
-      showToast('warning', 'Please fill in all titles for each category item.');
       return;
     }
 
@@ -571,7 +578,7 @@ function PackagePlan() {
         throw new Error(`HTTP ${response.status}: ${text}`);
       }
       const result = await response.json();
-      if (!result.success) {
+      if (result.success === false) {
         throw new Error(result.message || 'Update failed');
       }
 
@@ -588,19 +595,16 @@ function PackagePlan() {
     }
   };
 
-  // ---- VIEW ----
   const handleViewPackage = (pkg) => {
     setSelectedPackageForView(pkg);
     setShowViewModal(true);
   };
 
-  // ==================== LOAD DATA ON MOUNT ====================
   useEffect(() => {
     fetchPackages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ==================== CARD ACTIONS ====================
   const CardActions = ({ packageId }) => {
     const [isOpen, setIsOpen] = useState(false);
     const handleToggle = (e) => { e.stopPropagation(); setIsOpen(!isOpen); };
@@ -648,12 +652,10 @@ function PackagePlan() {
     );
   };
 
-  // ==================== RENDER ====================
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Bagan Package Plans Management" onThemeChange={handleThemeChange} />
 
-      {/* Toast */}
       {toast.visible && (
         <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 999999, width: '420px', maxWidth: '90%', borderRadius: '16px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', padding: '0', overflow: 'hidden', backgroundColor: toast.type === 'success' ? (isDarkMode ? '#1e3a2e' : '#d4edda') : '#f8d7da', color: toast.type === 'success' ? (isDarkMode ? '#b7eb8f' : '#155724') : '#721c24', borderLeft: `5px solid ${toast.type === 'success' ? (isDarkMode ? '#52c41a' : '#28a745') : '#dc3545'}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
@@ -667,7 +669,6 @@ function PackagePlan() {
         </div>
       )}
 
-      {/* Confirm Delete */}
       {confirmDialog.visible && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: isDarkMode ? '#2d2d2d' : '#fff', padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%', boxShadow: '0 15px 40px rgba(0,0,0,0.2)' }}>
@@ -681,7 +682,6 @@ function PackagePlan() {
         </div>
       )}
 
-      {/* Loading / Error */}
       {loading && <div style={{ textAlign: 'center', padding: '10px', background: isDarkMode ? '#333' : '#f0f0f0' }}>⏳ Loading...</div>}
       {error && (
         <div style={{ background: '#f8d7da', color: '#721c24', padding: '10px', margin: '10px', borderRadius: '5px' }}>
@@ -689,7 +689,6 @@ function PackagePlan() {
         </div>
       )}
 
-      {/* Search Row */}
       <div className="search-actions-row" style={{ flexWrap: 'wrap', gap: '10px' }}>
         <div className="search-bar-wrapper" style={{ flex: '1 1 250px' }}>
           <i className="bi bi-search search-icon"></i>
@@ -698,9 +697,7 @@ function PackagePlan() {
         <div style={{ marginLeft: 'auto', fontSize: '14px', color: '#6c757d' }}>Total: {totalItems} packages</div>
       </div>
 
-      {/* Two Columns */}
       <div className="hotels-two-columns">
-        {/* Left: Add Form */}
         <div className="add-form-column">
           <div className="add-form-card">
             <div className="form-fields-section">
@@ -713,7 +710,6 @@ function PackagePlan() {
                 <textarea name="description" rows="3" placeholder="Overview of the package..." value={formData.description} onChange={handleInputChange} />
               </div>
 
-              {/* Hotels Section */}
               <CategoryItemList
                 items={formData.hotels}
                 onUpdate={updateHotels}
@@ -725,7 +721,6 @@ function PackagePlan() {
                 readOnly={false}
               />
 
-              {/* Restaurants Section */}
               <CategoryItemList
                 items={formData.restaurants}
                 onUpdate={updateRestaurants}
@@ -737,7 +732,6 @@ function PackagePlan() {
                 readOnly={false}
               />
 
-              {/* Transports Section */}
               <CategoryItemList
                 items={formData.transports}
                 onUpdate={updateTransports}
@@ -756,14 +750,12 @@ function PackagePlan() {
           </div>
         </div>
 
-        {/* Right: Cards */}
         <div className="hotels-cards-column">
           <div className="hotels-scroll-area">
             <div className="hotels-grid-2cols">
               {packages.length > 0 ? packages.map((pkg) => (
-                <div key={pkg.id} className="hotel-card-vertical plan-card">
-                  <div className="hotel-card-image">
-                    {/* Show first hotel image if available, else fallback */}
+                <div key={pkg.id} className="hotel-card-vertical plan-card" >
+                  <div className="hotel-card-image" style={{ height : '200px'}}>
                     {pkg.hotels && pkg.hotels.length > 0 && pkg.hotels[0].image ? (
                       <img src={pkg.hotels[0].image} alt={pkg.title} style={{ objectFit: 'cover', width: '100%', height: '100%' }} />
                     ) : (
@@ -810,7 +802,7 @@ function PackagePlan() {
         </div>
       </div>
 
-      {/* ==================== EDIT MODAL ==================== */}
+      {/* EDIT MODAL */}
       {showEditModal && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -871,7 +863,7 @@ function PackagePlan() {
         </div>
       )}
 
-      {/* ==================== VIEW DETAILS MODAL ==================== */}
+      {/* VIEW MODAL */}
       {showViewModal && selectedPackageForView && (
         <div className="modal-overlay" onClick={() => setShowViewModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
@@ -893,7 +885,6 @@ function PackagePlan() {
                 <p style={{ margin: '5px 0 10px', color: isDarkMode ? '#ddd' : '#555' }}>{selectedPackageForView.created_at || '—'}</p>
               </div>
 
-              {/* Hotels */}
               <CategoryItemList
                 items={selectedPackageForView.hotels || []}
                 onUpdate={() => {}}
@@ -905,7 +896,6 @@ function PackagePlan() {
                 readOnly={true}
               />
 
-              {/* Restaurants */}
               <CategoryItemList
                 items={selectedPackageForView.restaurants || []}
                 onUpdate={() => {}}
@@ -917,7 +907,6 @@ function PackagePlan() {
                 readOnly={true}
               />
 
-              {/* Transports */}
               <CategoryItemList
                 items={selectedPackageForView.transports || []}
                 onUpdate={() => {}}

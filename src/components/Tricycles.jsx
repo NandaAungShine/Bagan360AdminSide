@@ -75,7 +75,7 @@ function Tricycles() {
   // ===== Form State =====
   const [formData, setFormData] = useState({
     name: '',           
-    type: '',           // category_id အတွက်
+    type: '',           // category_id
     capacity: '',
     price: '',          
     pricePerDay: '',
@@ -754,10 +754,21 @@ function Tricycles() {
                   <label>Category / Type <span style={{ color: 'red' }}>*</span></label>
                   {loadingCategories ? (
                     <div style={{ padding: '8px', color: '#888' }}>Loading categories...</div>
-                  ) : categories.length === 0 ? (
+                  ) : (
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <select name="type" value={formData.type} onChange={handleInputChange} style={{ borderColor: '#dc3545', flex: 1 }}>
-                        <option value="">⚠️ No categories available</option>
+                      <select name="type" value={formData.type} onChange={handleInputChange} style={{ flex: 1 }}>
+                        {categories.length === 0 ? (
+                          <option value="">⚠️ No categories available</option>
+                        ) : (
+                          <>
+                            <option value="">-- Select Type --</option>
+                            {categories.map(cat => (
+                              <option key={cat.id} value={cat.id}>
+                                {cat.name}
+                              </option>
+                            ))}
+                          </>
+                        )}
                       </select>
                       <button
                         onClick={() => setShowCategoryModal(true)}
@@ -775,15 +786,6 @@ function Tricycles() {
                         <i className="bi bi-plus-circle"></i> Add
                       </button>
                     </div>
-                  ) : (
-                    <select name="type" value={formData.type} onChange={handleInputChange}>
-                      <option value="">-- Select Type --</option>
-                      {categories.map(cat => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </option>
-                      ))}
-                    </select>
                   )}
                 </div>
                 <div className="add-form-group half">
@@ -939,10 +941,21 @@ function Tricycles() {
                   <label>Category / Type <span style={{ color: 'red' }}>*</span></label>
                   {loadingCategories ? (
                     <div>Loading categories...</div>
-                  ) : categories.length === 0 ? (
+                  ) : (
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <select name="type" value={formData.type} onChange={handleInputChange} style={{ borderColor: '#dc3545', flex: 1 }}>
-                        <option value="">⚠️ No categories available</option>
+                      <select name="type" value={formData.type} onChange={handleInputChange} style={{ flex: 1 }}>
+                        {categories.length === 0 ? (
+                          <option value="">⚠️ No categories available</option>
+                        ) : (
+                          <>
+                            <option value="">-- Select Type --</option>
+                            {categories.map(cat => (
+                              <option key={cat.id} value={cat.id}>
+                                {cat.name}
+                              </option>
+                            ))}
+                          </>
+                        )}
                       </select>
                       <button
                         onClick={() => setShowCategoryModal(true)}
@@ -960,15 +973,6 @@ function Tricycles() {
                         <i className="bi bi-plus-circle"></i> Add
                       </button>
                     </div>
-                  ) : (
-                    <select name="type" value={formData.type} onChange={handleInputChange}>
-                      <option value="">-- Select Type --</option>
-                      {categories.map(cat => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </option>
-                      ))}
-                    </select>
                   )}
                 </div>
                 <div className="form-group">

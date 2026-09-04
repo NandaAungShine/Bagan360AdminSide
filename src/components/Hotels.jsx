@@ -161,8 +161,21 @@ function Hotels() {
 
       let hotelData = response.data.data || response.data.hotels || response.data || [];
       hotelData = hotelData.map((hotel) => ({
-        ...hotel,
-        image: getImageUrl(hotel.image)
+        id: hotel.id,
+        shop_id: hotel.shop_id,
+        shop_name: hotel.shop_name || '',
+        name: hotel.name || '',
+        type: hotel.type || '',
+        location: hotel.location || '',
+        price: hotel.price || 0,
+        discount: hotel.discount || 0,
+        total_amount: hotel.total_amount || 0,
+        start_date: hotel.start_date || '',
+        end_date: hotel.end_date || '',
+        description: hotel.description || '',
+        facilities: hotel.facilities || '',
+        image: getImageUrl(hotel.image),
+        created_at: hotel.created_at || hotel.createdAt || '',
       }));
 
       setHotels(hotelData);
@@ -221,9 +234,18 @@ function Hotels() {
     setImageFile(null);
   };
 
-  // ===== ADD HOTEL (shop_id အမြဲပို့မယ်) =====
+  // ===== Date Format: YYYY-MM-DD → DD-MM-YYYY =====
+  const formatDateToAPI = (dateStr) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+    return dateStr;
+  };
+
+  // ===== ADD HOTEL =====
   const handleAddHotel = async () => {
-    // Validation
     if (!formData.name || !formData.type || !formData.location || !formData.price ||
         !formData.start_date || !formData.end_date || !formData.description ||
         !formData.facilities) {
@@ -242,7 +264,6 @@ function Hotels() {
       return;
     }
 
-    // 👇 Get role and shopId
     const shopId = localStorage.getItem('shopId');
     const role = localStorage.getItem('role');
 
@@ -254,18 +275,23 @@ function Hotels() {
       form.append('location', formData.location);
       form.append('price', formData.price);
       form.append('discount', formData.discount || '0');
-      form.append('start_date', formData.start_date);
-      form.append('end_date', formData.end_date);
+      form.append('start_date', formatDateToAPI(formData.start_date));
+      form.append('end_date', formatDateToAPI(formData.end_date));
       form.append('description', formData.description);
       form.append('facilities', formData.facilities);
       form.append('image', imageFile);
-      
-      // ✅ shop_id ကို အမြဲပို့မယ် (Backend က required လုပ်ထားလို့)
+
+      // ============================================
+      // 🔧 FIX: Send both shop_id and shopId
+      // ============================================
       if (role === 'shop' && shopId) {
         form.append('shop_id', shopId);
+        form.append('shopId', shopId);   // for camelCase backend
       } else {
-        // Admin အတွက် shop_id ကို '0' ပို့မယ်
-        form.append('shop_id', '0');
+        // For admin, we might need to send something, but we don't know what.
+        // Uncomment the next line if backend requires shop_id even for admin:
+        // form.append('shop_id', '0');
+        // form.append('shopId', '0');
       }
 
       console.log('📤 Sending FormData:');
@@ -291,7 +317,9 @@ function Hotels() {
     } catch (err) {
       console.error('Add Error:', err);
       if (err.response?.status === 401) return;
-      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
+      const errorData = err.response?.data;
+      console.error('Server response:', errorData);
+      const errorMsg = errorData?.message || errorData?.error || err.message;
       showToast('error', `Error: ${errorMsg}`);
     } finally {
       setLoading(false);
@@ -334,25 +362,25 @@ function Hotels() {
     });
   };
 
-  // ===== Helper: Format date for input =====
+  // ===== Helper: Format date from DD-MM-YYYY to YYYY-MM-DD =====
   const formatDateForInput = (dateStr) => {
     if (!dateStr) return '';
-    
-    const yyyymmddMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (yyyymmddMatch) return yyyymmddMatch[0];
-    
-    const yyyyslashMatch = dateStr.match(/^(\d{4})\/(\d{2})\/(\d{2})/);
-    if (yyyyslashMatch) return `${yyyyslashMatch[1]}-${yyyyslashMatch[2]}-${yyyyslashMatch[3]}`;
-    
-    const ddmmyyyyMatch = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})/);
-    if (ddmmyyyyMatch) return `${ddmmyyyyMatch[3]}-${ddmmyyyyMatch[2]}-${ddmmyyyyMatch[1]}`;
-    
-    const isoMatch = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
-    if (isoMatch) return isoMatch[0];
-    
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return '';
-    return date.toISOString().split('T')[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+    const ddmmyyyy = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})/);
+    if (ddmmyyyy) {
+      return `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
+    }
+    const ddmmyyyySlash = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (ddmmyyyySlash) {
+      return `${ddmmyyyySlash[3]}-${ddmmyyyySlash[2]}-${ddmmyyyySlash[1]}`;
+    }
+    const iso = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return iso[0];
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      return d.toISOString().split('T')[0];
+    }
+    return '';
   };
 
   // ===== EDIT (Open Modal) =====
@@ -380,7 +408,7 @@ function Hotels() {
     setShowEditModal(true);
   };
 
-  // ===== CONFIRM EDIT (shop_id အမြဲပို့မယ်) =====
+  // ===== CONFIRM EDIT =====
   const handleConfirmEdit = async () => {
     if (!formData.name || !formData.type || !formData.location || !formData.price ||
         !formData.description || !formData.facilities) {
@@ -405,8 +433,8 @@ function Hotels() {
       form.append('location', formData.location);
       form.append('price', formData.price);
       form.append('discount', formData.discount || '0');
-      form.append('start_date', formData.start_date);
-      form.append('end_date', formData.end_date);
+      form.append('start_date', formatDateToAPI(formData.start_date));
+      form.append('end_date', formatDateToAPI(formData.end_date));
       form.append('description', formData.description);
       form.append('facilities', formData.facilities);
       
@@ -414,11 +442,14 @@ function Hotels() {
         form.append('image', imageFile);
       }
 
-      // ✅ shop_id ကို အမြဲပို့မယ်
+      // Send both
       if (role === 'shop' && shopId) {
         form.append('shop_id', shopId);
+        form.append('shopId', shopId);
       } else {
-        form.append('shop_id', '0');
+        // Uncomment if needed for admin:
+        // form.append('shop_id', '0');
+        // form.append('shopId', '0');
       }
 
       const response = await axios.put(`${API_BASE}/update/${selectedHotelForEdit.id}`, form, {
@@ -440,13 +471,15 @@ function Hotels() {
     } catch (err) {
       console.error('Update Error:', err);
       if (err.response?.status === 401) return;
-      showToast('error', `Error: ${err.response?.data?.message || err.message}`);
+      const errorData = err.response?.data;
+      console.error('Server response:', errorData);
+      showToast('error', `Error: ${errorData?.message || err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // ===== FILTER & RENDER – filter by shop_id (priority) or createdBy =====
+  // ===== FILTER & RENDER =====
   const filteredHotels = hotels
     .filter(hotel => {
       if (admin) return true;

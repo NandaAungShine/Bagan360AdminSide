@@ -3,14 +3,15 @@ import React, { useState, useEffect } from 'react';
 import Header from './Header';
 
 // ============================================================
-//  BASE API URL (adjust if your backend uses a different port)
+//  BASE API URL
 // ============================================================
 const API_BASE = 'http://130.94.21.185:8000/api';
+const BACKEND_URL = 'http://130.94.21.185:8000';
 
 function HotelsOrder() {
   // ===== User Role Check =====
   const user = (() => {
-    try { return JSON.parse(localStorage.getItem('user')); } 
+    try { return JSON.parse(localStorage.getItem('user')); }
     catch { return null; }
   })();
   const admin = user?.role === 'admin';
@@ -57,10 +58,10 @@ function HotelsOrder() {
       }
       const result = await response.json();
       console.log('✅ Hotels response:', result);
-      
+
       const list = result.data || result.hotels || result || [];
       setHotels(list);
-      
+
       if (!admin) {
         const myIds = list
           .filter(h => h.createdBy === userId)
@@ -76,7 +77,7 @@ function HotelsOrder() {
     }
   };
 
-  // ===== FETCH ORDERS =====
+  // ===== FETCH ORDERS (ADAPTED TO ACTUAL API) =====
   const fetchOrders = async () => {
     await fetchHotels(); // needed for ownership filter
 
@@ -94,36 +95,34 @@ function HotelsOrder() {
       const result = await response.json();
       console.log('✅ Orders response:', result);
 
-      let rawOrders = [];
-      if (Array.isArray(result.data)) {
-        rawOrders = result.data;
-      } else if (Array.isArray(result.orders)) {
-        rawOrders = result.orders;
-      } else if (Array.isArray(result)) {
-        rawOrders = result;
-      } else {
-        rawOrders = [];
-      }
+      // The API returns { success, message, booking: [...] }
+      let rawOrders = result.booking || [];
+      if (!Array.isArray(rawOrders)) rawOrders = [];
 
       const mappedOrders = rawOrders.map((item) => ({
-        id: item.id || item.booking_id,
-        hotelId: item.hotel_id,
+        id: item.booking_id,
+        hotelId: item.shop_id,          // shop_id is the hotel id
         hotel: {
-          id: item.hotel_id,
-          name: item.hotel_name || 'Hotel',
-          image: item.hotel_image || '/default-hotel.jpg',
-          description: item.hotel_description || '',
+          id: item.shop_id,
+          name: item.hotel_name || item.shop_name || 'Hotel',
+          image: item.image ? `${BACKEND_URL}/${item.image}` : '/default-hotel.jpg',
+          description: item.description || '',
+          location: item.location || '',
+          type: item.type || '',
+          facilities: item.facilities || '',
         },
         user: {
           name: item.customer_name || 'Guest',
-          email: item.customer_email || '',
+          phone: item.customer_phone || '',
+          email: '',   // API doesn't provide email
         },
-        total_price: item.total_price || item.price || 0,
+        total_price: item.price || 0,   // assuming price is total (or per night)
         status: item.status || 'pending',
-        check_in_date: item.check_in_date || item.start_date || '',
-        check_out_date: item.check_out_date || item.end_date || '',
-        special_requests: item.special_requests || item.note || '',
-        created_at: item.created_at || item.booking_date || new Date().toISOString(),
+        check_in_date: item.check_in_date || '',
+        check_out_date: item.check_out_date || '',
+        special_requests: item.customer_request || '',
+        passenger: item.passenger || 1,
+        created_at: null,               // API doesn't provide creation date
         _raw: item,
       }));
 
@@ -160,7 +159,7 @@ function HotelsOrder() {
     }
   }, [isDarkMode]);
 
-  // ===== UPDATE ORDER STATUS (USING PROVIDED ENDPOINTS) =====
+  // ===== UPDATE ORDER STATUS =====
   const updateOrderStatus = async (orderId, newStatus) => {
     if (!window.confirm(`Change status to "${newStatus}"?`)) return;
 
@@ -168,11 +167,11 @@ function HotelsOrder() {
     let method = 'PUT';
 
     if (newStatus === 'confirmed') {
-      endpoint = `${API_BASE}/mobile/hotel/booking/approvd/${orderId}`; // note: "approvd"
+      endpoint = `${API_BASE}/mobile/hotel/booking/approvd/${orderId}`;
     } else if (newStatus === 'cancelled') {
       endpoint = `${API_BASE}/mobile/hotel/booking/cancelled/${orderId}`;
     } else if (newStatus === 'completed') {
-      // No API endpoint for "completed" – update locally only
+      // No API for "completed" – update locally only
       setOrders((prev) =>
         prev.map((order) =>
           order.id === orderId ? { ...order, status: 'completed' } : order
@@ -190,7 +189,7 @@ function HotelsOrder() {
       const response = await fetch(endpoint, {
         method: method,
         headers: getHeaders(),
-        // If your API expects a body, add it here; otherwise omit
+        // Body may be required if your backend expects JSON; adjust accordingly
         // body: JSON.stringify({ status: newStatus }),
       });
       if (response.status === 401) return handle401Error();
@@ -224,10 +223,12 @@ function HotelsOrder() {
       return matchesSearch && matchesStatus;
     });
 
-  // ===== STATUS BADGE =====
+  // ===== STATUS BADGE (includes "approved" as confirmed) =====
   const getStatusBadge = (status) => {
+    // Map API statuses to UI labels
     const statusMap = {
       pending: { label: 'Pending', color: '#ffc107', bg: '#fff3cd' },
+      approved: { label: 'Confirmed', color: '#0d6efd', bg: '#cfe2ff' },
       confirmed: { label: 'Confirmed', color: '#0d6efd', bg: '#cfe2ff' },
       completed: { label: 'Completed', color: '#198754', bg: '#d1e7dd' },
       cancelled: { label: 'Cancelled', color: '#dc3545', bg: '#f8d7da' },
@@ -305,7 +306,7 @@ function HotelsOrder() {
     );
   };
 
-  // ===== DETAIL MODAL =====
+  // ===== DETAIL MODAL (shows phone instead of email) =====
   const DetailModal = ({ order, onClose }) => {
     if (!order) return null;
 
@@ -321,9 +322,10 @@ function HotelsOrder() {
           <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div><strong>Hotel:</strong> {order.hotel.name}</div>
-              <div><strong>Guest:</strong> {order.user.name} ({order.user.email})</div>
-              <div><strong>Check-in:</strong> {order.check_in_date?.slice(0, 10)}</div>
-              <div><strong>Check-out:</strong> {order.check_out_date?.slice(0, 10)}</div>
+              <div><strong>Guest:</strong> {order.user.name} {order.user.phone && `(${order.user.phone})`}</div>
+              <div><strong>Check-in:</strong> {order.check_in_date}</div>
+              <div><strong>Check-out:</strong> {order.check_out_date}</div>
+              <div><strong>Passengers:</strong> {order.passenger || 1}</div>
               <div><strong>Total Price:</strong> MMK {order.total_price}</div>
               <div><strong>Status:</strong> {getStatusBadge(order.status)}</div>
               <div style={{ gridColumn: '1 / -1' }}>
@@ -333,6 +335,11 @@ function HotelsOrder() {
                 <div style={{ gridColumn: '1 / -1' }}>
                   <strong>Hotel Description:</strong><br />
                   <span style={{ fontSize: '14px' }}>{order.hotel.description}</span>
+                </div>
+              )}
+              {order.hotel.location && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <strong>Location:</strong> {order.hotel.location}
                 </div>
               )}
             </div>
@@ -372,13 +379,15 @@ function HotelsOrder() {
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           {getStatusBadge(order.status)}
-          <span style={{ fontSize: '12px', color: '#999' }}>
-            <i className="bi bi-calendar3"></i> {order.created_at?.slice(0, 10) || 'N/A'}
-          </span>
+          {order.created_at && (
+            <span style={{ fontSize: '12px', color: '#999' }}>
+              <i className="bi bi-calendar3"></i> {order.created_at?.slice(0, 10) || 'N/A'}
+            </span>
+          )}
         </div>
         <p style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
-          <i className="bi bi-clock"></i> Check-in: {order.check_in_date?.slice(0, 10) || 'N/A'} &nbsp;|&nbsp;
-          Check-out: {order.check_out_date?.slice(0, 10) || 'N/A'}
+          <i className="bi bi-clock"></i> Check-in: {order.check_in_date || 'N/A'} &nbsp;|&nbsp;
+          Check-out: {order.check_out_date || 'N/A'}
         </p>
       </div>
     </div>
@@ -403,7 +412,7 @@ function HotelsOrder() {
   const summaryData = [
     { label: 'Total Orders', count: orders.length, icon: 'bi-box-seam', color: '#0d6efd' },
     { label: 'Pending', count: orders.filter(o => o.status === 'pending').length, icon: 'bi-clock-history', color: '#ffc107' },
-    { label: 'Completed', count: orders.filter(o => o.status === 'completed').length, icon: 'bi-check-circle', color: '#198754' },
+    { label: 'Approved', count: orders.filter(o => o.status === 'approved' || o.status === 'confirmed').length, icon: 'bi-check-circle', color: '#198754' },
     { label: 'Cancelled', count: orders.filter(o => o.status === 'cancelled').length, icon: 'bi-x-circle', color: '#dc3545' },
     { label: 'Hotels', count: new Set(orders.map(o => o.hotelId)).size, icon: 'bi-building', color: '#6f42c1' },
   ];
@@ -503,7 +512,7 @@ function HotelsOrder() {
           >
             <option value="">All</option>
             <option value="pending">Pending</option>
-            <option value="confirmed">Confirmed</option>
+            <option value="approved">Approved</option>
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>
