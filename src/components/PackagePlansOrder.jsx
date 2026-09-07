@@ -60,7 +60,7 @@ function PackagePlansOrder() {
     }
   }, [isDarkMode]);
 
-  // ===== 6. FETCH BOOKINGS =====
+  // ===== 6. FETCH BOOKINGS (FIXED - Robust Array Detection) =====
   const fetchBookings = async () => {
     const token = getToken();
     if (!token) {
@@ -89,10 +89,20 @@ function PackagePlansOrder() {
       }
 
       const result = await response.json();
-      console.log('✅ Package Bookings API Response:', result);
+      console.log('✅ Full API Response:', result); // ဘယ် key ပါလာလဲ ကြည့်ဖို့
 
-      if (result.success && Array.isArray(result.booking)) {
-        const mapped = result.booking.map((item) => ({
+      // ---- Array ကို အောက်ပါ key တွေထဲက ရှာဖွေမယ် ----
+      let bookingList = null;
+      if (Array.isArray(result.booking)) bookingList = result.booking;
+      else if (Array.isArray(result.data)) bookingList = result.data;
+      else if (Array.isArray(result.bookings)) bookingList = result.bookings;
+      else if (Array.isArray(result.items)) bookingList = result.items;
+      else if (Array.isArray(result.list)) bookingList = result.list;
+      else if (Array.isArray(result)) bookingList = result;
+
+      // ---- တွေ့ရင် mapping လုပ်မယ်၊ မတွေ့ရင် error ပစ်မယ် ----
+      if (bookingList) {
+        const mapped = bookingList.map((item) => ({
           id: item.booking_id || item.id,
           user_id: item.user_id,
           package_id: item.package_id,
@@ -115,7 +125,15 @@ function PackagePlansOrder() {
         setTotalItems(result.total || mapped.length);
         setTotalPages(result.totalPages || Math.ceil(mapped.length / limit) || 1);
       } else {
-        throw new Error(result.message || 'Unexpected response format');
+        // API က success: true ပြန်ပေမယ့် list မပါရင် (ဥပမာ empty array ပြန်တာ)
+        if (result.success === true) {
+          setBookings([]);
+          setTotalItems(0);
+          setTotalPages(1);
+          console.warn('⚠️ No list found in response, but success is true.');
+        } else {
+          throw new Error(result.message || 'Unexpected response format, no list found');
+        }
       }
     } catch (err) {
       console.error('❌ Fetch Error:', err);
