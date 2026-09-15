@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
-// Parse date string like "10-08-2026" (DD-MM-YYYY) to Date object
+// Parse date string like "15-09-2026" (DD-MM-YYYY) to Date object
 const parseDate = (dateStr) => {
   if (!dateStr) return null;
   const parts = dateStr.split('-');
@@ -21,11 +21,9 @@ const parseDate = (dateStr) => {
 function RestaurantsOrder() {
   // ===== User Role Check =====
   const user = (() => {
-    try { return JSON.parse(localStorage.getItem('user')); } 
+    try { return JSON.parse(localStorage.getItem('user')); }
     catch { return null; }
   })();
-  const admin = user?.role === 'admin';
-  const userId = user?.id;
 
   // ===== 1. THEME =====
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -43,10 +41,7 @@ function RestaurantsOrder() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [error, setError] = useState(null);
 
-  // ===== 3. Restaurant Data for Filtering =====
-  const [myRestaurantIds, setMyRestaurantIds] = useState([]);
-
-  // ===== 4. TOAST =====
+  // ===== 3. TOAST =====
   const [toast, setToast] = useState({
     visible: false,
     type: 'success',
@@ -63,7 +58,7 @@ function RestaurantsOrder() {
     }, 3000);
   };
 
-  // ===== 5. API HELPERS =====
+  // ===== 4. API HELPERS =====
   const getToken = () => localStorage.getItem('token');
   const getHeaders = () => ({
     'Authorization': `Bearer ${getToken()}`,
@@ -76,55 +71,14 @@ function RestaurantsOrder() {
     setTimeout(() => window.location.href = '/login', 1500);
   };
 
-  const API_BASE_RESTAURANT = '/api/admin/restaurant';
   const API_BASE_BOOKING = '/api/admin/restaurant/booking';
 
-  // ===== 6. FETCH RESTAURANTS =====
-  const fetchRestaurants = async () => {
-    try {
-      const response = await fetch(`${API_BASE_RESTAURANT}/list`, {
-        method: 'GET',
-        headers: getHeaders(),
-      });
-      if (response.status === 401) return handle401Error();
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
-      }
-      const result = await response.json();
-      console.log('✅ Restaurants response:', result);
-
-      const list = result.data || result || [];
-      console.log('📋 All Restaurants:', list);
-
-      // 🔑 Get restaurant IDs that this user can see
-      let myIds = [];
-      if (admin) {
-        myIds = list.map(r => r.id);
-      } else {
-        myIds = list
-          .filter(r => r.createdBy === userId)
-          .map(r => r.id);
-      }
-      setMyRestaurantIds(myIds);
-      console.log('🔑 My restaurant IDs:', myIds);
-      console.log('👤 User ID:', userId);
-      console.log('📊 Admin:', admin);
-    } catch (err) {
-      console.error('❌ Fetch Restaurants Error:', err);
-      showToast('error', 'Failed to load restaurants for filtering.');
-    }
-  };
-
-  // ===== 7. FETCH ORDERS =====
+  // ===== 5. FETCH ORDERS =====
   const fetchOrders = async () => {
-    // First fetch restaurants to get ownership info
-    await fetchRestaurants();
-
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_BOOKING}/list/`, {
+      const response = await fetch(`${API_BASE_BOOKING}/list`, {
         method: 'GET',
         headers: getHeaders(),
       });
@@ -136,72 +90,25 @@ function RestaurantsOrder() {
       const result = await response.json();
       console.log('✅ Restaurant Bookings response:', result);
 
-      // ---- 1. Extract array ----
-      let rawOrders = [];
-      if (Array.isArray(result.booking)) {
-        rawOrders = result.booking;
-      } else if (Array.isArray(result.data)) {
-        rawOrders = result.data;
-      } else if (Array.isArray(result)) {
-        rawOrders = result;
-      } else {
-        const possibleKeys = ['bookings', 'orders', 'items', 'results', 'list'];
-        for (const key of possibleKeys) {
-          if (Array.isArray(result[key])) {
-            rawOrders = result[key];
-            break;
-          }
-        }
-      }
+      const rawOrders = Array.isArray(result.booking) ? result.booking : [];
 
-      console.log('📦 Raw Orders Count:', rawOrders.length);
-      console.log('📦 Raw Orders:', rawOrders);
-
-      // ---- 2. Map to component shape ----
       const mappedOrders = rawOrders.map((item) => ({
-        id: item.booking_id || item.id,
-        restaurantId: item.restaurant_id,
-        status: item.status || 'pending',
-        totalPrice: item.total_price || item.price || 0,
-        startDate: parseDate(item.booking_date || item.start_date),
-        createdAt: parseDate(item.created_at || item.createdAt),
-        specialRequests: item.customer_request || item.note || '',
-        guests: item.guests || 0,
+        id: item.booking_id,
+        userId: item.user_id,
+        shopId: item.shop_id,
+        status: (item.status || 'pending').toLowerCase(),
+        bookingDate: item.booking_date || '',
         bookingTime: item.booking_time || '',
-        discount: item.discount || 0,
-
-        // Customer info
-        user: {
-          id: item.user_id,
-          name: item.customer_name || 'Guest',
-          phone: item.customer_phone || '',
-          email: item.customer_email || '',
-        },
-
-        // Restaurant info
-        restaurant: {
-          id: item.restaurant_id,
-          name: item.restaurant_name || 'Restaurant',
-          image: item.image || '/default-restaurant.jpg',
-          location: item.location || '',
-          phone: item.phone || '',
-          address: item.address || '',
-        },
-
-        // Shop info
-        shop: {
-          id: item.shop_id,
-          name: item.shop_name || '',
-        },
-
-        // Dishes (array)
-        dishes: Array.isArray(item.dishes) ? item.dishes : [],
-
-        _raw: item,
+        passengerCount: item.passenger_count || 0,
+        note: item.note || '',
+        customerName: item.customer_name || 'Guest',
+        customerPhone: item.customer_phone || '',
+        shopName: item.shop_name || 'Shop',
+        items: Array.isArray(item.items) ? item.items : [],
+        startDate: parseDate(item.booking_date),
       }));
 
       console.log('📦 Mapped Orders:', mappedOrders);
-      console.log('📊 Restaurant IDs in orders:', mappedOrders.map(o => o.restaurantId));
       setOrders(mappedOrders);
     } catch (err) {
       setError(err.message);
@@ -222,7 +129,7 @@ function RestaurantsOrder() {
     fetchOrders();
   }, []);
 
-  // ===== 8. THEME HANDLER =====
+  // ===== 6. THEME HANDLER =====
   const handleThemeChange = (isDark) => {
     setIsDarkMode(isDark);
   };
@@ -237,7 +144,7 @@ function RestaurantsOrder() {
     }
   }, [isDarkMode]);
 
-  // ===== 9. UPDATE STATUS =====
+  // ===== 7. UPDATE STATUS =====
   const updateOrderStatus = async (orderId, action) => {
     if (!window.confirm(`Are you sure you want to ${action} this booking?`)) return;
     setLoading(true);
@@ -262,20 +169,16 @@ function RestaurantsOrder() {
     }
   };
 
-  // ===== 10. FILTER LOGIC (TEMPORARILY DISABLE SHOP FILTER) =====
-  // 🔥 TEMPORARY: Show ALL orders regardless of restaurant ownership
-  const roleFilteredOrders = orders; // NO filter
-
-  // Step 2: Apply search, status & time filters
-  const filteredOrders = roleFilteredOrders.filter((order) => {
-    const searchStr = `${order.id} ${order.restaurant?.name || ''} ${order.user?.name || ''}`.toLowerCase();
+  // ===== 8. FILTER LOGIC =====
+  const filteredOrders = orders.filter((order) => {
+    const searchStr = `${order.id} ${order.shopName || ''} ${order.customerName || ''}`.toLowerCase();
     const matchesSearch = searchStr.includes(searchTerm.toLowerCase());
 
     const matchesStatus = statusFilter ? order.status === statusFilter : true;
 
     let matchesTime = true;
     if (timeFilter !== 'all') {
-      const date = order.startDate || order.createdAt;
+      const date = order.startDate;
       if (!date || isNaN(date.getTime())) {
         matchesTime = false;
       } else {
@@ -318,28 +221,26 @@ function RestaurantsOrder() {
     return matchesSearch && matchesStatus && matchesTime;
   });
 
-  console.log('🔍 Final Filtered Orders Count:', filteredOrders.length);
-  console.log('🔍 Final Filtered Orders:', filteredOrders);
-
-  // ===== 11. SUMMARY DATA (based on filtered orders) =====
+  // ===== 9. SUMMARY DATA (based on filtered orders) =====
   const totalOrders = filteredOrders.length;
-  const pendingCount = filteredOrders.filter(o => (o.status || '').toLowerCase() === 'pending').length;
-  const approvedCount = filteredOrders.filter(o => 
-    ['approved', 'confirmed', 'completed'].includes((o.status || '').toLowerCase())
+  const pendingCount = filteredOrders.filter(o => o.status === 'pending').length;
+  const approvedCount = filteredOrders.filter(o =>
+    ['approved', 'confirmed', 'completed'].includes(o.status)
   ).length;
-  const cancelledCount = filteredOrders.filter(o => (o.status || '').toLowerCase() === 'cancelled').length;
-  const restaurantCount = new Set(filteredOrders.map(o => o.restaurant?.id || o.restaurantId)).size;
+  const cancelledCount = filteredOrders.filter(o => o.status === 'cancelled').length;
+  const shopCount = new Set(filteredOrders.map(o => o.shopId)).size;
 
   const summaryData = [
     { label: 'Total Bookings', count: totalOrders, icon: 'bi-box-seam', color: '#0d6efd' },
     { label: 'Pending', count: pendingCount, icon: 'bi-clock-history', color: '#ffc107' },
     { label: 'Approved', count: approvedCount, icon: 'bi-check-circle', color: '#198754' },
     { label: 'Cancelled', count: cancelledCount, icon: 'bi-x-circle', color: '#dc3545' },
-    { label: 'Restaurants', count: restaurantCount || 0, icon: 'bi-egg-fried', color: '#6f42c1' },
+    { label: 'Shops', count: shopCount || 0, icon: 'bi-shop', color: '#6f42c1' },
   ];
 
-  // ===== 12. STATUS BADGE =====
+  // ===== 10. STATUS BADGE =====
   const getStatusBadge = (status) => {
+    const s = (status || '').toLowerCase();
     const statusMap = {
       pending: { label: 'Pending', color: '#ffc107', bg: '#fff3cd' },
       approved: { label: 'Approved', color: '#0d6efd', bg: '#cfe2ff' },
@@ -347,7 +248,7 @@ function RestaurantsOrder() {
       completed: { label: 'Completed', color: '#198754', bg: '#d1e7dd' },
       cancelled: { label: 'Cancelled', color: '#dc3545', bg: '#f8d7da' },
     };
-    const s = statusMap[status?.toLowerCase()] || { label: status || 'Unknown', color: '#6c757d', bg: '#e9ecef' };
+    const info = statusMap[s] || { label: status || 'Unknown', color: '#6c757d', bg: '#e9ecef' };
     return (
       <span
         style={{
@@ -356,16 +257,16 @@ function RestaurantsOrder() {
           borderRadius: '20px',
           fontSize: '12px',
           fontWeight: '600',
-          color: s.color,
-          backgroundColor: s.bg,
+          color: info.color,
+          backgroundColor: info.bg,
         }}
       >
-        {s.label}
+        {info.label}
       </span>
     );
   };
 
-  // ===== 13. CARD ACTIONS =====
+  // ===== 11. CARD ACTIONS =====
   const CardActions = ({ order }) => {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -403,9 +304,9 @@ function RestaurantsOrder() {
       return () => document.removeEventListener('click', handleClickOutside);
     }, [isOpen]);
 
-    const isApproved = ['approved', 'confirmed', 'completed'].includes(order.status?.toLowerCase());
-    const isCancelled = order.status?.toLowerCase() === 'cancelled';
-    const isPending = order.status?.toLowerCase() === 'pending';
+    const isApproved = ['approved', 'confirmed', 'completed'].includes(order.status);
+    const isCancelled = order.status === 'cancelled';
+    const isPending = order.status === 'pending';
 
     return (
       <div className="card-actions-wrapper">
@@ -431,16 +332,9 @@ function RestaurantsOrder() {
     );
   };
 
-  // ===== 14. DETAIL MODAL =====
+  // ===== 12. DETAIL MODAL =====
   const DetailModal = ({ order, onClose }) => {
     if (!order) return null;
-
-    const formatDate = (date) => {
-      if (!date) return 'N/A';
-      if (typeof date === 'string') return new Date(date).toLocaleDateString();
-      if (date instanceof Date) return date.toLocaleDateString();
-      return 'N/A';
-    };
 
     return (
       <div className="modal-overlay" onClick={onClose}>
@@ -453,34 +347,26 @@ function RestaurantsOrder() {
           </div>
           <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div><strong>Restaurant:</strong> {order.restaurant?.name || 'N/A'}</div>
-              <div><strong>Guest:</strong> {order.user?.name || 'N/A'}</div>
-              <div><strong>Phone:</strong> {order.user?.phone || 'N/A'}</div>
-              <div><strong>Booking Date:</strong> {formatDate(order.startDate)}</div>
+              <div><strong>Shop:</strong> {order.shopName || 'N/A'}</div>
+              <div><strong>Shop ID:</strong> {order.shopId || 'N/A'}</div>
+              <div><strong>Customer:</strong> {order.customerName || 'N/A'}</div>
+              <div><strong>Phone:</strong> {order.customerPhone || 'N/A'}</div>
+              <div><strong>Booking Date:</strong> {order.bookingDate || 'N/A'}</div>
               <div><strong>Booking Time:</strong> {order.bookingTime || 'N/A'}</div>
-              <div><strong>Guests:</strong> {order.guests || 0}</div>
-              <div><strong>Total Price:</strong> MMK {order.totalPrice || 0}</div>
-              <div><strong>Discount:</strong> {order.discount || 0}%</div>
+              <div><strong>Passengers:</strong> {order.passengerCount || 0}</div>
+              <div><strong>User ID:</strong> {order.userId || 'N/A'}</div>
               <div><strong>Status:</strong> {getStatusBadge(order.status)}</div>
               <div style={{ gridColumn: '1 / -1' }}>
-                <strong>Special Requests:</strong> {order.specialRequests || 'None'}
+                <strong>Note:</strong> {order.note || 'None'}
               </div>
-              {order.restaurant?.address && (
+              {order.items && order.items.length > 0 && (
                 <div style={{ gridColumn: '1 / -1' }}>
-                  <strong>Address:</strong> {order.restaurant.address}
-                </div>
-              )}
-              {order.restaurant?.location && (
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <strong>Location:</strong> {order.restaurant.location}
-                </div>
-              )}
-              {order.dishes && order.dishes.length > 0 && (
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <strong>Ordered Dishes:</strong>
+                  <strong>Items:</strong>
                   <ul style={{ marginTop: '4px', paddingLeft: '20px' }}>
-                    {order.dishes.map((dish, idx) => (
-                      <li key={idx}>{dish}</li>
+                    {order.items.map((it, idx) => (
+                      <li key={idx}>
+                        {typeof it === 'string' ? it : (it.name || JSON.stringify(it))}
+                      </li>
                     ))}
                   </ul>
                 </div>
@@ -495,57 +381,52 @@ function RestaurantsOrder() {
     );
   };
 
-  // ===== 15. ORDER CARD =====
+  // ===== 13. ORDER CARD =====
   const OrderCard = ({ order }) => {
-    const restaurantName = order.restaurant?.name || 'Restaurant';
-    const userName = order.user?.name || 'Guest';
-    const imageUrl = order.restaurant?.image || '/default-restaurant.jpg';
-
-    const formatDateDisplay = (date) => {
-      if (!date) return 'N/A';
-      if (typeof date === 'string') return new Date(date).toLocaleDateString();
-      if (date instanceof Date) return date.toLocaleDateString();
-      return 'N/A';
-    };
+    const shopName = order.shopName || 'Shop';
+    const customerName = order.customerName || 'Guest';
 
     return (
       <div className="hotel-card-vertical" style={{ cursor: 'default' }}>
-        <div className="hotel-card-image" style={{ height : '200px'}}>
-          <div className="image-slider">
-            <img
-              src={imageUrl}
-              alt={restaurantName}
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.src = '/default-restaurant.jpg';
-              }}
-              style={{ objectFit: 'cover', width: '100%', height: '100%' }}
-            />
+        <div className="hotel-card-image" style={{ height: '200px' }}>
+          <div
+            className="image-slider"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'linear-gradient(135deg, #ff8a00, #e52e71)',
+              width: '100%',
+              height: '100%',
+            }}
+          >
+            <i className="bi bi-shop" style={{ fontSize: '60px', color: '#fff' }}></i>
           </div>
           <CardActions order={order} />
         </div>
         <div className="hotel-card-info">
-          <h3 className="hotel-name">{restaurantName}</h3>
+          <h3 className="hotel-name">{shopName}</h3>
           <p className="hotel-location">
-            <i className="bi bi-person"></i> {userName}
+            <i className="bi bi-person"></i> {customerName}
+          </p>
+          <p className="hotel-location" style={{ fontSize: '13px' }}>
+            <i className="bi bi-telephone"></i> {order.customerPhone || 'N/A'}
           </p>
           <div style={{ fontSize: '13px', color: '#666', marginBottom: '4px' }}>
-            <span><i className="bi bi-people"></i> {order.guests || 0} guests</span>
-            <span style={{ marginLeft: '8px' }}><i className="bi bi-clock"></i> {order.bookingTime || ''}</span>
+            <span><i className="bi bi-people"></i> {order.passengerCount || 0} passengers</span>
+            <span style={{ marginLeft: '8px' }}>
+              <i className="bi bi-clock"></i> {order.bookingTime || ''}
+            </span>
           </div>
-          <p className="hotel-price">
-            Total: <span>MMK {order.totalPrice || 0}</span>
-          </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             {getStatusBadge(order.status)}
             <span style={{ fontSize: '12px', color: '#999' }}>
-              <i className="bi bi-calendar3"></i> {formatDateDisplay(order.startDate)}
+              <i className="bi bi-calendar3"></i> {order.bookingDate || 'N/A'}
             </span>
           </div>
-          {order.dishes && order.dishes.length > 0 && (
+          {order.note && (
             <p style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
-              <i className="bi bi-egg-fried"></i> {order.dishes.slice(0, 3).join(', ')}
-              {order.dishes.length > 3 && ` +${order.dishes.length - 3} more`}
+              <i className="bi bi-chat-left-text"></i> {order.note}
             </p>
           )}
         </div>
@@ -553,7 +434,7 @@ function RestaurantsOrder() {
     );
   };
 
-  // ===== 16. LOADING / ERROR =====
+  // ===== 14. LOADING / ERROR =====
   if (loading && orders.length === 0) {
     return (
       <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
@@ -575,13 +456,18 @@ function RestaurantsOrder() {
         <div style={{ textAlign: 'center', padding: '50px', color: '#dc3545' }}>
           <i className="bi bi-exclamation-triangle" style={{ fontSize: '48px' }}></i>
           <p>Error: {error}</p>
-          <button className="btn btn-primary" onClick={() => { setError(null); fetchOrders(); }}>Retry</button>
+          <button
+            className="btn btn-primary"
+            onClick={() => { setError(null); fetchOrders(); }}
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
   }
 
-  // ===== 17. MAIN RENDER =====
+  // ===== 15. MAIN RENDER =====
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Restaurant Bookings" onThemeChange={handleThemeChange} />
@@ -603,14 +489,17 @@ function RestaurantsOrder() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <i className={`bi ${toast.type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill'}`}></i>
             <span>{toast.message}</span>
-            <button onClick={() => setToast({ ...toast, visible: false })} style={{ background: 'transparent', border: 'none', cursor: 'pointer', marginLeft: 'auto' }}>
+            <button
+              onClick={() => setToast({ ...toast, visible: false })}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', marginLeft: 'auto' }}
+            >
               <i className="bi bi-x-lg"></i>
             </button>
           </div>
         </div>
       )}
 
-      {/* Summary Boxes (based on filtered orders) */}
+      {/* Summary Boxes */}
       <div
         style={{
           display: 'grid',
@@ -668,7 +557,7 @@ function RestaurantsOrder() {
           <i className="bi bi-search search-icon"></i>
           <input
             type="text"
-            placeholder="Search by ID, restaurant or guest..."
+            placeholder="Search by ID, shop or customer..."
             className="search-input-full"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -700,7 +589,7 @@ function RestaurantsOrder() {
                 padding: '4px 14px',
                 borderRadius: '20px',
                 border: '1px solid #6c757d',
-                background: timeFilter === period ? (isDarkMode ? '#0d6efd' : '#0d6efd') : 'transparent',
+                background: timeFilter === period ? '#0d6efd' : 'transparent',
                 color: timeFilter === period ? '#fff' : (isDarkMode ? '#eee' : '#333'),
                 cursor: 'pointer',
                 fontSize: '13px',
@@ -744,13 +633,6 @@ function RestaurantsOrder() {
                     style={{ fontSize: '48px', display: 'block', marginBottom: '10px' }}
                   ></i>
                   <p>No bookings match the current filters.</p>
-                  <p style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>
-                    Total Orders: {orders.length} | My Restaurant IDs: {JSON.stringify(myRestaurantIds)}
-                  </p>
-                  <p style={{ fontSize: '12px', color: '#666' }}>
-                    👉 If you see orders above but not here, the shop filter is blocking them. 
-                    This version shows ALL orders.
-                  </p>
                 </div>
               )}
             </div>

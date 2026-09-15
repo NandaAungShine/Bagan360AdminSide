@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
 function Restaurants() {
-  // ===== User Role Check (added) =====
+  // ===== User Role Check =====
   const user = (() => {
-    try { return JSON.parse(localStorage.getItem('user')); } 
+    try { return JSON.parse(localStorage.getItem('user')); }
     catch { return null; }
   })();
   const admin = user?.role === 'admin';
@@ -18,8 +18,8 @@ function Restaurants() {
 
   // ===== UI States =====
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedRestaurantId, setSelectedRestaurantId] = useState(null);
-  const [selectedRestaurantForEdit, setSelectedRestaurantForEdit] = useState(null);
+  const [selectedMenuId, setSelectedMenuId] = useState(null);
+  const [selectedMenuForEdit, setSelectedMenuForEdit] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAllDropdown, setShowAllDropdown] = useState(false);
 
@@ -28,24 +28,22 @@ function Restaurants() {
   const [imagePreview, setImagePreview] = useState(null);
 
   // ===== API States =====
-  const [restaurants, setRestaurants] = useState([]);
+  const [menus, setMenus] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // ===== Form State =====
+  // ===== Form State (name, description, prices[]) =====
   const [formData, setFormData] = useState({
-    restaurantName: '',
-    location: '',
-    address: '',
-    phone: '',
-    dishes: '',
-    discount: '',
-    openingHours: '',
+    name: '',
     description: '',
+    prices: [{ size: '', price: '' }],
   });
 
+  // ===== Size options =====
+  const SIZE_OPTIONS = ['Small', 'Medium', 'Large', 'Extra Large'];
+
   // ===== API Base URL =====
-  const API_BASE = '/api/admin/restaurant';
+  const API_BASE = '/api/admin/res/menu';
   const BACKEND_URL = 'http://130.94.21.185:8000';
 
   // ===== Toast & Confirm Dialog States =====
@@ -87,8 +85,8 @@ function Restaurants() {
   // ===== Get Token =====
   const getToken = () => localStorage.getItem('token');
 
-  // ========== FETCH RESTAURANTS ==========
-  const fetchRestaurants = async () => {
+  // ========== FETCH MENUS ==========
+  const fetchMenus = async () => {
     setLoading(true);
     setError(null);
     try {
@@ -117,7 +115,7 @@ function Restaurants() {
           image: item.image
             ? (item.image.startsWith('http') ? item.image : `${BACKEND_URL}/${item.image.trim()}`)
             : null,
-          dishes: Array.isArray(item.dishes) ? item.dishes.join(', ') : (item.dishes || ''),
+          prices: Array.isArray(item.prices) ? item.prices : [],
         }));
       } else if (Array.isArray(result)) {
         list = result;
@@ -125,7 +123,7 @@ function Restaurants() {
         list = [];
       }
 
-      setRestaurants(list);
+      setMenus(list);
     } catch (err) {
       setError(err.message);
       console.error('❌ Fetch Error:', err);
@@ -140,7 +138,7 @@ function Restaurants() {
       setError('Please login first');
       return;
     }
-    fetchRestaurants();
+    fetchMenus();
   }, []);
 
   // ========== THEME ==========
@@ -153,6 +151,28 @@ function Restaurants() {
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
+  };
+
+  // ========== PRICE HANDLERS ==========
+  const handlePriceChange = (index, field, value) => {
+    const updated = [...formData.prices];
+    updated[index] = { ...updated[index], [field]: value };
+    setFormData({ ...formData, prices: updated });
+  };
+
+  const addPriceRow = () => {
+    setFormData({
+      ...formData,
+      prices: [...formData.prices, { size: '', price: '' }],
+    });
+  };
+
+  const removePriceRow = (index) => {
+    const updated = formData.prices.filter((_, i) => i !== index);
+    setFormData({
+      ...formData,
+      prices: updated.length ? updated : [{ size: '', price: '' }],
+    });
   };
 
   // ========== IMAGE HANDLERS ==========
@@ -174,22 +194,47 @@ function Restaurants() {
   // ========== RESET FORM ==========
   const resetForm = () => {
     setFormData({
-      restaurantName: '',
-      location: '',
-      address: '',
-      phone: '',
-      dishes: '',
-      discount: '',
-      openingHours: '',
+      name: '',
       description: '',
+      prices: [{ size: '', price: '' }],
     });
     removeImage();
   };
 
-  // ========== ADD RESTAURANT (with shop_id logic) ==========
-  const handleAddRestaurant = async () => {
-    if (!formData.restaurantName || !formData.location) {
-      showToast('warning', 'Please fill in Restaurant Name and Location.');
+  // ========== BUILD FORMDATA (shared by add/update) ==========
+  const buildFormData = () => {
+    const form = new FormData();
+    form.append('name', formData.name.trim());
+    form.append('description', formData.description?.trim() || '');
+
+    if (imageFile) form.append('image', imageFile);
+
+    // shop_id (if logged in as shop)
+    const shopId = localStorage.getItem('shopId');
+    const role = localStorage.getItem('role');
+    if (role === 'shop' && shopId) {
+      form.append('shop_id', shopId);
+    }
+
+    // prices[]  -> prices[0][size], prices[0][price], prices[0][id] (if any)
+    formData.prices.forEach((p, i) => {
+      if (p.id !== undefined && p.id !== null && p.id !== '') {
+        form.append(`prices[${i}][id]`, p.id);
+      }
+      form.append(`prices[${i}][size]`, (p.size || '').trim());
+      form.append(
+        `prices[${i}][price]`,
+        String(p.price || '').replace(/[^0-9]/g, '') || '0'
+      );
+    });
+
+    return form;
+  };
+
+  // ========== ADD MENU ==========
+  const handleAddMenu = async () => {
+    if (!formData.name) {
+      showToast('warning', 'Please fill in Menu Name.');
       return;
     }
 
@@ -199,34 +244,12 @@ function Restaurants() {
       return;
     }
 
-    // 👇 Get shopId and role from localStorage
-    const shopId = localStorage.getItem('shopId');
-    const role = localStorage.getItem('role');
-
     setLoading(true);
     setError(null);
-    
+
     try {
-      const form = new FormData();
-      form.append('name', formData.restaurantName.trim());
-      form.append('location', formData.location.trim());
-      form.append('address', formData.address?.trim() || '');
-      form.append('phone', formData.phone?.trim() || '');
-      form.append('discount', String(formData.discount || '').replace(/[^0-9]/g, '') || '0');
-      form.append('description', formData.description?.trim() || '');
-      form.append('dishes', formData.dishes?.trim() || '');
-      form.append('opening_hours', formData.openingHours?.trim() || '');
-      
-      if (imageFile) {
-        form.append('image', imageFile);
-      }
-
-      // 👇 If shop, add shop_id to payload
-      if (role === 'shop' && shopId) {
-        form.append('shop_id', shopId);
-      }
-
-      console.log('📤 Sending FormData...');
+      const form = buildFormData();
+      console.log('📤 Sending Menu FormData...');
 
       const response = await fetch(`${API_BASE}/create`, {
         method: 'POST',
@@ -245,14 +268,14 @@ function Restaurants() {
 
       const result = await response.json();
       console.log('✅ Add Response:', result);
-      
+
       if (result.success === false) {
         throw new Error(result.message || 'Create failed');
       }
-      
-      await fetchRestaurants();
+
+      await fetchMenus();
       resetForm();
-      showToast('success', 'Restaurant added successfully!');
+      showToast('success', 'Menu added successfully!');
     } catch (err) {
       setError(err.message);
       console.error('❌ Add Error:', err);
@@ -282,10 +305,10 @@ function Restaurants() {
 
       if (response.status === 401) return handle401Error();
       if (!response.ok) throw new Error('Delete failed');
-      
-      await fetchRestaurants();
-      setSelectedRestaurantId(null);
-      showToast('success', 'Restaurant deleted successfully!');
+
+      await fetchMenus();
+      setSelectedMenuId(null);
+      showToast('success', 'Menu deleted successfully!');
     } catch (err) {
       showToast('error', 'Error: ' + err.message);
     } finally {
@@ -294,14 +317,14 @@ function Restaurants() {
   };
 
   const handleDeleteSelected = () => {
-    if (!selectedRestaurantId || selectedRestaurantId === 'all') {
-      showToast('warning', 'Please select a single restaurant.');
+    if (!selectedMenuId || selectedMenuId === 'all') {
+      showToast('warning', 'Please select a single menu item.');
       return;
     }
     setConfirmDialog({
       visible: true,
-      message: 'Delete this restaurant?',
-      onConfirm: () => performDeleteSelected(selectedRestaurantId)
+      message: 'Delete this menu item?',
+      onConfirm: () => performDeleteSelected(selectedMenuId),
     });
   };
 
@@ -324,9 +347,9 @@ function Restaurants() {
 
       if (response.status === 401) return handle401Error();
       if (!response.ok) throw new Error('Delete failed');
-      
-      await fetchRestaurants();
-      showToast('success', 'Restaurant deleted successfully!');
+
+      await fetchMenus();
+      showToast('success', 'Menu deleted successfully!');
     } catch (err) {
       showToast('error', 'Error: ' + err.message);
     } finally {
@@ -337,52 +360,54 @@ function Restaurants() {
   const handleDeleteFromCard = (id) => {
     setConfirmDialog({
       visible: true,
-      message: 'Delete this restaurant?',
-      onConfirm: () => performDeleteFromCard(id)
+      message: 'Delete this menu item?',
+      onConfirm: () => performDeleteFromCard(id),
     });
   };
 
   // ========== EDIT (open modal) ==========
-  const openEditModal = (restaurant) => {
-    setSelectedRestaurantForEdit(restaurant);
+  const openEditModal = (menu) => {
+    setSelectedMenuForEdit(menu);
     setFormData({
-      restaurantName: restaurant.name || '',
-      location: restaurant.location || '',
-      address: restaurant.address || '',
-      phone: restaurant.phone || '',
-      dishes: restaurant.dishes || '',
-      discount: restaurant.discount || '',
-      openingHours: restaurant.opening_hours || '',
-      description: restaurant.description || '',
+      name: menu.name || '',
+      description: menu.description || '',
+      prices:
+        Array.isArray(menu.prices) && menu.prices.length
+          ? menu.prices.map(p => ({
+              id: p.id,
+              size: p.size || '',
+              price: p.price != null ? String(p.price) : '',
+            }))
+          : [{ size: '', price: '' }],
     });
-    
-    const existingImage = restaurant.image 
-      ? (restaurant.image.startsWith('http') ? restaurant.image : `${BACKEND_URL}/${restaurant.image.trim()}`)
+
+    const existingImage = menu.image
+      ? (menu.image.startsWith('http') ? menu.image : `${BACKEND_URL}/${menu.image.trim()}`)
       : null;
     setImagePreview(existingImage);
     setImageFile(null);
-    
+
     setShowEditModal(true);
   };
 
   const handleEditSelected = () => {
-    if (!selectedRestaurantId || selectedRestaurantId === 'all') {
-      showToast('warning', 'Please select a single restaurant.');
+    if (!selectedMenuId || selectedMenuId === 'all') {
+      showToast('warning', 'Please select a single menu item.');
       return;
     }
-    const restaurant = restaurants.find(r => r.id === selectedRestaurantId);
-    if (restaurant) openEditModal(restaurant);
+    const menu = menus.find(m => m.id === selectedMenuId);
+    if (menu) openEditModal(menu);
   };
 
   const handleEditFromCard = (id) => {
-    const restaurant = restaurants.find(r => r.id === id);
-    if (restaurant) openEditModal(restaurant);
+    const menu = menus.find(m => m.id === id);
+    if (menu) openEditModal(menu);
   };
 
-  // ========== CONFIRM EDIT (with shop_id logic) ==========
+  // ========== CONFIRM EDIT ==========
   const handleConfirmEdit = async () => {
-    if (!selectedRestaurantForEdit) return;
-    if (!formData.restaurantName) {
+    if (!selectedMenuForEdit) return;
+    if (!formData.name) {
       showToast('warning', 'Name is required.');
       return;
     }
@@ -393,37 +418,14 @@ function Restaurants() {
       return;
     }
 
-    // 👇 Get shopId and role from localStorage
-    const shopId = localStorage.getItem('shopId');
-    const role = localStorage.getItem('role');
-
     setLoading(true);
     setError(null);
-    
+
     try {
-      const form = new FormData();
-      form.append('name', formData.restaurantName.trim());
-      form.append('location', formData.location.trim());
-      form.append('address', formData.address?.trim() || '');
-      form.append('phone', formData.phone?.trim() || '');
-      form.append('discount', String(formData.discount || '').replace(/[^0-9]/g, '') || '0');
-      form.append('description', formData.description?.trim() || '');
-      form.append('dishes', formData.dishes?.trim() || '');
-      form.append('opening_hours', formData.openingHours?.trim() || '');
-      
-      // Only send image if a new file is selected
-      if (imageFile) {
-        form.append('image', imageFile);
-      }
+      const form = buildFormData();
+      console.log('📤 Updating Menu FormData...');
 
-      // 👇 If shop, add shop_id to payload
-      if (role === 'shop' && shopId) {
-        form.append('shop_id', shopId);
-      }
-
-      console.log('📤 Updating with FormData...');
-
-      const response = await fetch(`${API_BASE}/update/${selectedRestaurantForEdit.id}`, {
+      const response = await fetch(`${API_BASE}/update/${selectedMenuForEdit.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -440,17 +442,17 @@ function Restaurants() {
 
       const result = await response.json();
       console.log('✅ Update Response:', result);
-      
+
       if (result.success === false) {
         throw new Error(result.message || 'Update failed');
       }
 
-      await fetchRestaurants();
+      await fetchMenus();
       setShowEditModal(false);
-      setSelectedRestaurantId(null);
-      setSelectedRestaurantForEdit(null);
+      setSelectedMenuId(null);
+      setSelectedMenuForEdit(null);
       resetForm();
-      showToast('success', 'Restaurant updated successfully!');
+      showToast('success', 'Menu updated successfully!');
     } catch (err) {
       setError(err.message);
       console.error('❌ Update Error:', err);
@@ -462,59 +464,35 @@ function Restaurants() {
 
   // ========== SELECT ALL & FILTER ==========
   const handleSelectAll = () => {
-    setSelectedRestaurantId(prev => prev === 'all' ? null : 'all');
+    setSelectedMenuId(prev => (prev === 'all' ? null : 'all'));
     setShowAllDropdown(false);
   };
 
-  const toggleRestaurantSelection = (id) => {
-    setSelectedRestaurantId(prev => prev === id ? null : id);
+  const toggleMenuSelection = (id) => {
+    setSelectedMenuId(prev => (prev === id ? null : id));
   };
 
-  // ===== Modified filteredRestaurants – filter by shop_id (priority) or createdBy =====
-  const filteredRestaurants = restaurants
-    .filter(restaurant => {
-      if (admin) return true; // Admin sees all
+  // ===== Filtered by shop_id (priority) or createdBy =====
+  const filteredMenus = menus
+    .filter(menu => {
+      if (admin) return true;
 
-      // For shop accounts: first check if item has shop_id and matches localStorage shopId
       const shopId = localStorage.getItem('shopId');
-      if (restaurant.shop_id && shopId) {
-        // Convert both to string for safe comparison
-        return String(restaurant.shop_id) === String(shopId);
+      if (menu.shop_id && shopId) {
+        return String(menu.shop_id) === String(shopId);
       }
-
-      // Fallback: filter by createdBy (if backend sends that)
-      if (restaurant.createdBy) {
-        return restaurant.createdBy === userId;
+      if (menu.createdBy) {
+        return menu.createdBy === userId;
       }
-
-      // If neither, don't show (should not happen)
       return false;
     })
-    .filter(restaurant =>
-      (restaurant.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (restaurant.location || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (restaurant.dishes || '').toLowerCase().includes(searchTerm.toLowerCase())
+    .filter(menu =>
+      (menu.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (menu.description || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
-
-  const renderStars = (rating) => {
-    const num = parseFloat(rating) || 0;
-    const full = Math.floor(num);
-    const half = num % 1 !== 0;
-    return (
-      <>
-        {[...Array(full)].map((_, i) => (
-          <i key={i} className="bi bi-star-fill" style={{ color: '#ff8a00', fontSize: '12px' }}></i>
-        ))}
-        {half && <i className="bi bi-star-half" style={{ color: '#ff8a00', fontSize: '12px' }}></i>}
-        {[...Array(5 - Math.ceil(num))].map((_, i) => (
-          <i key={i} className="bi bi-star" style={{ color: '#ff8a00', fontSize: '12px' }}></i>
-        ))}
-      </>
-    );
-  };
 
   // ==================== CardActions Component ====================
-  const CardActions = ({ restaurantId }) => {
+  const CardActions = ({ menuId }) => {
     const [isOpen, setIsOpen] = useState(false);
 
     const handleToggle = (e) => {
@@ -525,13 +503,13 @@ function Restaurants() {
     const handleEdit = (e) => {
       e.stopPropagation();
       setIsOpen(false);
-      handleEditFromCard(restaurantId);
+      handleEditFromCard(menuId);
     };
 
     const handleDelete = (e) => {
       e.stopPropagation();
       setIsOpen(false);
-      handleDeleteFromCard(restaurantId);
+      handleDeleteFromCard(menuId);
     };
 
     useEffect(() => {
@@ -610,7 +588,7 @@ function Restaurants() {
             <p style={{ color: isDarkMode ? '#ccc' : '#555' }}>{confirmDialog.message}</p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
               <button onClick={() => setConfirmDialog({ ...confirmDialog, visible: false })} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', background: 'transparent', cursor: 'pointer', color: isDarkMode ? '#ccc' : '#333' }}>Cancel</button>
-              <button onClick={() => { if(confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({ ...confirmDialog, visible: false }); }} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc3545', color: '#fff', cursor: 'pointer' }}>Delete</button>
+              <button onClick={() => { if (confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({ ...confirmDialog, visible: false }); }} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc3545', color: '#fff', cursor: 'pointer' }}>Delete</button>
             </div>
           </div>
         </div>
@@ -623,7 +601,7 @@ function Restaurants() {
       <div className="search-actions-row">
         <div className="search-bar-wrapper">
           <i className="bi bi-search search-icon"></i>
-          <input type="text" placeholder="Search restaurant..." className="search-input-full" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+          <input type="text" placeholder="Search menu..." className="search-input-full" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
         </div>
         <button className="action-btn delete-btn" onClick={handleDeleteSelected} disabled={loading}><i className="bi bi-trash"></i> Delete</button>
         <button className="action-btn edit-btn-action" onClick={handleEditSelected} disabled={loading}><i className="bi bi-pencil-square"></i> Edit</button>
@@ -632,7 +610,7 @@ function Restaurants() {
           {showAllDropdown && (
             <div className="dropdown-menu">
               <button onClick={handleSelectAll}>Select All</button>
-              <button onClick={() => { setSelectedRestaurantId(null); setShowAllDropdown(false); }}>Deselect All</button>
+              <button onClick={() => { setSelectedMenuId(null); setShowAllDropdown(false); }}>Deselect All</button>
             </div>
           )}
         </div>
@@ -660,16 +638,79 @@ function Restaurants() {
                 </div>
               </div>
             </div>
+
             <div className="form-fields-section">
-              <div className="add-form-group"><label>Restaurant Name *</label><input type="text" name="restaurantName" placeholder="eg. Bagan Golden" value={formData.restaurantName} onChange={handleInputChange} /></div>
-              <div className="add-form-group"><label>Location *</label><input type="text" name="location" placeholder="Old Bagan" value={formData.location} onChange={handleInputChange} /></div>
-              <div className="add-form-group"><label>Address</label><input type="text" name="address" placeholder="Near Ananda Temple, Bagan" value={formData.address} onChange={handleInputChange} /></div>
-              <div className="add-form-group"><label>Phone</label><input type="text" name="phone" placeholder="09-123456789" value={formData.phone} onChange={handleInputChange} /></div>
-              <div className="add-form-group"><label>Dishes (comma separated)</label><input type="text" name="dishes" placeholder="Mohinga, Shan Noodle, Myanmar Curry" value={formData.dishes} onChange={handleInputChange} /></div>
-              <div className="add-form-group"><label>Discount %</label><input type="text" name="discount" placeholder="10" value={formData.discount} onChange={handleInputChange} /></div>
-              <div className="add-form-group"><label>Opening Hours</label><input type="text" name="openingHours" placeholder="9:00 AM - 9:00 PM" value={formData.openingHours} onChange={handleInputChange} /></div>
-              <div className="add-form-group"><label>Description</label><textarea name="description" rows="3" placeholder="Describe..." value={formData.description} onChange={handleInputChange}></textarea></div>
-              <button className="add-item-btn-full" onClick={handleAddRestaurant} disabled={loading}>{loading ? 'Adding...' : 'Add Restaurant'}</button>
+              <div className="add-form-group">
+                <label>Menu Name *</label>
+                <input type="text" name="name" placeholder="eg. Chicken Burger" value={formData.name} onChange={handleInputChange} />
+              </div>
+
+              <div className="add-form-group">
+                <label>Description</label>
+                <textarea name="description" rows="3" placeholder="Describe..." value={formData.description} onChange={handleInputChange}></textarea>
+              </div>
+
+              {/* ===== Prices Section ===== */}
+              <div className="add-form-group">
+                <label>Prices</label>
+                {formData.prices.map((p, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+                    <select
+                      value={p.size}
+                      onChange={e => handlePriceChange(i, 'size', e.target.value)}
+                      style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #ccc', background: 'inherit', color: 'inherit' }}
+                    >
+                      <option value="">Select Size</option>
+                      {SIZE_OPTIONS.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Price (eg. 10000)"
+                      value={p.price}
+                      onChange={e => handlePriceChange(i, 'price', e.target.value)}
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePriceRow(i)}
+                      style={{
+                        background: '#dc3545',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        width: '34px',
+                        height: '34px',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                      title="Remove"
+                    >
+                      <i className="bi bi-x-lg"></i>
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addPriceRow}
+                  style={{
+                    background: 'transparent',
+                    border: '1px dashed #888',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    cursor: 'pointer',
+                    width: '100%',
+                    color: 'inherit',
+                  }}
+                >
+                  <i className="bi bi-plus-lg"></i> Add Price
+                </button>
+              </div>
+
+              <button className="add-item-btn-full" onClick={handleAddMenu} disabled={loading}>
+                {loading ? 'Adding...' : 'Add Menu'}
+              </button>
             </div>
           </div>
         </div>
@@ -677,28 +718,71 @@ function Restaurants() {
         {/* Right Column - Cards */}
         <div className="hotels-cards-column">
           <div className="hotels-scroll-area">
-            {!loading && restaurants.length === 0 && !error ? (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}><i className="bi bi-emoji-frown" style={{ fontSize: '40px' }}></i><p>No restaurants found.</p></div>
+            {!loading && menus.length === 0 && !error ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>
+                <i className="bi bi-emoji-frown" style={{ fontSize: '40px' }}></i>
+                <p>No menu items found.</p>
+              </div>
             ) : (
               <div className="hotels-grid-2cols">
-                {filteredRestaurants.map(r => {
-                  const imageUrl = r.image ? (r.image.startsWith('http') ? r.image : `${BACKEND_URL}/${r.image.trim()}`) : "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='200'%3E%3Crect width='300' height='200' fill='%23f0f0f0'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='14' fill='%23999' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E";
+                {filteredMenus.map(m => {
+                  const imageUrl = m.image
+                    ? (m.image.startsWith('http') ? m.image : `${BACKEND_URL}/${m.image.trim()}`)
+                    : "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='200'%3E%3Crect width='300' height='200' fill='%23f0f0f0'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='14' fill='%23999' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E";
+
                   return (
-                    <div key={r.id} className={`hotel-card-vertical ${selectedRestaurantId === r.id ? 'selected' : ''}`} onClick={() => toggleRestaurantSelection(r.id)}>
+                    <div
+                      key={m.id}
+                      className={`hotel-card-vertical ${selectedMenuId === m.id ? 'selected' : ''}`}
+                      onClick={() => toggleMenuSelection(m.id)}
+                    >
                       <div className="hotel-card-image">
                         <div className="image-slider">
-                          <img src={imageUrl} alt={r.name} onError={(e) => { e.target.onerror = null; e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='200'%3E%3Crect width='300' height='200' fill='%23f0f0f0'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='14' fill='%23999' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E"; }} />
+                          <img
+                            src={imageUrl}
+                            alt={m.name}
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='200'%3E%3Crect width='300' height='200' fill='%23f0f0f0'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='14' fill='%23999' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E";
+                            }}
+                          />
                         </div>
-                        <div className="selection-check">{selectedRestaurantId === r.id && <i className="bi bi-check-circle-fill"></i>}</div>
-                        <CardActions restaurantId={r.id} />
+                        <div className="selection-check">
+                          {selectedMenuId === m.id && <i className="bi bi-check-circle-fill"></i>}
+                        </div>
+                        <CardActions menuId={m.id} />
                       </div>
                       <div className="hotel-card-info">
-                        <h3 className="hotel-name">{r.name}</h3>
-                        <p className="hotel-location"><i className="bi bi-geo-alt-fill"></i> {r.location || 'N/A'}</p>
-                        {r.address && <p className="address"><i className="bi bi-house-door"></i> {r.address}</p>}
-                        {r.dishes && <p className="dishes"><i className="bi bi-egg-fried"></i> {r.dishes}</p>}
-                        <div className="hotel-rating">{renderStars(r.rating || 4.0)}<span className="rating-count">({r.reviews || '0'})</span></div>
-                        {r.opening_hours && <p className="opening-hours"><i className="bi bi-clock"></i> {r.opening_hours}</p>}
+                        <h3 className="hotel-name">{m.name}</h3>
+                        {m.description && (
+                          <p className="address">
+                            <i className="bi bi-card-text"></i> {m.description}
+                          </p>
+                        )}
+                        {m.prices && m.prices.length > 0 && (
+                          <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                            {m.prices.map((p, idx) => (
+                              <span
+                                key={idx}
+                                style={{
+                                  fontSize: '12px',
+                                  padding: '3px 8px',
+                                  borderRadius: '999px',
+                                  background: 'rgba(255,138,0,0.15)',
+                                  color: '#ff8a00',
+                                  border: '1px solid rgba(255,138,0,0.35)',
+                                }}
+                              >
+                                {p.size}: {Number(p.price || 0).toLocaleString()} Ks
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {m.created_at && (
+                          <p className="opening-hours">
+                            <i className="bi bi-clock"></i> {new Date(m.created_at).toLocaleDateString()}
+                          </p>
+                        )}
                       </div>
                     </div>
                   );
@@ -714,7 +798,7 @@ function Restaurants() {
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Edit Restaurant</h2>
+              <h2>Edit Menu</h2>
               <button className="close-btn" onClick={() => setShowEditModal(false)}><i className="bi bi-x-lg"></i></button>
             </div>
             <div className="modal-body">
@@ -736,18 +820,80 @@ function Restaurants() {
                 </div>
                 <small style={{ opacity: 0.7 }}>Upload new image to replace existing one.</small>
               </div>
-              <div className="form-group"><label>Restaurant Name *</label><input type="text" name="restaurantName" value={formData.restaurantName} onChange={handleInputChange} /></div>
-              <div className="form-group"><label>Location *</label><input type="text" name="location" value={formData.location} onChange={handleInputChange} /></div>
-              <div className="form-group"><label>Address</label><input type="text" name="address" value={formData.address} onChange={handleInputChange} /></div>
-              <div className="form-group"><label>Phone</label><input type="text" name="phone" value={formData.phone} onChange={handleInputChange} /></div>
-              <div className="form-group"><label>Dishes (comma separated)</label><input type="text" name="dishes" value={formData.dishes} onChange={handleInputChange} /></div>
-              <div className="form-group"><label>Discount %</label><input type="text" name="discount" value={formData.discount} onChange={handleInputChange} /></div>
-              <div className="form-group"><label>Opening Hours</label><input type="text" name="openingHours" value={formData.openingHours} onChange={handleInputChange} /></div>
-              <div className="form-group"><label>Description</label><textarea name="description" rows="3" value={formData.description} onChange={handleInputChange}></textarea></div>
+
+              <div className="form-group">
+                <label>Menu Name *</label>
+                <input type="text" name="name" value={formData.name} onChange={handleInputChange} />
+              </div>
+
+              <div className="form-group">
+                <label>Description</label>
+                <textarea name="description" rows="3" value={formData.description} onChange={handleInputChange}></textarea>
+              </div>
+
+              {/* Prices in modal */}
+              <div className="form-group">
+                <label>Prices</label>
+                {formData.prices.map((p, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+                    <select
+                      value={p.size}
+                      onChange={e => handlePriceChange(i, 'size', e.target.value)}
+                      style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #ccc', background: 'inherit', color: 'inherit' }}
+                    >
+                      <option value="">Select Size</option>
+                      {SIZE_OPTIONS.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Price"
+                      value={p.price}
+                      onChange={e => handlePriceChange(i, 'price', e.target.value)}
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePriceRow(i)}
+                      style={{
+                        background: '#dc3545',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        width: '34px',
+                        height: '34px',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                      title="Remove"
+                    >
+                      <i className="bi bi-x-lg"></i>
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addPriceRow}
+                  style={{
+                    background: 'transparent',
+                    border: '1px dashed #888',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    cursor: 'pointer',
+                    width: '100%',
+                    color: 'inherit',
+                  }}
+                >
+                  <i className="bi bi-plus-lg"></i> Add Price
+                </button>
+              </div>
             </div>
             <div className="modal-footer">
               <button className="discard-btn" onClick={() => setShowEditModal(false)}>Cancel</button>
-              <button className="add-item-btn" onClick={handleConfirmEdit} disabled={loading}>{loading ? 'Saving...' : 'Confirm Edit'}</button>
+              <button className="add-item-btn" onClick={handleConfirmEdit} disabled={loading}>
+                {loading ? 'Saving...' : 'Confirm Edit'}
+              </button>
             </div>
           </div>
         </div>

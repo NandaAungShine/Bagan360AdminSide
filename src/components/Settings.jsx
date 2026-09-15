@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
 function Settings() {
@@ -11,67 +11,150 @@ function Settings() {
   // ---------- UI State ----------
   const [activeTab, setActiveTab] = useState('general');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('Settings saved successfully!');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
 
-  // ---------- Profile Data (loaded from localStorage) ----------
-  const [adminProfile, setAdminProfile] = useState(() => {
-    // Try to get stored user from localStorage
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      try {
-        const user = JSON.parse(storedUser);
-        // Map the stored user fields to the profile structure
-        return {
-          fullName: user.name || 'Admin',
-          email: user.email || '',
-          role: user.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Admin',
-          phone: user.phone || '',
-          location: [user.address, user.township, user.region]
-            .filter(Boolean)
-            .join(', ') || 'Myanmar',
-          department: user.role ? `${user.role} Department` : 'Operations',
-          joinDate: new Date().toLocaleDateString('en-US', {
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric',
-          }),
-          lastLogin: 'Today at ' + new Date().toLocaleTimeString('en-US', {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-          timezone: 'Asia/Yangon (MMT)',
-          status: 'Active',
-          images: user.image ? [user.image] : ['👨‍💻'],
-        };
-      } catch (e) {
-        // Fallback if JSON parsing fails
-        return getFallbackProfile();
-      }
-    }
-    // No user in storage – use static fallback
-    return getFallbackProfile();
+  // ---------- API States ----------
+  const [loading, setLoading] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [error, setError] = useState(null);
+
+  // ---------- Toast ----------
+  const [toast, setToast] = useState({ visible: false, type: 'success', message: '' });
+  const toastTimeoutRef = useRef(null);
+  const showToast = (type, message) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToast({ visible: true, type, message });
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(prev => ({ ...prev, visible: false }));
+      toastTimeoutRef.current = null;
+    }, 3000);
+  };
+
+  // ---------- API Helpers ----------
+  const getToken = () => localStorage.getItem('token');
+  const getHeaders = () => ({
+    'Authorization': `Bearer ${getToken()}`,
+    'Content-Type': 'application/json',
   });
 
-  // Fallback static profile (shown if no user in localStorage)
-  function getFallbackProfile() {
-    return {
-      fullName: 'Min Thu Wun',
-      email: 'min.thu@myanmartravel.com',
-      role: 'Super Admin',
-      phone: '+95 9 123 456 789',
-      department: 'IT & Operations',
-      joinDate: 'January 15, 2023',
-      lastLogin: 'Today at 10:30 AM',
-      location: 'Bagan, Myanmar',
-      timezone: 'Asia/Yangon (MMT)',
-      status: 'Active',
-      images: ['👨‍💻'],
-    };
-  }
+  const API_BASE_SHOP = '/auth/shop';
+  const BACKEND_URL = 'http://130.94.21.185:8000';
+
+  const handle401Error = () => {
+    localStorage.removeItem('token');
+    showToast('error', 'Session expired. Please login again.');
+    setTimeout(() => { window.location.href = '/login'; }, 1500);
+  };
+
+  // ---------- Profile Data ----------
+  const [adminProfile, setAdminProfile] = useState({
+    id: null,
+    fullName: '',
+    email: '',
+    role: 'Shop',
+    phone: '',
+    location: '',
+    address: '',
+    township: '',
+    region: '',
+    department: 'Operations',
+    joinDate: '',
+    lastLogin: 'Today',
+    timezone: 'Asia/Yangon (MMT)',
+    status: 'Active',
+    image: null,          // full URL for display
+    imageFile: null,      // File object when uploading new
+    imagePreview: null,   // preview URL
+    createdAt: '',
+    updatedAt: '',
+    raw: {},
+  });
 
   const [tempProfile, setTempProfile] = useState({ ...adminProfile });
-  const [profileImages, setProfileImages] = useState([]);
+
+  // ---------- Backend URL helper ----------
+  const buildImageUrl = (img) => {
+    if (!img) return null;
+    if (img.startsWith('http') || img.startsWith('data:')) return img;
+    return `${BACKEND_URL}/${img.replace(/^\/+/, '')}`;
+  };
+
+  // ---------- FETCH SHOP PROFILE ----------
+  const fetchProfile = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_SHOP}/profile`, {
+        method: 'GET',
+        headers: getHeaders(),
+      });
+      if (response.status === 401) return handle401Error();
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
+      }
+      const result = await response.json();
+      console.log('✅ Shop Profile:', result);
+
+      const data = result.data || result.shop || result.user || result || {};
+
+      const mapped = {
+        id: data.id || data.shop_id || data.user_id || null,
+        fullName: data.name || data.shop_name || data.full_name || '',
+        email: data.email || '',
+        role: data.role
+          ? data.role.charAt(0).toUpperCase() + data.role.slice(1)
+          : 'Shop',
+        phone: data.phone || '',
+        location: [data.address, data.township, data.region]
+          .filter(Boolean)
+          .join(', ') || data.location || '',
+        address: data.address || '',
+        township: data.township || '',
+        region: data.region || '',
+        department: data.department || 'Operations',
+        joinDate: data.created_at
+          ? new Date(data.created_at).toLocaleDateString('en-US', {
+              month: 'long', day: 'numeric', year: 'numeric',
+            })
+          : '',
+        lastLogin: 'Today at ' + new Date().toLocaleTimeString('en-US', {
+          hour: '2-digit', minute: '2-digit',
+        }),
+        timezone: 'Asia/Yangon (MMT)',
+        status: data.status
+          ? data.status.charAt(0).toUpperCase() + data.status.slice(1)
+          : 'Active',
+        image: buildImageUrl(data.image),
+        imageFile: null,
+        imagePreview: buildImageUrl(data.image),
+        createdAt: data.created_at || '',
+        updatedAt: data.updated_at || '',
+        raw: data,
+      };
+
+      setAdminProfile(mapped);
+      setTempProfile({ ...mapped });
+    } catch (err) {
+      setError(err.message);
+      console.error('❌ Fetch Shop Profile Error:', err);
+      showToast('error', 'Failed to load shop profile.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const token = getToken();
+    if (!token) {
+      setError('Please login first');
+      return;
+    }
+    fetchProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ---------- Theme Effect ----------
   useEffect(() => {
@@ -84,9 +167,7 @@ function Settings() {
     }
   }, [isDarkMode]);
 
-  const handleThemeChange = (isDark) => {
-    setIsDarkMode(isDark);
-  };
+  const handleThemeChange = (isDark) => setIsDarkMode(isDark);
 
   // ---------- General Settings ----------
   const [generalSettings, setGeneralSettings] = useState({
@@ -123,10 +204,7 @@ function Settings() {
   });
 
   const handleNotificationChange = (name, value) => {
-    setNotificationSettings({
-      ...notificationSettings,
-      [name]: value,
-    });
+    setNotificationSettings({ ...notificationSettings, [name]: value });
   };
 
   // ---------- Security Settings ----------
@@ -140,17 +218,10 @@ function Settings() {
 
   const handleSecurityChange = (e) => {
     const { name, value, type, checked } = e.target;
-    if (type === 'checkbox') {
-      setSecuritySettings({
-        ...securitySettings,
-        [name]: checked,
-      });
-    } else {
-      setSecuritySettings({
-        ...securitySettings,
-        [name]: value,
-      });
-    }
+    setSecuritySettings({
+      ...securitySettings,
+      [name]: type === 'checkbox' ? checked : value,
+    });
   };
 
   // ---------- Appearance Settings ----------
@@ -165,17 +236,10 @@ function Settings() {
 
   const handleAppearanceChange = (e) => {
     const { name, value, type, checked } = e.target;
-    if (type === 'checkbox') {
-      setAppearanceSettings({
-        ...appearanceSettings,
-        [name]: checked,
-      });
-    } else {
-      setAppearanceSettings({
-        ...appearanceSettings,
-        [name]: value,
-      });
-    }
+    setAppearanceSettings({
+      ...appearanceSettings,
+      [name]: type === 'checkbox' ? checked : value,
+    });
   };
 
   // ---------- Backup Settings ----------
@@ -188,26 +252,29 @@ function Settings() {
     backupSize: '245 MB',
   });
 
-  // ---------- Profile Editing Handlers ----------
+  // ---------- Profile Image Upload ----------
   const handleProfileImageUpload = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfileImages([...profileImages, reader.result]);
-        setTempProfile({
-          ...tempProfile,
-          images: [...tempProfile.images, reader.result],
-        });
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+
+    const previewUrl = URL.createObjectURL(file);
+    setTempProfile({
+      ...tempProfile,
+      imageFile: file,
+      imagePreview: previewUrl,
+    });
   };
 
-  const removeProfileImage = (index) => {
-    const newImages = profileImages.filter((_, i) => i !== index);
-    setProfileImages(newImages);
-    setTempProfile({ ...tempProfile, images: newImages });
+  const removeProfileImage = () => {
+    if (tempProfile.imagePreview && tempProfile.imagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(tempProfile.imagePreview);
+    }
+    setTempProfile({
+      ...tempProfile,
+      imageFile: null,
+      imagePreview: null,
+      image: null,
+    });
   };
 
   const handleProfileChange = (e) => {
@@ -215,38 +282,96 @@ function Settings() {
     setTempProfile({ ...tempProfile, [name]: value });
   };
 
-  const handleSaveProfile = () => {
-    // Update the local state
-    setAdminProfile({ ...tempProfile });
-    // Also update the stored user in localStorage (so it persists after page reload)
-    try {
-      const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-      // Update only the fields we have in tempProfile
-      const updatedUser = {
-        ...storedUser,
-        name: tempProfile.fullName,
-        email: tempProfile.email,
-        phone: tempProfile.phone,
-        // You can also update region/township/address if you have separate fields
-        // For now we store location as a combined string, but if your API expects separate fields,
-        // you might need to parse it. For simplicity, we just update the whole user object with new values.
-        // Since we don't have separate fields for region/township/address in the edit form,
-        // we'll keep the existing ones.
-        // If you want to update them, add additional input fields.
-        // For now, we'll just update the display name and email.
-      };
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-    } catch (e) {
-      // If no user in storage, do nothing
+  // ---------- SAVE SHOP PROFILE (PUT) ----------
+  const handleSaveProfile = async () => {
+    if (!tempProfile.fullName) {
+      showToast('warning', 'Shop name is required.');
+      return;
     }
-    setIsEditingProfile(false);
-    setShowSuccessMessage(true);
-    setTimeout(() => {
-      setShowSuccessMessage(false);
-    }, 3000);
+
+    const token = getToken();
+    if (!token) {
+      showToast('error', 'Please login first');
+      return;
+    }
+
+    setSavingProfile(true);
+    setError(null);
+
+    try {
+      const form = new FormData();
+      form.append('name', tempProfile.fullName.trim());
+      form.append('email', (tempProfile.email || '').trim());
+      form.append('phone', (tempProfile.phone || '').trim());
+      form.append('address', (tempProfile.address || '').trim());
+      form.append('township', (tempProfile.township || '').trim());
+      form.append('region', (tempProfile.region || '').trim());
+
+      if (tempProfile.imageFile) {
+        form.append('image', tempProfile.imageFile);
+      }
+
+      console.log('📤 Updating Shop Profile...');
+
+      const response = await fetch(`${API_BASE_SHOP}/profile/update`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          // NOTE: do NOT set Content-Type manually with FormData
+        },
+        body: form,
+      });
+
+      if (response.status === 401) return handle401Error();
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Update Shop Profile Response:', result);
+
+      if (result.success === false) {
+        throw new Error(result.message || 'Update failed');
+      }
+
+      // Re-fetch fresh profile from server
+      await fetchProfile();
+
+      // Also update cached user in localStorage (name/email/phone/image)
+      try {
+        const stored = JSON.parse(localStorage.getItem('user') || '{}');
+        localStorage.setItem('user', JSON.stringify({
+          ...stored,
+          name: tempProfile.fullName,
+          email: tempProfile.email,
+          phone: tempProfile.phone,
+          address: tempProfile.address,
+          township: tempProfile.township,
+          region: tempProfile.region,
+        }));
+      } catch (e) { /* ignore */ }
+
+      setIsEditingProfile(false);
+      showToast('success', 'Shop profile updated successfully!');
+      setSuccessMsg('Shop profile updated successfully!');
+      setShowSuccessMessage(true);
+      setTimeout(() => setShowSuccessMessage(false), 3000);
+    } catch (err) {
+      setError(err.message);
+      console.error('❌ Update Profile Error:', err);
+      showToast('error', 'Error: ' + err.message);
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   const handleCancelEdit = () => {
+    // Restore any blob preview
+    if (tempProfile.imagePreview && tempProfile.imagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(tempProfile.imagePreview);
+    }
     setTempProfile({ ...adminProfile });
     setIsEditingProfile(false);
   };
@@ -254,14 +379,10 @@ function Settings() {
   // ---------- General Actions ----------
   const handleSaveSettings = () => {
     setShowSuccessMessage(true);
-    setTimeout(() => {
-      setShowSuccessMessage(false);
-    }, 3000);
+    setTimeout(() => setShowSuccessMessage(false), 3000);
   };
 
-  const handleResetSettings = () => {
-    setShowResetConfirm(true);
-  };
+  const handleResetSettings = () => setShowResetConfirm(true);
 
   const confirmReset = () => {
     setGeneralSettings({
@@ -277,9 +398,7 @@ function Settings() {
     });
     setShowResetConfirm(false);
     setShowSuccessMessage(true);
-    setTimeout(() => {
-      setShowSuccessMessage(false);
-    }, 3000);
+    setTimeout(() => setShowSuccessMessage(false), 3000);
   };
 
   const performBackup = () => {
@@ -287,39 +406,74 @@ function Settings() {
   };
 
   // ---------- Helpers ----------
-  const getTabClass = (tabName) => {
-    return `settings-tab ${activeTab === tabName ? 'active' : ''}`;
-  };
+  const getTabClass = (tabName) =>
+    `settings-tab ${activeTab === tabName ? 'active' : ''}`;
 
-  const getStatusBadgeClass = (status) => {
-    return status === 'Active' ? 'status-badge active' : 'status-badge inactive';
-  };
+  const getStatusBadgeClass = (status) =>
+    status === 'Active' ? 'status-badge active' : 'status-badge inactive';
 
   // ---------- Switch Button Component ----------
-  const SwitchButton = ({ checked, onChange, label }) => {
-    return (
-      <label className="switch-button">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-        <span className="switch-slider"></span>
-        <span className="switch-label">{label}</span>
-      </label>
-    );
-  };
+  const SwitchButton = ({ checked, onChange, label }) => (
+    <label className="switch-button">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span className="switch-slider"></span>
+      <span className="switch-label">{label}</span>
+    </label>
+  );
 
   // ---------- Render ----------
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Settings" onThemeChange={handleThemeChange} />
 
+      {/* Toast */}
+      {toast.visible && (
+        <div style={{
+          position: 'fixed', top: '20px', right: '20px', zIndex: 99999,
+          padding: '12px 20px', borderRadius: '8px',
+          backgroundColor: toast.type === 'success' ? '#d4edda' : toast.type === 'warning' ? '#fff3cd' : '#f8d7da',
+          color: toast.type === 'success' ? '#155724' : toast.type === 'warning' ? '#856404' : '#721c24',
+          border: '1px solid ' + (toast.type === 'success' ? '#c3e6cb' : toast.type === 'warning' ? '#ffeeba' : '#f5c6cb'),
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)', maxWidth: '420px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <i className={`bi ${toast.type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill'}`}></i>
+            <span>{toast.message}</span>
+            <button onClick={() => setToast({ ...toast, visible: false })}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', marginLeft: 'auto' }}>
+              <i className="bi bi-x-lg"></i>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Success Message */}
       {showSuccessMessage && (
         <div className="success-message">
           <i className="bi bi-check-circle-fill"></i>
-          Settings saved successfully!
+          {successMsg}
+        </div>
+      )}
+
+      {/* Loading */}
+      {loading && (
+        <div style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '10px', textAlign: 'center' }}>
+          ⏳ Loading...
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div style={{ background: '#f8d7da', color: '#721c24', padding: '10px', margin: '10px', borderRadius: '5px' }}>
+          ❌ {error}
+          <button onClick={() => setError(null)}
+            style={{ marginLeft: '10px', background: 'none', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>
+            ✕
+          </button>
         </div>
       )}
 
@@ -338,12 +492,8 @@ function Settings() {
               <p className="warning-text">This action cannot be undone.</p>
             </div>
             <div className="modal-footer">
-              <button className="discard-btn" onClick={() => setShowResetConfirm(false)}>
-                Cancel
-              </button>
-              <button className="btn-danger" onClick={confirmReset}>
-                Reset All
-              </button>
+              <button className="discard-btn" onClick={() => setShowResetConfirm(false)}>Cancel</button>
+              <button className="btn-danger" onClick={confirmReset}>Reset All</button>
             </div>
           </div>
         </div>
@@ -357,12 +507,10 @@ function Settings() {
           <div className="profile-header">
             <div className="profile-image-section">
               <div className="profile-avatar-large">
-                {tempProfile.images[0] && tempProfile.images[0].startsWith('data:') ? (
-                  <img src={tempProfile.images[0]} alt="Admin" />
-                ) : tempProfile.images[0] && tempProfile.images[0].startsWith('http') ? (
-                  <img src={tempProfile.images[0]} alt="Admin" />
+                {tempProfile.imagePreview ? (
+                  <img src={tempProfile.imagePreview} alt="Shop" />
                 ) : (
-                  <span className="avatar-emoji">{tempProfile.images[0] || '👨‍💻'}</span>
+                  <span className="avatar-emoji">🏪</span>
                 )}
               </div>
               {isEditingProfile && (
@@ -379,6 +527,22 @@ function Settings() {
                   </label>
                 </div>
               )}
+              {isEditingProfile && tempProfile.imagePreview && (
+                <button
+                  type="button"
+                  onClick={removeProfileImage}
+                  style={{
+                    position: 'absolute', top: '6px', right: '6px',
+                    background: '#dc3545', color: '#fff', border: 'none',
+                    borderRadius: '50%', width: '26px', height: '26px',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title="Remove image"
+                >
+                  <i className="bi bi-x-lg" style={{ fontSize: '12px' }}></i>
+                </button>
+              )}
             </div>
             <div className="profile-info">
               {isEditingProfile ? (
@@ -388,9 +552,10 @@ function Settings() {
                   value={tempProfile.fullName}
                   onChange={handleProfileChange}
                   className="profile-name-input"
+                  placeholder="Shop Name"
                 />
               ) : (
-                <h2>{adminProfile.fullName}</h2>
+                <h2>{adminProfile.fullName || 'Shop'}</h2>
               )}
               <span className={getStatusBadgeClass(adminProfile.status)}>
                 {adminProfile.status}
@@ -402,6 +567,8 @@ function Settings() {
                   value={tempProfile.role}
                   onChange={handleProfileChange}
                   className="profile-role-input"
+                  placeholder="Role"
+                  disabled
                 />
               ) : (
                 <p className="profile-role">{adminProfile.role}</p>
@@ -416,59 +583,87 @@ function Settings() {
               <div className="detail-content">
                 <span className="detail-label">Email</span>
                 {isEditingProfile ? (
-                  <input
-                    type="email"
-                    name="email"
-                    value={tempProfile.email}
-                    onChange={handleProfileChange}
-                    className="detail-input"
-                  />
+                  <input type="email" name="email" value={tempProfile.email}
+                    onChange={handleProfileChange} className="detail-input" placeholder="email@example.com" />
                 ) : (
-                  <span className="detail-value">{adminProfile.email}</span>
+                  <span className="detail-value">{adminProfile.email || 'N/A'}</span>
                 )}
               </div>
             </div>
+
             <div className="detail-item">
               <i className="bi bi-telephone-fill"></i>
               <div className="detail-content">
                 <span className="detail-label">Phone</span>
                 {isEditingProfile ? (
-                  <input
-                    type="text"
-                    name="phone"
-                    value={tempProfile.phone}
-                    onChange={handleProfileChange}
-                    className="detail-input"
-                  />
+                  <input type="text" name="phone" value={tempProfile.phone}
+                    onChange={handleProfileChange} className="detail-input" placeholder="09-xxxxxxxxx" />
                 ) : (
-                  <span className="detail-value">{adminProfile.phone}</span>
+                  <span className="detail-value">{adminProfile.phone || 'N/A'}</span>
                 )}
               </div>
             </div>
+
+            <div className="detail-item">
+              <i className="bi bi-house-door-fill"></i>
+              <div className="detail-content">
+                <span className="detail-label">Address</span>
+                {isEditingProfile ? (
+                  <input type="text" name="address" value={tempProfile.address}
+                    onChange={handleProfileChange} className="detail-input" placeholder="Street address" />
+                ) : (
+                  <span className="detail-value">{adminProfile.address || 'N/A'}</span>
+                )}
+              </div>
+            </div>
+
+            <div className="detail-item">
+              <i className="bi bi-geo-fill"></i>
+              <div className="detail-content">
+                <span className="detail-label">Township</span>
+                {isEditingProfile ? (
+                  <input type="text" name="township" value={tempProfile.township}
+                    onChange={handleProfileChange} className="detail-input" placeholder="Township" />
+                ) : (
+                  <span className="detail-value">{adminProfile.township || 'N/A'}</span>
+                )}
+              </div>
+            </div>
+
+            <div className="detail-item">
+              <i className="bi bi-map-fill"></i>
+              <div className="detail-content">
+                <span className="detail-label">Region</span>
+                {isEditingProfile ? (
+                  <input type="text" name="region" value={tempProfile.region}
+                    onChange={handleProfileChange} className="detail-input" placeholder="Region" />
+                ) : (
+                  <span className="detail-value">{adminProfile.region || 'N/A'}</span>
+                )}
+              </div>
+            </div>
+
             <div className="detail-item">
               <i className="bi bi-briefcase-fill"></i>
               <div className="detail-content">
                 <span className="detail-label">Department</span>
                 {isEditingProfile ? (
-                  <input
-                    type="text"
-                    name="department"
-                    value={tempProfile.department}
-                    onChange={handleProfileChange}
-                    className="detail-input"
-                  />
+                  <input type="text" name="department" value={tempProfile.department}
+                    onChange={handleProfileChange} className="detail-input" />
                 ) : (
                   <span className="detail-value">{adminProfile.department}</span>
                 )}
               </div>
             </div>
+
             <div className="detail-item">
               <i className="bi bi-calendar-check-fill"></i>
               <div className="detail-content">
                 <span className="detail-label">Joined Date</span>
-                <span className="detail-value">{adminProfile.joinDate}</span>
+                <span className="detail-value">{adminProfile.joinDate || 'N/A'}</span>
               </div>
             </div>
+
             <div className="detail-item">
               <i className="bi bi-clock-history"></i>
               <div className="detail-content">
@@ -476,38 +671,12 @@ function Settings() {
                 <span className="detail-value">{adminProfile.lastLogin}</span>
               </div>
             </div>
-            <div className="detail-item">
-              <i className="bi bi-geo-alt-fill"></i>
-              <div className="detail-content">
-                <span className="detail-label">Location</span>
-                {isEditingProfile ? (
-                  <input
-                    type="text"
-                    name="location"
-                    value={tempProfile.location}
-                    onChange={handleProfileChange}
-                    className="detail-input"
-                  />
-                ) : (
-                  <span className="detail-value">{adminProfile.location}</span>
-                )}
-              </div>
-            </div>
+
             <div className="detail-item">
               <i className="bi bi-clock-fill"></i>
               <div className="detail-content">
                 <span className="detail-label">Timezone</span>
-                {isEditingProfile ? (
-                  <input
-                    type="text"
-                    name="timezone"
-                    value={tempProfile.timezone}
-                    onChange={handleProfileChange}
-                    className="detail-input"
-                  />
-                ) : (
-                  <span className="detail-value">{adminProfile.timezone}</span>
-                )}
+                <span className="detail-value">{adminProfile.timezone}</span>
               </div>
             </div>
           </div>
@@ -518,7 +687,7 @@ function Settings() {
               <i className="bi bi-people-fill"></i>
               <div>
                 <h4>1,234</h4>
-                <span>Users Managed</span>
+                <span>Customers</span>
               </div>
             </div>
             <div className="stat">
@@ -540,15 +709,15 @@ function Settings() {
           {/* Edit/Cancel Buttons */}
           {isEditingProfile ? (
             <div className="profile-edit-actions">
-              <button className="cancel-edit-btn" onClick={handleCancelEdit}>
+              <button className="cancel-edit-btn" onClick={handleCancelEdit} disabled={savingProfile}>
                 Cancel
               </button>
-              <button className="save-profile-btn" onClick={handleSaveProfile}>
-                Save Profile
+              <button className="save-profile-btn" onClick={handleSaveProfile} disabled={savingProfile}>
+                {savingProfile ? 'Saving...' : 'Save Profile'}
               </button>
             </div>
           ) : (
-            <button className="edit-profile-btn" onClick={() => setIsEditingProfile(true)}>
+            <button className="edit-profile-btn" onClick={() => setIsEditingProfile(true)} disabled={loading}>
               <i className="bi bi-pencil-square"></i> Edit Profile
             </button>
           )}
@@ -558,34 +727,19 @@ function Settings() {
         <div className="settings-right-column">
           <div className="settings-tabs-container">
             <div className="settings-tabs">
-              <button
-                className={getTabClass('general')}
-                onClick={() => setActiveTab('general')}
-              >
+              <button className={getTabClass('general')} onClick={() => setActiveTab('general')}>
                 <i className="bi bi-gear-fill"></i> General
               </button>
-              <button
-                className={getTabClass('notifications')}
-                onClick={() => setActiveTab('notifications')}
-              >
+              <button className={getTabClass('notifications')} onClick={() => setActiveTab('notifications')}>
                 <i className="bi bi-bell-fill"></i> Notifications
               </button>
-              <button
-                className={getTabClass('security')}
-                onClick={() => setActiveTab('security')}
-              >
+              <button className={getTabClass('security')} onClick={() => setActiveTab('security')}>
                 <i className="bi bi-shield-lock-fill"></i> Security
               </button>
-              <button
-                className={getTabClass('appearance')}
-                onClick={() => setActiveTab('appearance')}
-              >
+              <button className={getTabClass('appearance')} onClick={() => setActiveTab('appearance')}>
                 <i className="bi bi-palette-fill"></i> Appearance
               </button>
-              <button
-                className={getTabClass('backup')}
-                onClick={() => setActiveTab('backup')}
-              >
+              <button className={getTabClass('backup')} onClick={() => setActiveTab('backup')}>
                 <i className="bi bi-database-fill"></i> Backup
               </button>
             </div>
@@ -602,51 +756,27 @@ function Settings() {
                   <div className="form-row">
                     <div className="form-group">
                       <label>Site Name</label>
-                      <input
-                        type="text"
-                        name="siteName"
-                        value={generalSettings.siteName}
-                        onChange={handleGeneralChange}
-                      />
+                      <input type="text" name="siteName" value={generalSettings.siteName} onChange={handleGeneralChange} />
                     </div>
                     <div className="form-group">
                       <label>Site Email</label>
-                      <input
-                        type="email"
-                        name="siteEmail"
-                        value={generalSettings.siteEmail}
-                        onChange={handleGeneralChange}
-                      />
+                      <input type="email" name="siteEmail" value={generalSettings.siteEmail} onChange={handleGeneralChange} />
                     </div>
                   </div>
                   <div className="form-row">
                     <div className="form-group">
                       <label>Phone Number</label>
-                      <input
-                        type="text"
-                        name="sitePhone"
-                        value={generalSettings.sitePhone}
-                        onChange={handleGeneralChange}
-                      />
+                      <input type="text" name="sitePhone" value={generalSettings.sitePhone} onChange={handleGeneralChange} />
                     </div>
                     <div className="form-group">
                       <label>Address</label>
-                      <input
-                        type="text"
-                        name="siteAddress"
-                        value={generalSettings.siteAddress}
-                        onChange={handleGeneralChange}
-                      />
+                      <input type="text" name="siteAddress" value={generalSettings.siteAddress} onChange={handleGeneralChange} />
                     </div>
                   </div>
                   <div className="form-row">
                     <div className="form-group">
                       <label>Timezone</label>
-                      <select
-                        name="timezone"
-                        value={generalSettings.timezone}
-                        onChange={handleGeneralChange}
-                      >
+                      <select name="timezone" value={generalSettings.timezone} onChange={handleGeneralChange}>
                         <option value="Asia/Yangon">Asia/Yangon (MMT)</option>
                         <option value="Asia/Bangkok">Asia/Bangkok</option>
                         <option value="Asia/Singapore">Asia/Singapore</option>
@@ -655,11 +785,7 @@ function Settings() {
                     </div>
                     <div className="form-group">
                       <label>Date Format</label>
-                      <select
-                        name="dateFormat"
-                        value={generalSettings.dateFormat}
-                        onChange={handleGeneralChange}
-                      >
+                      <select name="dateFormat" value={generalSettings.dateFormat} onChange={handleGeneralChange}>
                         <option value="DD/MM/YYYY">DD/MM/YYYY</option>
                         <option value="MM/DD/YYYY">MM/DD/YYYY</option>
                         <option value="YYYY-MM-DD">YYYY-MM-DD</option>
@@ -669,11 +795,7 @@ function Settings() {
                   <div className="form-row">
                     <div className="form-group">
                       <label>Language</label>
-                      <select
-                        name="language"
-                        value={generalSettings.language}
-                        onChange={handleGeneralChange}
-                      >
+                      <select name="language" value={generalSettings.language} onChange={handleGeneralChange}>
                         <option value="en">English</option>
                         <option value="my">Burmese (Myanmar)</option>
                         <option value="th">Thai</option>
@@ -681,11 +803,7 @@ function Settings() {
                     </div>
                     <div className="form-group">
                       <label>Currency</label>
-                      <select
-                        name="currency"
-                        value={generalSettings.currency}
-                        onChange={handleGeneralChange}
-                      >
+                      <select name="currency" value={generalSettings.currency} onChange={handleGeneralChange}>
                         <option value="MMK">MMK - Myanmar Kyat</option>
                         <option value="USD">USD - US Dollar</option>
                         <option value="THB">THB - Thai Baht</option>
@@ -695,12 +813,7 @@ function Settings() {
                   <div className="switch-group">
                     <SwitchButton
                       checked={generalSettings.maintenanceMode}
-                      onChange={(checked) =>
-                        setGeneralSettings({
-                          ...generalSettings,
-                          maintenanceMode: checked,
-                        })
-                      }
+                      onChange={(checked) => setGeneralSettings({ ...generalSettings, maintenanceMode: checked })}
                       label="Maintenance Mode"
                     />
                     <p className="field-note">When enabled, only admins can access the site</p>
@@ -727,79 +840,34 @@ function Settings() {
                   <div className="notification-group">
                     <h3>Channels</h3>
                     <div className="switch-grid">
-                      <SwitchButton
-                        checked={notificationSettings.emailNotifications}
-                        onChange={(checked) =>
-                          handleNotificationChange('emailNotifications', checked)
-                        }
-                        label="Email Notifications"
-                      />
-                      <SwitchButton
-                        checked={notificationSettings.smsNotifications}
-                        onChange={(checked) =>
-                          handleNotificationChange('smsNotifications', checked)
-                        }
-                        label="SMS Notifications"
-                      />
-                      <SwitchButton
-                        checked={notificationSettings.pushNotifications}
-                        onChange={(checked) =>
-                          handleNotificationChange('pushNotifications', checked)
-                        }
-                        label="Push Notifications"
-                      />
+                      <SwitchButton checked={notificationSettings.emailNotifications}
+                        onChange={(c) => handleNotificationChange('emailNotifications', c)} label="Email Notifications" />
+                      <SwitchButton checked={notificationSettings.smsNotifications}
+                        onChange={(c) => handleNotificationChange('smsNotifications', c)} label="SMS Notifications" />
+                      <SwitchButton checked={notificationSettings.pushNotifications}
+                        onChange={(c) => handleNotificationChange('pushNotifications', c)} label="Push Notifications" />
                     </div>
                   </div>
                   <div className="notification-group">
                     <h3>Events</h3>
                     <div className="switch-grid">
-                      <SwitchButton
-                        checked={notificationSettings.newUserAlert}
-                        onChange={(checked) =>
-                          handleNotificationChange('newUserAlert', checked)
-                        }
-                        label="New User Registration"
-                      />
-                      <SwitchButton
-                        checked={notificationSettings.newBookingAlert}
-                        onChange={(checked) =>
-                          handleNotificationChange('newBookingAlert', checked)
-                        }
-                        label="New Booking"
-                      />
-                      <SwitchButton
-                        checked={notificationSettings.newReviewAlert}
-                        onChange={(checked) =>
-                          handleNotificationChange('newReviewAlert', checked)
-                        }
-                        label="New Review"
-                      />
-                      <SwitchButton
-                        checked={notificationSettings.reportAlert}
-                        onChange={(checked) =>
-                          handleNotificationChange('reportAlert', checked)
-                        }
-                        label="Reported Content"
-                      />
+                      <SwitchButton checked={notificationSettings.newUserAlert}
+                        onChange={(c) => handleNotificationChange('newUserAlert', c)} label="New User Registration" />
+                      <SwitchButton checked={notificationSettings.newBookingAlert}
+                        onChange={(c) => handleNotificationChange('newBookingAlert', c)} label="New Booking" />
+                      <SwitchButton checked={notificationSettings.newReviewAlert}
+                        onChange={(c) => handleNotificationChange('newReviewAlert', c)} label="New Review" />
+                      <SwitchButton checked={notificationSettings.reportAlert}
+                        onChange={(c) => handleNotificationChange('reportAlert', c)} label="Reported Content" />
                     </div>
                   </div>
                   <div className="notification-group">
                     <h3>Digests</h3>
                     <div className="switch-grid">
-                      <SwitchButton
-                        checked={notificationSettings.dailyDigest}
-                        onChange={(checked) =>
-                          handleNotificationChange('dailyDigest', checked)
-                        }
-                        label="Daily Digest"
-                      />
-                      <SwitchButton
-                        checked={notificationSettings.weeklyReport}
-                        onChange={(checked) =>
-                          handleNotificationChange('weeklyReport', checked)
-                        }
-                        label="Weekly Report"
-                      />
+                      <SwitchButton checked={notificationSettings.dailyDigest}
+                        onChange={(c) => handleNotificationChange('dailyDigest', c)} label="Daily Digest" />
+                      <SwitchButton checked={notificationSettings.weeklyReport}
+                        onChange={(c) => handleNotificationChange('weeklyReport', c)} label="Weekly Report" />
                     </div>
                   </div>
                 </div>
@@ -824,54 +892,29 @@ function Settings() {
                   <div className="switch-group">
                     <SwitchButton
                       checked={securitySettings.twoFactorAuth}
-                      onChange={(checked) =>
-                        setSecuritySettings({
-                          ...securitySettings,
-                          twoFactorAuth: checked,
-                        })
-                      }
+                      onChange={(checked) => setSecuritySettings({ ...securitySettings, twoFactorAuth: checked })}
                       label="Enable Two-Factor Authentication"
                     />
                   </div>
                   <div className="form-row">
                     <div className="form-group">
                       <label>Session Timeout (minutes)</label>
-                      <input
-                        type="number"
-                        name="sessionTimeout"
-                        value={securitySettings.sessionTimeout}
-                        onChange={handleSecurityChange}
-                      />
+                      <input type="number" name="sessionTimeout" value={securitySettings.sessionTimeout} onChange={handleSecurityChange} />
                     </div>
                     <div className="form-group">
                       <label>Max Login Attempts</label>
-                      <input
-                        type="number"
-                        name="maxLoginAttempts"
-                        value={securitySettings.maxLoginAttempts}
-                        onChange={handleSecurityChange}
-                      />
+                      <input type="number" name="maxLoginAttempts" value={securitySettings.maxLoginAttempts} onChange={handleSecurityChange} />
                     </div>
                   </div>
                   <div className="form-row">
                     <div className="form-group">
                       <label>Password Expiry (days)</label>
-                      <input
-                        type="number"
-                        name="passwordExpiry"
-                        value={securitySettings.passwordExpiry}
-                        onChange={handleSecurityChange}
-                      />
+                      <input type="number" name="passwordExpiry" value={securitySettings.passwordExpiry} onChange={handleSecurityChange} />
                     </div>
                     <div className="form-group">
                       <label>IP Whitelist</label>
-                      <input
-                        type="text"
-                        name="ipWhitelist"
-                        placeholder="192.168.1.1, 10.0.0.1"
-                        value={securitySettings.ipWhitelist}
-                        onChange={handleSecurityChange}
-                      />
+                      <input type="text" name="ipWhitelist" placeholder="192.168.1.1, 10.0.0.1"
+                        value={securitySettings.ipWhitelist} onChange={handleSecurityChange} />
                       <p className="field-note">Comma-separated IP addresses</p>
                     </div>
                   </div>
@@ -897,11 +940,7 @@ function Settings() {
                   <div className="form-row">
                     <div className="form-group">
                       <label>Theme</label>
-                      <select
-                        name="theme"
-                        value={appearanceSettings.theme}
-                        onChange={handleAppearanceChange}
-                      >
+                      <select name="theme" value={appearanceSettings.theme} onChange={handleAppearanceChange}>
                         <option value="light">Light</option>
                         <option value="dark">Dark</option>
                         <option value="system">System Default</option>
@@ -909,11 +948,7 @@ function Settings() {
                     </div>
                     <div className="form-group">
                       <label>Font Size</label>
-                      <select
-                        name="fontSize"
-                        value={appearanceSettings.fontSize}
-                        onChange={handleAppearanceChange}
-                      >
+                      <select name="fontSize" value={appearanceSettings.fontSize} onChange={handleAppearanceChange}>
                         <option value="small">Small</option>
                         <option value="medium">Medium</option>
                         <option value="large">Large</option>
@@ -923,11 +958,7 @@ function Settings() {
                   <div className="form-row">
                     <div className="form-group">
                       <label>Card Style</label>
-                      <select
-                        name="cardStyle"
-                        value={appearanceSettings.cardStyle}
-                        onChange={handleAppearanceChange}
-                      >
+                      <select name="cardStyle" value={appearanceSettings.cardStyle} onChange={handleAppearanceChange}>
                         <option value="rounded">Rounded</option>
                         <option value="sharp">Sharp</option>
                         <option value="shadow">Shadow</option>
@@ -935,36 +966,15 @@ function Settings() {
                     </div>
                   </div>
                   <div className="switch-group">
-                    <SwitchButton
-                      checked={appearanceSettings.sidebarCollapsed}
-                      onChange={(checked) =>
-                        setAppearanceSettings({
-                          ...appearanceSettings,
-                          sidebarCollapsed: checked,
-                        })
-                      }
-                      label="Collapse Sidebar by Default"
-                    />
-                    <SwitchButton
-                      checked={appearanceSettings.compactMode}
-                      onChange={(checked) =>
-                        setAppearanceSettings({
-                          ...appearanceSettings,
-                          compactMode: checked,
-                        })
-                      }
-                      label="Compact Mode (Denser Layout)"
-                    />
-                    <SwitchButton
-                      checked={appearanceSettings.animationsEnabled}
-                      onChange={(checked) =>
-                        setAppearanceSettings({
-                          ...appearanceSettings,
-                          animationsEnabled: checked,
-                        })
-                      }
-                      label="Enable Animations"
-                    />
+                    <SwitchButton checked={appearanceSettings.sidebarCollapsed}
+                      onChange={(c) => setAppearanceSettings({ ...appearanceSettings, sidebarCollapsed: c })}
+                      label="Collapse Sidebar by Default" />
+                    <SwitchButton checked={appearanceSettings.compactMode}
+                      onChange={(c) => setAppearanceSettings({ ...appearanceSettings, compactMode: c })}
+                      label="Compact Mode (Denser Layout)" />
+                    <SwitchButton checked={appearanceSettings.animationsEnabled}
+                      onChange={(c) => setAppearanceSettings({ ...appearanceSettings, animationsEnabled: c })}
+                      label="Enable Animations" />
                   </div>
                 </div>
                 <div className="settings-actions">
@@ -996,28 +1006,17 @@ function Settings() {
                     </div>
                   </div>
                   <div className="switch-group">
-                    <SwitchButton
-                      checked={backupSettings.autoBackup}
-                      onChange={(checked) =>
-                        setBackupSettings({ ...backupSettings, autoBackup: checked })
-                      }
-                      label="Enable Automatic Backups"
-                    />
+                    <SwitchButton checked={backupSettings.autoBackup}
+                      onChange={(c) => setBackupSettings({ ...backupSettings, autoBackup: c })}
+                      label="Enable Automatic Backups" />
                   </div>
                   {backupSettings.autoBackup && (
                     <>
                       <div className="form-row">
                         <div className="form-group">
                           <label>Backup Frequency</label>
-                          <select
-                            value={backupSettings.backupFrequency}
-                            onChange={(e) =>
-                              setBackupSettings({
-                                ...backupSettings,
-                                backupFrequency: e.target.value,
-                              })
-                            }
-                          >
+                          <select value={backupSettings.backupFrequency}
+                            onChange={(e) => setBackupSettings({ ...backupSettings, backupFrequency: e.target.value })}>
                             <option value="daily">Daily</option>
                             <option value="weekly">Weekly</option>
                             <option value="monthly">Monthly</option>
@@ -1025,29 +1024,14 @@ function Settings() {
                         </div>
                         <div className="form-group">
                           <label>Backup Time</label>
-                          <input
-                            type="time"
-                            value={backupSettings.backupTime}
-                            onChange={(e) =>
-                              setBackupSettings({
-                                ...backupSettings,
-                                backupTime: e.target.value,
-                              })
-                            }
-                          />
+                          <input type="time" value={backupSettings.backupTime}
+                            onChange={(e) => setBackupSettings({ ...backupSettings, backupTime: e.target.value })} />
                         </div>
                       </div>
                       <div className="form-group">
                         <label>Backup Location</label>
-                        <select
-                          value={backupSettings.backupLocation}
-                          onChange={(e) =>
-                            setBackupSettings({
-                              ...backupSettings,
-                              backupLocation: e.target.value,
-                            })
-                          }
-                        >
+                        <select value={backupSettings.backupLocation}
+                          onChange={(e) => setBackupSettings({ ...backupSettings, backupLocation: e.target.value })}>
                           <option value="local">Local Server</option>
                           <option value="cloud">Cloud Storage</option>
                           <option value="both">Both</option>
