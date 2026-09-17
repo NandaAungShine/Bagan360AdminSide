@@ -4,14 +4,13 @@ import Header from './Header';
 import axios from 'axios';
 
 function Hotels() {
-  // ===== API Base URL =====
-  const API_BASE = '/api/admin/hotel';
+  // ===== API Config =====
   const BACKEND_URL = 'http://130.94.21.185:8000';
+  const API_BASE = `${BACKEND_URL}/api/admin/hotel`;
 
   // ===== Theme =====
   const [isDarkMode, setIsDarkMode] = useState(() => {
-    const savedTheme = localStorage.getItem('theme');
-    return savedTheme === 'dark';
+    return localStorage.getItem('theme') === 'dark';
   });
 
   // ===== UI States =====
@@ -28,20 +27,15 @@ function Hotels() {
   const [imagePreview, setImagePreview] = useState(null);
   const [imageFile, setImageFile] = useState(null);
 
-  // ===== Form Data =====
+  // ===== Form Data (API fields only) =====
   const [formData, setFormData] = useState({
     name: '',
-    type: '',
-    location: '',
     price: '',
-    discount: '',
-    start_date: '',
-    end_date: '',
     description: '',
-    facilities: '',
+    facilities: '', // comma separated string in UI
   });
 
-  // ===== Toast & Confirm States =====
+  // ===== Toast & Confirm =====
   const [toast, setToast] = useState({
     visible: false,
     type: 'success',
@@ -55,13 +49,16 @@ function Hotels() {
     onConfirm: null,
   });
 
-  // ===== User role check =====
+  // ===== User role / shop =====
   const user = (() => {
-    try { return JSON.parse(localStorage.getItem('user')); } 
-    catch { return null; }
+    try {
+      return JSON.parse(localStorage.getItem('user'));
+    } catch {
+      return null;
+    }
   })();
-  const admin = user?.role === 'admin';
-  const userId = user?.id;
+  const role = localStorage.getItem('role') || user?.role || '';
+  const shopId = localStorage.getItem('shopId') || user?.shop_id || '';
 
   // ===== Toast Helper =====
   const showToast = (type, message) => {
@@ -71,12 +68,12 @@ function Hotels() {
     }
     setToast({ visible: true, type, message });
     toastTimeoutRef.current = setTimeout(() => {
-      setToast(prev => ({ ...prev, visible: false }));
+      setToast((prev) => ({ ...prev, visible: false }));
       toastTimeoutRef.current = null;
     }, 3000);
   };
 
-  // ===== 401 Unauthorized Handler =====
+  // ===== 401 Handler =====
   const handle401Error = () => {
     localStorage.removeItem('token');
     showToast('error', 'Session expired. Please login again.');
@@ -88,6 +85,7 @@ function Hotels() {
   // ===== Theme Handler =====
   const handleThemeChange = (isDark) => {
     setIsDarkMode(isDark);
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
   };
 
   useEffect(() => {
@@ -100,16 +98,18 @@ function Hotels() {
     }
   }, [isDarkMode]);
 
-  // ===== Get Token =====
-  const getToken = () => localStorage.getItem('token');
+  // ===== Token =====
+  const getToken = () =>
+    localStorage.getItem('token') ||
+    localStorage.getItem('authToken') ||
+    '';
 
   // ===== Axios Instance =====
   const api = axios.create({
     baseURL: API_BASE,
     timeout: 30000,
     headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
+      Accept: 'application/json',
     },
   });
 
@@ -119,37 +119,49 @@ function Hotels() {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
-      console.log('=== API Request ===', config.method.toUpperCase(), config.url);
       return config;
     },
     (error) => Promise.reject(error)
   );
 
   api.interceptors.response.use(
-    (response) => {
-      console.log('=== API Response ===', response.status);
-      return response;
-    },
+    (response) => response,
     (error) => {
       if (error.response && error.response.status === 401) {
         handle401Error();
       }
-      console.error('=== API Error ===', error.response?.status, error.response?.data);
       return Promise.reject(error);
     }
   );
 
+  // ===== Image URL helper =====
   const getImageUrl = (imagePath) => {
     if (!imagePath) return null;
-    const trimmed = imagePath.trim();
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    const trimmed = String(imagePath).trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://'))
       return trimmed;
-    }
-    if (trimmed.startsWith('/')) {
-      return `${BACKEND_URL}${trimmed}`;
-    }
+    if (trimmed.startsWith('/')) return `${BACKEND_URL}${trimmed}`;
     return `${BACKEND_URL}/${trimmed}`;
   };
+
+  // ===== Map API → UI object =====
+  const mapApiToHotel = (hotel) => ({
+    id: hotel.id,
+    shop_id: hotel.shop_id,
+    shop_name: hotel.shop_name || '',
+    shop_address: hotel.shop_address || '',
+    shop_phone: hotel.shop_phone || '',
+    name: hotel.name || '',
+    price: hotel.price || 0,
+    // facilities ကို array အဖြစ်ထား၊ UI မှာ join ပြ
+    facilities: Array.isArray(hotel.facilities)
+      ? hotel.facilities
+      : hotel.facilities
+      ? String(hotel.facilities).split(',').map((s) => s.trim())
+      : [],
+    description: hotel.description || '',
+    image: getImageUrl(hotel.image),
+  });
 
   // ===== Fetch Hotels =====
   const fetchHotels = async () => {
@@ -157,31 +169,13 @@ function Hotels() {
     setError(null);
     try {
       const response = await api.get('/list');
-      console.log('GET Response:', response.data);
-
-      let hotelData = response.data.data || response.data.hotels || response.data || [];
-      hotelData = hotelData.map((hotel) => ({
-        id: hotel.id,
-        shop_id: hotel.shop_id,
-        shop_name: hotel.shop_name || '',
-        name: hotel.name || '',
-        type: hotel.type || '',
-        location: hotel.location || '',
-        price: hotel.price || 0,
-        discount: hotel.discount || 0,
-        total_amount: hotel.total_amount || 0,
-        start_date: hotel.start_date || '',
-        end_date: hotel.end_date || '',
-        description: hotel.description || '',
-        facilities: hotel.facilities || '',
-        image: getImageUrl(hotel.image),
-        created_at: hotel.created_at || hotel.createdAt || '',
-      }));
-
-      setHotels(hotelData);
+      const list = response.data?.data || [];
+      setHotels(list.map(mapApiToHotel));
     } catch (err) {
       console.error('Fetch Error:', err);
-      setError('Failed to fetch hotels. Please try again.');
+      if (err.response?.status !== 401) {
+        setError('Failed to fetch hotels. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -194,9 +188,10 @@ function Hotels() {
       return;
     }
     fetchHotels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ===== Form Input Change =====
+  // ===== Input change =====
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
@@ -206,9 +201,7 @@ function Hotels() {
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    const previewUrl = URL.createObjectURL(file);
-    setImagePreview(previewUrl);
+    setImagePreview(URL.createObjectURL(file));
     setImageFile(file);
   };
 
@@ -221,12 +214,7 @@ function Hotels() {
   const resetForm = () => {
     setFormData({
       name: '',
-      type: '',
-      location: '',
       price: '',
-      discount: '',
-      start_date: '',
-      end_date: '',
       description: '',
       facilities: '',
     });
@@ -234,25 +222,27 @@ function Hotels() {
     setImageFile(null);
   };
 
-  // ===== Date Format: YYYY-MM-DD → DD-MM-YYYY =====
-  const formatDateToAPI = (dateStr) => {
-    if (!dateStr) return '';
-    const parts = dateStr.split('-');
-    if (parts.length === 3) {
-      return `${parts[2]}-${parts[1]}-${parts[0]}`;
-    }
-    return dateStr;
+  // ===== Facilities string → array =====
+  const parseFacilities = (str) => {
+    if (!str) return [];
+    return str
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  };
+
+  // ===== Append facilities to FormData (Laravel: facilities[]) =====
+  const appendFacilities = (form, facilitiesStr) => {
+    const list = parseFacilities(facilitiesStr);
+    list.forEach((f) => form.append('facilities[]', f));
   };
 
   // ===== ADD HOTEL =====
   const handleAddHotel = async () => {
-    if (!formData.name || !formData.type || !formData.location || !formData.price ||
-        !formData.start_date || !formData.end_date || !formData.description ||
-        !formData.facilities) {
-      showToast('warning', 'All fields are required!');
+    if (!formData.name || !formData.price || !formData.description) {
+      showToast('warning', 'Name, Price and Description are required.');
       return;
     }
-
     if (!imageFile) {
       showToast('warning', 'Please upload an image.');
       return;
@@ -264,51 +254,30 @@ function Hotels() {
       return;
     }
 
-    const shopId = localStorage.getItem('shopId');
-    const role = localStorage.getItem('role');
-
     setLoading(true);
     try {
       const form = new FormData();
-      form.append('name', formData.name);
-      form.append('type', formData.type);
-      form.append('location', formData.location);
+      form.append('name', formData.name.trim());
       form.append('price', formData.price);
-      form.append('discount', formData.discount || '0');
-      form.append('start_date', formatDateToAPI(formData.start_date));
-      form.append('end_date', formatDateToAPI(formData.end_date));
-      form.append('description', formData.description);
-      form.append('facilities', formData.facilities);
+      form.append('description', formData.description.trim());
+      appendFacilities(form, formData.facilities);
       form.append('image', imageFile);
 
-      // ============================================
-      // 🔧 FIX: Send both shop_id and shopId
-      // ============================================
+      // shop role ဆိုရင် shop_id ပို့
       if (role === 'shop' && shopId) {
         form.append('shop_id', shopId);
-        form.append('shopId', shopId);   // for camelCase backend
-      } else {
-        // For admin, we might need to send something, but we don't know what.
-        // Uncomment the next line if backend requires shop_id even for admin:
-        // form.append('shop_id', '0');
-        // form.append('shopId', '0');
-      }
-
-      console.log('📤 Sending FormData:');
-      for (let [key, value] of form.entries()) {
-        console.log(key, '=', value);
       }
 
       const response = await axios.post(`${API_BASE}/create`, form, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
           'Content-Type': 'multipart/form-data',
+          Accept: 'application/json',
         },
       });
 
-      console.log('POST Response:', response.data);
-      if (response.data && response.data.success) {
-        showToast('success', 'Hotel added successfully!');
+      if (response.data?.success) {
+        showToast('success', response.data.message || 'Hotel added successfully!');
         resetForm();
         fetchHotels();
       } else {
@@ -318,9 +287,8 @@ function Hotels() {
       console.error('Add Error:', err);
       if (err.response?.status === 401) return;
       const errorData = err.response?.data;
-      console.error('Server response:', errorData);
-      const errorMsg = errorData?.message || errorData?.error || err.message;
-      showToast('error', `Error: ${errorMsg}`);
+      const msg = errorData?.message || errorData?.error || err.message;
+      showToast('error', `Error: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -337,10 +305,13 @@ function Hotels() {
     setLoading(true);
     try {
       const response = await axios.delete(`${API_BASE}/delete/${id}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
       });
-      if (response.data && response.data.success) {
-        showToast('success', 'Hotel deleted successfully!');
+      if (response.data?.success) {
+        showToast('success', response.data.message || 'Hotel deleted successfully!');
         fetchHotels();
       } else {
         showToast('error', response.data?.message || 'Failed to delete hotel.');
@@ -358,61 +329,34 @@ function Hotels() {
     setConfirmDialog({
       visible: true,
       message: 'Are you sure you want to delete this hotel?',
-      onConfirm: () => performDeleteHotel(id)
+      onConfirm: () => performDeleteHotel(id),
     });
-  };
-
-  // ===== Helper: Format date from DD-MM-YYYY to YYYY-MM-DD =====
-  const formatDateForInput = (dateStr) => {
-    if (!dateStr) return '';
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
-    const ddmmyyyy = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})/);
-    if (ddmmyyyy) {
-      return `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
-    }
-    const ddmmyyyySlash = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-    if (ddmmyyyySlash) {
-      return `${ddmmyyyySlash[3]}-${ddmmyyyySlash[2]}-${ddmmyyyySlash[1]}`;
-    }
-    const iso = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
-    if (iso) return iso[0];
-    const d = new Date(dateStr);
-    if (!isNaN(d.getTime())) {
-      return d.toISOString().split('T')[0];
-    }
-    return '';
   };
 
   // ===== EDIT (Open Modal) =====
   const handleEditHotel = (id) => {
-    const hotelToEdit = hotels.find((h) => h.id === id);
-    if (!hotelToEdit) {
+    const h = hotels.find((x) => x.id === id);
+    if (!h) {
       showToast('error', 'Hotel not found.');
       return;
     }
-
-    setSelectedHotelForEdit(hotelToEdit);
+    setSelectedHotelForEdit(h);
     setFormData({
-      name: hotelToEdit.name || '',
-      type: hotelToEdit.type || '',
-      location: hotelToEdit.location || '',
-      price: hotelToEdit.price || '',
-      discount: hotelToEdit.discount || '',
-      start_date: formatDateForInput(hotelToEdit.start_date),
-      end_date: formatDateForInput(hotelToEdit.end_date),
-      description: hotelToEdit.description || '',
-      facilities: hotelToEdit.facilities || '',
+      name: h.name || '',
+      price: h.price || '',
+      description: h.description || '',
+      facilities: Array.isArray(h.facilities) ? h.facilities.join(', ') : '',
     });
-    setImagePreview(hotelToEdit.image || null);
+    setImagePreview(h.image || null);
     setImageFile(null);
     setShowEditModal(true);
   };
 
   // ===== CONFIRM EDIT =====
   const handleConfirmEdit = async () => {
-    if (!formData.name || !formData.type || !formData.location || !formData.price ||
-        !formData.description || !formData.facilities) {
-      showToast('warning', 'Please fill all required fields.');
+    if (!selectedHotelForEdit) return;
+    if (!formData.name || !formData.price || !formData.description) {
+      showToast('warning', 'Name, Price and Description are required.');
       return;
     }
 
@@ -422,45 +366,39 @@ function Hotels() {
       return;
     }
 
-    const shopId = localStorage.getItem('shopId');
-    const role = localStorage.getItem('role');
-
     setLoading(true);
     try {
       const form = new FormData();
-      form.append('name', formData.name);
-      form.append('type', formData.type);
-      form.append('location', formData.location);
+      form.append('name', formData.name.trim());
       form.append('price', formData.price);
-      form.append('discount', formData.discount || '0');
-      form.append('start_date', formatDateToAPI(formData.start_date));
-      form.append('end_date', formatDateToAPI(formData.end_date));
-      form.append('description', formData.description);
-      form.append('facilities', formData.facilities);
-      
+      form.append('description', formData.description.trim());
+      appendFacilities(form, formData.facilities);
       if (imageFile) {
         form.append('image', imageFile);
       }
 
-      // Send both
       if (role === 'shop' && shopId) {
         form.append('shop_id', shopId);
-        form.append('shopId', shopId);
-      } else {
-        // Uncomment if needed for admin:
-        // form.append('shop_id', '0');
-        // form.append('shopId', '0');
       }
 
-      const response = await axios.put(`${API_BASE}/update/${selectedHotelForEdit.id}`, form, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      // ⭐ Laravel method spoofing — PUT + multipart/form-data အတွက်
+      form.append('_method', 'PUT');
 
-      if (response.data && response.data.success) {
-        showToast('success', 'Hotel updated successfully!');
+      // ⚠️ POST နဲ့ပို့ပြီး _method=PUT spoofing လုပ်
+      const response = await axios.post(
+        `${API_BASE}/update/${selectedHotelForEdit.id}`,
+        form,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data',
+            Accept: 'application/json',
+          },
+        }
+      );
+
+      if (response.data?.success) {
+        showToast('success', response.data.message || 'Hotel updated successfully!');
         setShowEditModal(false);
         setSelectedHotelForEdit(null);
         resetForm();
@@ -472,70 +410,29 @@ function Hotels() {
       console.error('Update Error:', err);
       if (err.response?.status === 401) return;
       const errorData = err.response?.data;
-      console.error('Server response:', errorData);
       showToast('error', `Error: ${errorData?.message || err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // ===== FILTER & RENDER =====
-  const filteredHotels = hotels
-    .filter(hotel => {
-      if (admin) return true;
-
-      const shopId = localStorage.getItem('shopId');
-      if (hotel.shop_id && shopId) {
-        return String(hotel.shop_id) === String(shopId);
-      }
-
-      if (hotel.createdBy) {
-        return hotel.createdBy === userId;
-      }
-
-      return false;
-    })
-    .filter(hotel =>
-      hotel.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      hotel.location?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-  const renderStars = (rating) => {
-    const safeRating = rating || 0;
-    const fullStars = Math.floor(safeRating);
-    const hasHalfStar = safeRating % 1 !== 0;
+  // ===== FILTER =====
+  const filteredHotels = hotels.filter((h) => {
+    const term = searchTerm.toLowerCase();
     return (
-      <>
-        {[...Array(fullStars)].map((_, i) => (
-          <i key={i} className="bi bi-star-fill" style={{ color: '#ff8a00', fontSize: '12px' }}></i>
-        ))}
-        {hasHalfStar && <i className="bi bi-star-half" style={{ color: '#ff8a00', fontSize: '12px' }}></i>}
-        {[...Array(5 - Math.ceil(safeRating))].map((_, i) => (
-          <i key={i} className="bi bi-star" style={{ color: '#ff8a00', fontSize: '12px' }}></i>
-        ))}
-      </>
+      (h.name || '').toLowerCase().includes(term) ||
+      (h.description || '').toLowerCase().includes(term) ||
+      (h.shop_name || '').toLowerCase().includes(term)
     );
-  };
+  });
 
-  // ===== Card Actions Component =====
+  // ===== Card Actions =====
   const CardActions = ({ hotelId }) => {
     const [isOpen, setIsOpen] = useState(false);
 
     const handleToggle = (e) => {
       e.stopPropagation();
       setIsOpen(!isOpen);
-    };
-
-    const handleEdit = (e) => {
-      e.stopPropagation();
-      setIsOpen(false);
-      handleEditHotel(hotelId);
-    };
-
-    const handleDelete = (e) => {
-      e.stopPropagation();
-      setIsOpen(false);
-      handleDeleteHotel(hotelId);
     };
 
     useEffect(() => {
@@ -554,10 +451,24 @@ function Hotels() {
           <i className="bi bi-three-dots-vertical"></i>
         </button>
         <div className={`card-actions-dropdown ${isOpen ? 'show' : ''}`}>
-          <button className="edit-btn" onClick={handleEdit}>
+          <button
+            className="edit-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen(false);
+              handleEditHotel(hotelId);
+            }}
+          >
             <i className="bi bi-pencil-square"></i> Edit
           </button>
-          <button className="delete-btn" onClick={handleDelete}>
+          <button
+            className="delete-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen(false);
+              handleDeleteHotel(hotelId);
+            }}
+          >
             <i className="bi bi-trash"></i> Delete
           </button>
         </div>
@@ -565,76 +476,215 @@ function Hotels() {
     );
   };
 
-  // ===== LOADING =====
-  if (loading && hotels.length === 0) {
-    return (
-      <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
-        <Header title="Hotels Management" onThemeChange={handleThemeChange} />
-        <div style={{ textAlign: 'center', padding: '50px' }}>
-          <div className="spinner-border" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-          <p>Loading hotels...</p>
-        </div>
-      </div>
-    );
-  }
-
   // ===== RENDER =====
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Hotels Management" onThemeChange={handleThemeChange} />
 
-      {/* Toast Alert */}
+      {/* Toast */}
       {toast.visible && (
-        <div style={{
-          position: 'fixed',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          zIndex: 999999,
-          width: '420px',
-          maxWidth: '90%',
-          borderRadius: '16px',
-          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
-          padding: '0',
-          overflow: 'hidden',
-          backgroundColor: toast.type === 'success' ? (isDarkMode ? '#1e3a2e' : '#d4edda') : toast.type === 'error' ? (isDarkMode ? '#3e1f1f' : '#f8d7da') : toast.type === 'warning' ? (isDarkMode ? '#3d3512' : '#fff3cd') : (isDarkMode ? '#112b3c' : '#d1ecf1'),
-          color: toast.type === 'success' ? (isDarkMode ? '#b7eb8f' : '#155724') : toast.type === 'error' ? (isDarkMode ? '#ffa39e' : '#721c24') : toast.type === 'warning' ? (isDarkMode ? '#ffe58f' : '#856404') : (isDarkMode ? '#91d5ff' : '#0c5460'),
-          borderLeft: `5px solid ${toast.type === 'success' ? (isDarkMode ? '#52c41a' : '#28a745') : toast.type === 'error' ? (isDarkMode ? '#ff4d4f' : '#dc3545') : toast.type === 'warning' ? (isDarkMode ? '#faad14' : '#ffc107') : (isDarkMode ? '#1890ff' : '#17a2b8')}`
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
+        <div
+          style={{
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 999999,
+            width: '420px',
+            maxWidth: '90%',
+            borderRadius: '16px',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+            overflow: 'hidden',
+            backgroundColor:
+              toast.type === 'success'
+                ? isDarkMode
+                  ? '#1e3a2e'
+                  : '#d4edda'
+                : toast.type === 'error'
+                ? isDarkMode
+                  ? '#3e1f1f'
+                  : '#f8d7da'
+                : toast.type === 'warning'
+                ? isDarkMode
+                  ? '#3d3512'
+                  : '#fff3cd'
+                : isDarkMode
+                ? '#112b3c'
+                : '#d1ecf1',
+            color:
+              toast.type === 'success'
+                ? isDarkMode
+                  ? '#b7eb8f'
+                  : '#155724'
+                : toast.type === 'error'
+                ? isDarkMode
+                  ? '#ffa39e'
+                  : '#721c24'
+                : toast.type === 'warning'
+                ? isDarkMode
+                  ? '#ffe58f'
+                  : '#856404'
+                : isDarkMode
+                ? '#91d5ff'
+                : '#0c5460',
+            borderLeft: `5px solid ${
+              toast.type === 'success'
+                ? isDarkMode
+                  ? '#52c41a'
+                  : '#28a745'
+                : toast.type === 'error'
+                ? isDarkMode
+                  ? '#ff4d4f'
+                  : '#dc3545'
+                : toast.type === 'warning'
+                ? isDarkMode
+                  ? '#faad14'
+                  : '#ffc107'
+                : isDarkMode
+                ? '#1890ff'
+                : '#17a2b8'
+            }`,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '16px 20px',
+              borderBottom: `1px solid ${
+                isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
+              }`,
+            }}
+          >
             <div style={{ fontWeight: 'bold', fontSize: '16px' }}>Bagan 360</div>
-            <button onClick={() => { if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); setToast({ ...toast, visible: false }); }} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: '18px', cursor: 'pointer', opacity: 0.7, padding: '0 4px' }}>
+            <button
+              onClick={() => {
+                if (toastTimeoutRef.current)
+                  clearTimeout(toastTimeoutRef.current);
+                setToast({ ...toast, visible: false });
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'inherit',
+                fontSize: '18px',
+                cursor: 'pointer',
+                opacity: 0.7,
+                padding: '0 4px',
+              }}
+            >
               <i className="bi bi-x-lg"></i>
             </button>
           </div>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', padding: '20px' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '16px',
+              padding: '20px',
+            }}
+          >
             <div style={{ fontSize: '28px' }}>
-              {toast.type === 'success' && <i className="bi bi-check-circle-fill"></i>}
-              {toast.type === 'error' && <i className="bi bi-x-circle-fill"></i>}
-              {toast.type === 'warning' && <i className="bi bi-exclamation-triangle-fill"></i>}
-              {toast.type === 'info' && <i className="bi bi-info-circle-fill"></i>}
+              {toast.type === 'success' && (
+                <i className="bi bi-check-circle-fill"></i>
+              )}
+              {toast.type === 'error' && (
+                <i className="bi bi-x-circle-fill"></i>
+              )}
+              {toast.type === 'warning' && (
+                <i className="bi bi-exclamation-triangle-fill"></i>
+              )}
+              {toast.type === 'info' && (
+                <i className="bi bi-info-circle-fill"></i>
+              )}
             </div>
-            <div style={{ fontSize: '15px', lineHeight: '1.5' }}>{toast.message}</div>
+            <div style={{ fontSize: '15px', lineHeight: '1.5' }}>
+              {toast.message}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Confirm Delete Modal */}
+      {/* Confirm Delete */}
       {confirmDialog.visible && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: isDarkMode ? '#2d2d2d' : '#fff', padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%', boxShadow: '0 15px 40px rgba(0,0,0,0.2)' }}>
-            <h3 style={{ color: isDarkMode ? '#eee' : '#333', marginBottom: '12px' }}>Confirm Delete</h3>
-            <p style={{ color: isDarkMode ? '#ccc' : '#555' }}>{confirmDialog.message}</p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-              <button onClick={() => setConfirmDialog({ ...confirmDialog, visible: false })} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', background: 'transparent', cursor: 'pointer', color: isDarkMode ? '#ccc' : '#333' }}>Cancel</button>
-              <button onClick={() => { if(confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({ ...confirmDialog, visible: false }); }} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc3545', color: '#fff', cursor: 'pointer' }}>Delete</button>
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 999999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            style={{
+              background: isDarkMode ? '#2d2d2d' : '#fff',
+              padding: '24px',
+              borderRadius: '12px',
+              maxWidth: '400px',
+              width: '90%',
+              boxShadow: '0 15px 40px rgba(0,0,0,0.2)',
+            }}
+          >
+            <h3
+              style={{
+                color: isDarkMode ? '#eee' : '#333',
+                marginBottom: '12px',
+              }}
+            >
+              Confirm Delete
+            </h3>
+            <p style={{ color: isDarkMode ? '#ccc' : '#555' }}>
+              {confirmDialog.message}
+            </p>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '10px',
+                marginTop: '20px',
+              }}
+            >
+              <button
+                onClick={() =>
+                  setConfirmDialog({ ...confirmDialog, visible: false })
+                }
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: '1px solid #ddd',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  color: isDarkMode ? '#ccc' : '#333',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (confirmDialog.onConfirm) confirmDialog.onConfirm();
+                  setConfirmDialog({ ...confirmDialog, visible: false });
+                }}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: '#dc3545',
+                  color: '#fff',
+                  cursor: 'pointer',
+                }}
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Search */}
       <div className="search-actions-row">
         <div className="search-bar-wrapper">
           <i className="bi bi-search search-icon"></i>
@@ -655,6 +705,7 @@ function Hotels() {
       )}
 
       <div className="hotels-two-columns">
+        {/* Left: Add Form */}
         <div className="add-form-column">
           <div className="add-form-card">
             <div className="image-gallery-top">
@@ -677,7 +728,10 @@ function Hotels() {
                   {imagePreview && (
                     <div className="image-item">
                       <img src={imagePreview} alt="Preview" />
-                      <button className="remove-image-btn" onClick={removeImage}>
+                      <button
+                        className="remove-image-btn"
+                        onClick={removeImage}
+                      >
                         <i className="bi bi-x-lg"></i>
                       </button>
                     </div>
@@ -688,80 +742,36 @@ function Hotels() {
 
             <div className="form-fields-section">
               <div className="add-form-group">
-                <label>Hotel Name *</label>
+                <label>Hotel / Plan Name *</label>
                 <input
                   type="text"
                   name="name"
-                  placeholder="eg. Aureum Palace Hotel"
+                  placeholder="eg. Bagan Hotel Myanmar"
                   value={formData.name}
                   onChange={handleInputChange}
                 />
               </div>
 
               <div className="add-form-group">
-                <label>Room Type *</label>
+                <label>Price (MMK) *</label>
                 <input
-                  type="text"
-                  name="type"
-                  placeholder="eg. Deluxe Room"
-                  value={formData.type}
+                  type="number"
+                  name="price"
+                  placeholder="eg. 50000"
+                  value={formData.price}
                   onChange={handleInputChange}
                 />
               </div>
 
               <div className="add-form-group">
-                <label>Location *</label>
-                <input
-                  type="text"
-                  name="location"
-                  placeholder="eg. Old Bagan, Nyaung U"
-                  value={formData.location}
+                <label>Facilities (comma separated)</label>
+                <textarea
+                  name="facilities"
+                  rows="2"
+                  placeholder="Free WiFi, Air Conditioning, Swimming Pool"
+                  value={formData.facilities}
                   onChange={handleInputChange}
-                />
-              </div>
-
-              <div className="add-form-row">
-                <div className="add-form-group half">
-                  <label>Price *</label>
-                  <input
-                    type="number"
-                    name="price"
-                    placeholder="eg. 50000"
-                    value={formData.price}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="add-form-group half">
-                  <label>Discount %</label>
-                  <input
-                    type="number"
-                    name="discount"
-                    placeholder="eg. 20"
-                    value={formData.discount}
-                    onChange={handleInputChange}
-                  />
-                </div>
-              </div>
-
-              <div className="add-form-row">
-                <div className="add-form-group half">
-                  <label>Start Date *</label>
-                  <input
-                    type="date"
-                    name="start_date"
-                    value={formData.start_date}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="add-form-group half">
-                  <label>End Date *</label>
-                  <input
-                    type="date"
-                    name="end_date"
-                    value={formData.end_date}
-                    onChange={handleInputChange}
-                  />
-                </div>
+                ></textarea>
               </div>
 
               <div className="add-form-group">
@@ -775,28 +785,29 @@ function Hotels() {
                 ></textarea>
               </div>
 
-              <div className="add-form-group">
-                <label>Facilities * (comma separated)</label>
-                <textarea
-                  name="facilities"
-                  rows="2"
-                  placeholder="WiFi, Parking, Pool, Restaurant..."
-                  value={formData.facilities}
-                  onChange={handleInputChange}
-                ></textarea>
-              </div>
-
-              <button className="add-item-btn-full" onClick={handleAddHotel} disabled={loading}>
+              <button
+                className="add-item-btn-full"
+                onClick={handleAddHotel}
+                disabled={loading}
+              >
                 {loading ? 'Adding...' : 'Add Hotel'}
               </button>
             </div>
           </div>
         </div>
 
+        {/* Right: Cards */}
         <div className="hotels-cards-column">
           <div className="hotels-scroll-area">
             <div className="hotels-grid-2cols">
-              {filteredHotels.length > 0 ? (
+              {loading && hotels.length === 0 ? (
+                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '50px' }}>
+                  <div className="spinner-border" role="status">
+                    <span className="visually-hidden">Loading...</span>
+                  </div>
+                  <p>Loading hotels...</p>
+                </div>
+              ) : filteredHotels.length > 0 ? (
                 filteredHotels.map((hotel) => (
                   <div key={hotel.id} className="hotel-card-vertical">
                     <div className="hotel-card-image">
@@ -808,37 +819,87 @@ function Hotels() {
                             e.target.onerror = null;
                             e.target.src = '/default-hotel.jpg';
                           }}
-                          style={{ objectFit: 'cover', width: '100%', height: '100%' }}
+                          style={{
+                            objectFit: 'cover',
+                            width: '100%',
+                            height: '100%',
+                          }}
                         />
                       </div>
                       <CardActions hotelId={hotel.id} />
                     </div>
                     <div className="hotel-card-info">
                       <h3 className="hotel-name">{hotel.name}</h3>
-                      <p className="hotel-location">
-                        <i className="bi bi-geo-alt-fill"></i> {hotel.location || 'Location not specified'}
-                      </p>
-                      <p className="hotel-price">Starting from <span>MMK {hotel.price}</span></p>
-                      <div className="hotel-rating">
-                        {renderStars(hotel.rating || 0)}
-                        <span className="rating-count">({hotel.reviews || 0})</span>
-                      </div>
-                      {hotel.created_at && (
-                        <p className="created-at" style={{ fontSize: '11px', color: '#999', marginTop: '5px' }}>
-                          <i className="bi bi-clock"></i> Added: {hotel.created_at}
+                      {hotel.shop_name && (
+                        <p className="hotel-location">
+                          <i className="bi bi-shop"></i> {hotel.shop_name}
                         </p>
+                      )}
+                      {hotel.shop_address && (
+                        <p className="hotel-location">
+                          <i className="bi bi-geo-alt-fill"></i>{' '}
+                          {hotel.shop_address}
+                        </p>
+                      )}
+                      <p className="hotel-price">
+                        Starting from <span>MMK {hotel.price}</span>
+                      </p>
+                      {hotel.facilities?.length > 0 && (
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '4px',
+                            marginTop: '6px',
+                          }}
+                        >
+                          {hotel.facilities.slice(0, 4).map((f, i) => (
+                            <span
+                              key={i}
+                              style={{
+                                fontSize: '11px',
+                                padding: '2px 8px',
+                                borderRadius: '10px',
+                                background: isDarkMode ? '#333' : '#eef',
+                                color: isDarkMode ? '#ccc' : '#335',
+                              }}
+                            >
+                              {f}
+                            </span>
+                          ))}
+                          {hotel.facilities.length > 4 && (
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                padding: '2px 8px',
+                                color: '#888',
+                              }}
+                            >
+                              +{hotel.facilities.length - 4}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
                 ))
               ) : (
-                <div style={{
-                  gridColumn: '1 / -1',
-                  textAlign: 'center',
-                  padding: '50px',
-                  color: '#999'
-                }}>
-                  <i className="bi bi-inbox" style={{ fontSize: '48px', display: 'block', marginBottom: '10px' }}></i>
+                <div
+                  style={{
+                    gridColumn: '1 / -1',
+                    textAlign: 'center',
+                    padding: '50px',
+                    color: '#999',
+                  }}
+                >
+                  <i
+                    className="bi bi-inbox"
+                    style={{
+                      fontSize: '48px',
+                      display: 'block',
+                      marginBottom: '10px',
+                    }}
+                  ></i>
                   <p>No hotels found. Add your first hotel!</p>
                 </div>
               )}
@@ -847,19 +908,26 @@ function Hotels() {
         </div>
       </div>
 
+      {/* EDIT MODAL */}
       {showEditModal && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Edit Hotel</h2>
-              <button className="close-btn" onClick={() => setShowEditModal(false)}>
+              <button
+                className="close-btn"
+                onClick={() => setShowEditModal(false)}
+              >
                 <i className="bi bi-x-lg"></i>
               </button>
             </div>
             <div className="modal-body">
               <div className="form-group">
                 <label>Image (Optional - upload new to replace)</label>
-                <div className="image-gallery-wrapper" style={{ marginBottom: '10px' }}>
+                <div
+                  className="image-gallery-wrapper"
+                  style={{ marginBottom: '10px' }}
+                >
                   <div className="image-upload-box">
                     <input
                       type="file"
@@ -868,7 +936,11 @@ function Hotels() {
                       style={{ display: 'none' }}
                       id="edit-image-upload"
                     />
-                    <label htmlFor="edit-image-upload" className="upload-box" style={{ width: '80px', height: '80px' }}>
+                    <label
+                      htmlFor="edit-image-upload"
+                      className="upload-box"
+                      style={{ width: '80px', height: '80px' }}
+                    >
                       <i className="bi bi-plus-lg"></i>
                     </label>
                   </div>
@@ -876,18 +948,23 @@ function Hotels() {
                     {imagePreview && (
                       <div className="image-item">
                         <img src={imagePreview} alt="Preview" />
-                        <button className="remove-image-btn" onClick={removeImage}>
+                        <button
+                          className="remove-image-btn"
+                          onClick={removeImage}
+                        >
                           <i className="bi bi-x-lg"></i>
                         </button>
                       </div>
                     )}
                   </div>
                 </div>
-                <small style={{ opacity: 0.7 }}>Leave as is if you don't want to change image.</small>
+                <small style={{ opacity: 0.7 }}>
+                  Leave as is if you don't want to change image.
+                </small>
               </div>
 
               <div className="form-group">
-                <label>Hotel Name *</label>
+                <label>Hotel / Plan Name *</label>
                 <input
                   type="text"
                   name="name"
@@ -895,64 +972,27 @@ function Hotels() {
                   onChange={handleInputChange}
                 />
               </div>
+
               <div className="form-group">
-                <label>Room Type *</label>
+                <label>Price (MMK) *</label>
                 <input
-                  type="text"
-                  name="type"
-                  value={formData.type}
+                  type="number"
+                  name="price"
+                  value={formData.price}
                   onChange={handleInputChange}
                 />
               </div>
+
               <div className="form-group">
-                <label>Location *</label>
-                <input
-                  type="text"
-                  name="location"
-                  value={formData.location}
+                <label>Facilities (comma separated)</label>
+                <textarea
+                  name="facilities"
+                  rows="2"
+                  value={formData.facilities}
                   onChange={handleInputChange}
-                />
+                ></textarea>
               </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Price *</label>
-                  <input
-                    type="number"
-                    name="price"
-                    value={formData.price}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Discount %</label>
-                  <input
-                    type="number"
-                    name="discount"
-                    value={formData.discount}
-                    onChange={handleInputChange}
-                  />
-                </div>
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Start Date</label>
-                  <input
-                    type="date"
-                    name="start_date"
-                    value={formData.start_date}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>End Date</label>
-                  <input
-                    type="date"
-                    name="end_date"
-                    value={formData.end_date}
-                    onChange={handleInputChange}
-                  />
-                </div>
-              </div>
+
               <div className="form-group">
                 <label>Description *</label>
                 <textarea
@@ -962,21 +1002,19 @@ function Hotels() {
                   onChange={handleInputChange}
                 ></textarea>
               </div>
-              <div className="form-group">
-                <label>Facilities * (comma separated)</label>
-                <textarea
-                  name="facilities"
-                  rows="2"
-                  value={formData.facilities}
-                  onChange={handleInputChange}
-                ></textarea>
-              </div>
             </div>
             <div className="modal-footer">
-              <button className="discard-btn" onClick={() => setShowEditModal(false)}>
+              <button
+                className="discard-btn"
+                onClick={() => setShowEditModal(false)}
+              >
                 Cancel
               </button>
-              <button className="add-item-btn" onClick={handleConfirmEdit} disabled={loading}>
+              <button
+                className="add-item-btn"
+                onClick={handleConfirmEdit}
+                disabled={loading}
+              >
                 {loading ? 'Updating...' : 'Confirm Edit'}
               </button>
             </div>
