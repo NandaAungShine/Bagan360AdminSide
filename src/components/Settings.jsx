@@ -14,6 +14,7 @@ function Settings() {
   const [successMsg, setSuccessMsg] = useState('Settings saved successfully!');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // ---------- API States ----------
   const [loading, setLoading] = useState(false);
@@ -64,21 +65,63 @@ function Settings() {
     lastLogin: 'Today',
     timezone: 'Asia/Yangon (MMT)',
     status: 'Active',
-    image: null,          // full URL for display
-    imageFile: null,      // File object when uploading new
-    imagePreview: null,   // preview URL
+    image: null,
+    imageFile: null,
+    imagePreview: null,
     createdAt: '',
     updatedAt: '',
     raw: {},
+    slug: '',
+    profileUrl: '',
   });
 
   const [tempProfile, setTempProfile] = useState({ ...adminProfile });
 
-  // ---------- Backend URL helper ----------
+  // ---------- Helpers ----------
   const buildImageUrl = (img) => {
     if (!img) return null;
     if (img.startsWith('http') || img.startsWith('data:')) return img;
     return `${BACKEND_URL}/${img.replace(/^\/+/, '')}`;
+  };
+
+  const buildProfileUrl = (key) => {
+    if (!key) return '';
+    return `${window.location.origin}/shop/${key}`;
+  };
+
+  // ============ localStorage ထဲက user object ရှာဖွေခြင်း ============
+  const getStoredUser = () => {
+    const keys = ['user', 'userData', 'userInfo', 'shop', 'shopData', 'currentUser', 'profile', 'authUser', 'loggedUser'];
+    
+    for (const key of keys) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const obj = Array.isArray(parsed) ? parsed[0] : parsed;
+          if (obj && typeof obj === 'object' && Object.keys(obj).length > 0) {
+            // nested user object ရှိရင် ပေါင်းစပ်
+            if (obj.user && typeof obj.user === 'object') {
+              return { ...obj, ...obj.user };
+            }
+            console.log(`📦 Found user in localStorage["${key}"]:`, obj);
+            return obj;
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    console.warn('⚠️ No user object found in localStorage');
+    return {};
+  };
+
+  // Field အမျိုးမျိုးကနေ value ဆွဲထုတ်ခြင်း
+  const pick = (...values) => {
+    for (const v of values) {
+      if (v !== undefined && v !== null && v !== '') return v;
+    }
+    return '';
   };
 
   // ---------- FETCH SHOP PROFILE ----------
@@ -96,44 +139,122 @@ function Settings() {
         throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
       }
       const result = await response.json();
-      console.log('✅ Shop Profile:', result);
+      console.log('✅ Shop Profile (Raw):', result);
 
-      const data = result.data || result.shop || result.user || result || {};
+      // data က Array ဖြစ်နိုင်တယ်
+      const rawData = result.data || result.shop || result.user || result || {};
+      const data = Array.isArray(rawData) ? (rawData[0] || {}) : rawData;
+
+      // localStorage fallback
+      const storedUser = getStoredUser();
 
       const mapped = {
-        id: data.id || data.shop_id || data.user_id || null,
-        fullName: data.name || data.shop_name || data.full_name || '',
-        email: data.email || '',
+        id: pick(
+          data.shop_id, data.id, data.user_id,
+          storedUser.shop_id, storedUser.id, storedUser.user_id
+        ),
+
+        fullName: pick(
+          data.shop_name, data.name, data.full_name, data.username,
+          storedUser.shop_name, storedUser.name, storedUser.full_name, storedUser.username,
+          'Shop'
+        ),
+
+        email: pick(
+          data.email, data.shop_email,
+          storedUser.email, storedUser.shop_email
+        ),
+
         role: data.role
           ? data.role.charAt(0).toUpperCase() + data.role.slice(1)
-          : 'Shop',
-        phone: data.phone || '',
-        location: [data.address, data.township, data.region]
-          .filter(Boolean)
-          .join(', ') || data.location || '',
-        address: data.address || '',
-        township: data.township || '',
-        region: data.region || '',
-        department: data.department || 'Operations',
+          : (storedUser.role
+              ? storedUser.role.charAt(0).toUpperCase() + storedUser.role.slice(1)
+              : 'Shop'),
+
+        phone: pick(
+          data.phone, data.phone_number, data.mobile,
+          storedUser.phone, storedUser.phone_number, storedUser.mobile
+        ),
+
+        location: pick(
+          data.location,
+          [data.address, data.township, data.region].filter(Boolean).join(', '),
+          [storedUser.address, storedUser.township, storedUser.region].filter(Boolean).join(', ')
+        ),
+
+        address: pick(
+          data.address, data.street,
+          storedUser.address, storedUser.street
+        ),
+
+        township: pick(
+          data.township, data.city,
+          storedUser.township, storedUser.city
+        ),
+
+        region: pick(
+          data.region, data.state,
+          storedUser.region, storedUser.state
+        ),
+
+        department: pick(data.department, storedUser.department, 'Operations'),
+
         joinDate: data.created_at
           ? new Date(data.created_at).toLocaleDateString('en-US', {
               month: 'long', day: 'numeric', year: 'numeric',
             })
-          : '',
+          : (storedUser.created_at
+              ? new Date(storedUser.created_at).toLocaleDateString('en-US', {
+                  month: 'long', day: 'numeric', year: 'numeric',
+                })
+              : ''),
+
         lastLogin: 'Today at ' + new Date().toLocaleTimeString('en-US', {
           hour: '2-digit', minute: '2-digit',
         }),
+
         timezone: 'Asia/Yangon (MMT)',
+
         status: data.status
           ? data.status.charAt(0).toUpperCase() + data.status.slice(1)
-          : 'Active',
-        image: buildImageUrl(data.image),
+          : (storedUser.status
+              ? storedUser.status.charAt(0).toUpperCase() + storedUser.status.slice(1)
+              : 'Active'),
+
+        image: buildImageUrl(pick(
+          data.image, data.avatar, data.logo,
+          storedUser.image, storedUser.avatar, storedUser.logo
+        )),
+
         imageFile: null,
-        imagePreview: buildImageUrl(data.image),
-        createdAt: data.created_at || '',
-        updatedAt: data.updated_at || '',
+
+        imagePreview: buildImageUrl(pick(
+          data.image, data.avatar, data.logo,
+          storedUser.image, storedUser.avatar, storedUser.logo
+        )),
+
+        createdAt: pick(data.created_at, storedUser.created_at),
+        updatedAt: pick(data.updated_at, storedUser.updated_at),
         raw: data,
+
+        slug: pick(
+          data.slug, data.username, data.profile_slug, data.shop_code,
+          storedUser.slug, storedUser.username, storedUser.profile_slug, storedUser.shop_code
+        ),
+
+        profileUrl: pick(
+          data.profile_url, data.profileUrl,
+          storedUser.profile_url, storedUser.profileUrl
+        ),
       };
+
+      // profile_url မရှိရင် slug/id နဲ့ auto build
+      if (!mapped.profileUrl) {
+        const key = mapped.slug || mapped.id;
+        if (key) mapped.profileUrl = buildProfileUrl(key);
+      }
+
+      console.log('📦 Mapped Profile:', mapped);
 
       setAdminProfile(mapped);
       setTempProfile({ ...mapped });
@@ -279,12 +400,81 @@ function Settings() {
 
   const handleProfileChange = (e) => {
     const { name, value } = e.target;
+
+    if (name === 'slug') {
+      const clean = value
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        .replace(/-+/g, '-');
+      setTempProfile({ ...tempProfile, slug: clean });
+      return;
+    }
+
     setTempProfile({ ...tempProfile, [name]: value });
+  };
+
+  // ---------- Copy / Share Profile Link ----------
+  const copyProfileLink = async () => {
+    const link = adminProfile.profileUrl
+      || buildProfileUrl(adminProfile.slug || adminProfile.id);
+
+    if (!link) {
+      showToast('warning', 'Profile link is not available yet.');
+      return;
+    }
+
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = link;
+        textarea.style.position = 'fixed';
+        textarea.style.top = '-1000px';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+
+      setCopied(true);
+      showToast('success', 'Profile link copied to clipboard!');
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('❌ Copy link error:', err);
+      showToast('error', 'Could not copy link. Please copy manually.');
+    }
+  };
+
+  const shareProfileLink = async () => {
+    const link = adminProfile.profileUrl
+      || buildProfileUrl(adminProfile.slug || adminProfile.id);
+
+    if (!link) {
+      showToast('warning', 'Profile link is not available yet.');
+      return;
+    }
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: adminProfile.fullName || 'Shop Profile',
+          text: `Check out ${adminProfile.fullName || 'our shop'} on Myanmar Travel`,
+          url: link,
+        });
+      } else {
+        copyProfileLink();
+      }
+    } catch (err) {
+      // user cancel
+    }
   };
 
   // ---------- SAVE SHOP PROFILE (PUT) ----------
   const handleSaveProfile = async () => {
-    if (!tempProfile.fullName) {
+    if (!tempProfile.fullName || !tempProfile.fullName.trim()) {
       showToast('warning', 'Shop name is required.');
       return;
     }
@@ -307,6 +497,9 @@ function Settings() {
       form.append('township', (tempProfile.township || '').trim());
       form.append('region', (tempProfile.region || '').trim());
 
+      if (tempProfile.slug) {
+        form.append('slug', tempProfile.slug.trim());
+      }
       if (tempProfile.imageFile) {
         form.append('image', tempProfile.imageFile);
       }
@@ -317,7 +510,6 @@ function Settings() {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
-          // NOTE: do NOT set Content-Type manually with FormData
         },
         body: form,
       });
@@ -336,22 +528,50 @@ function Settings() {
         throw new Error(result.message || 'Update failed');
       }
 
-      // Re-fetch fresh profile from server
-      await fetchProfile();
-
-      // Also update cached user in localStorage (name/email/phone/image)
+      // ============ localStorage ကို update (key အားလုံး) ============
       try {
-        const stored = JSON.parse(localStorage.getItem('user') || '{}');
-        localStorage.setItem('user', JSON.stringify({
-          ...stored,
-          name: tempProfile.fullName,
-          email: tempProfile.email,
-          phone: tempProfile.phone,
-          address: tempProfile.address,
-          township: tempProfile.township,
-          region: tempProfile.region,
-        }));
-      } catch (e) { /* ignore */ }
+        const updateKeys = ['user', 'userData', 'userInfo', 'shop', 'shopData', 'currentUser', 'profile'];
+        for (const key of updateKeys) {
+          try {
+            const existing = localStorage.getItem(key);
+            if (existing) {
+              const parsed = JSON.parse(existing);
+              const merged = {
+                ...parsed,
+                name: tempProfile.fullName,
+                shop_name: tempProfile.fullName,
+                full_name: tempProfile.fullName,
+                email: tempProfile.email,
+                phone: tempProfile.phone,
+                address: tempProfile.address,
+                township: tempProfile.township,
+                region: tempProfile.region,
+                slug: tempProfile.slug,
+              };
+              localStorage.setItem(key, JSON.stringify(merged));
+            }
+          } catch (e) { /* ignore */ }
+        }
+        // 'user' key မရှိသေးရင် အသစ်ဖန်တီး
+        if (!localStorage.getItem('user')) {
+          localStorage.setItem('user', JSON.stringify({
+            name: tempProfile.fullName,
+            shop_name: tempProfile.fullName,
+            email: tempProfile.email,
+            phone: tempProfile.phone,
+            address: tempProfile.address,
+            township: tempProfile.township,
+            region: tempProfile.region,
+            slug: tempProfile.slug,
+          }));
+        }
+        console.log('💾 localStorage updated with new profile data');
+      } catch (e) {
+        console.warn('localStorage update failed:', e);
+      }
+
+      // Backend မှ fresh data ပြန်ဆွဲ
+      await fetchProfile();
 
       setIsEditingProfile(false);
       showToast('success', 'Shop profile updated successfully!');
@@ -368,12 +588,18 @@ function Settings() {
   };
 
   const handleCancelEdit = () => {
-    // Restore any blob preview
     if (tempProfile.imagePreview && tempProfile.imagePreview.startsWith('blob:')) {
       URL.revokeObjectURL(tempProfile.imagePreview);
     }
     setTempProfile({ ...adminProfile });
     setIsEditingProfile(false);
+  };
+
+  // Edit နှိပ်တဲ့အခါ adminProfile ကို tempProfile ထဲ copy
+  const handleStartEdit = () => {
+    console.log('✏️ Start Edit with:', adminProfile);
+    setTempProfile({ ...adminProfile });
+    setIsEditingProfile(true);
   };
 
   // ---------- General Actions ----------
@@ -412,7 +638,7 @@ function Settings() {
   const getStatusBadgeClass = (status) =>
     status === 'Active' ? 'status-badge active' : 'status-badge inactive';
 
-  // ---------- Switch Button Component ----------
+  // ---------- Switch Button ----------
   const SwitchButton = ({ checked, onChange, label }) => (
     <label className="switch-button">
       <input
@@ -451,7 +677,6 @@ function Settings() {
         </div>
       )}
 
-      {/* Success Message */}
       {showSuccessMessage && (
         <div className="success-message">
           <i className="bi bi-check-circle-fill"></i>
@@ -459,14 +684,12 @@ function Settings() {
         </div>
       )}
 
-      {/* Loading */}
       {loading && (
         <div style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '10px', textAlign: 'center' }}>
           ⏳ Loading...
         </div>
       )}
 
-      {/* Error */}
       {error && (
         <div style={{ background: '#f8d7da', color: '#721c24', padding: '10px', margin: '10px', borderRadius: '5px' }}>
           ❌ {error}
@@ -477,7 +700,6 @@ function Settings() {
         </div>
       )}
 
-      {/* Reset Confirmation Modal */}
       {showResetConfirm && (
         <div className="modal-overlay" onClick={() => setShowResetConfirm(false)}>
           <div className="modal-content-small" onClick={(e) => e.stopPropagation()}>
@@ -499,9 +721,8 @@ function Settings() {
         </div>
       )}
 
-      {/* Settings Layout - Two Columns */}
       <div className="settings-two-columns">
-        {/* Left Column - Admin Profile Card */}
+        {/* ============ Left Column - Admin Profile Card ============ */}
         <div className="admin-profile-card">
           {/* Profile Header */}
           <div className="profile-header">
@@ -549,10 +770,11 @@ function Settings() {
                 <input
                   type="text"
                   name="fullName"
-                  value={tempProfile.fullName}
+                  value={tempProfile.fullName || ''}
                   onChange={handleProfileChange}
                   className="profile-name-input"
                   placeholder="Shop Name"
+                  autoComplete="off"
                 />
               ) : (
                 <h2>{adminProfile.fullName || 'Shop'}</h2>
@@ -564,14 +786,88 @@ function Settings() {
                 <input
                   type="text"
                   name="role"
-                  value={tempProfile.role}
-                  onChange={handleProfileChange}
+                  value={tempProfile.role || ''}
                   className="profile-role-input"
-                  placeholder="Role"
                   disabled
                 />
               ) : (
                 <p className="profile-role">{adminProfile.role}</p>
+              )}
+            </div>
+          </div>
+
+          {/* ============ Shareable Profile Link ============ */}
+          <div className="profile-link-section">
+            <div className="profile-link-header">
+              <i className="bi bi-link-45deg"></i>
+              <span className="detail-label">Profile Link (Shareable)</span>
+            </div>
+
+            {isEditingProfile ? (
+              <>
+                <div className="profile-link-input-wrap">
+                  <span className="link-prefix">{window.location.origin}/shop/</span>
+                  <input
+                    type="text"
+                    name="slug"
+                    value={tempProfile.slug || ''}
+                    onChange={handleProfileChange}
+                    className="detail-input slug-input"
+                    placeholder="my-shop-name"
+                    autoComplete="off"
+                  />
+                </div>
+                <p className="field-note">
+                  Letters, numbers and dashes only. This becomes your public profile link.
+                </p>
+              </>
+            ) : (
+              <div className="profile-link-input-wrap">
+                <input
+                  type="text"
+                  readOnly
+                  value={
+                    adminProfile.profileUrl
+                    || buildProfileUrl(adminProfile.slug || adminProfile.id)
+                    || 'Profile link will be available soon'
+                  }
+                  onFocus={(e) => e.target.select()}
+                  className="detail-input link-readonly"
+                />
+              </div>
+            )}
+
+            <div className="profile-link-actions">
+              <button
+                type="button"
+                className="copy-link-btn"
+                onClick={copyProfileLink}
+                disabled={!adminProfile.profileUrl && !adminProfile.slug && !adminProfile.id}
+              >
+                <i className={`bi ${copied ? 'bi-check-lg' : 'bi-clipboard'}`}></i>
+                {copied ? 'Copied!' : 'Copy Link'}
+              </button>
+
+              <a
+                className="open-link-btn"
+                href={
+                  adminProfile.profileUrl
+                  || buildProfileUrl(adminProfile.slug || adminProfile.id)
+                  || '#'
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  if (!adminProfile.profileUrl && !adminProfile.slug && !adminProfile.id) e.preventDefault();
+                }}
+              >
+                <i className="bi bi-box-arrow-up-right"></i> Open
+              </a>
+
+              {typeof navigator !== 'undefined' && navigator.share && (
+                <button type="button" className="share-link-btn" onClick={shareProfileLink}>
+                  <i className="bi bi-share-fill"></i> Share
+                </button>
               )}
             </div>
           </div>
@@ -583,8 +879,9 @@ function Settings() {
               <div className="detail-content">
                 <span className="detail-label">Email</span>
                 {isEditingProfile ? (
-                  <input type="email" name="email" value={tempProfile.email}
-                    onChange={handleProfileChange} className="detail-input" placeholder="email@example.com" />
+                  <input type="email" name="email" value={tempProfile.email || ''}
+                    onChange={handleProfileChange} className="detail-input"
+                    placeholder="email@example.com" autoComplete="off" />
                 ) : (
                   <span className="detail-value">{adminProfile.email || 'N/A'}</span>
                 )}
@@ -596,8 +893,9 @@ function Settings() {
               <div className="detail-content">
                 <span className="detail-label">Phone</span>
                 {isEditingProfile ? (
-                  <input type="text" name="phone" value={tempProfile.phone}
-                    onChange={handleProfileChange} className="detail-input" placeholder="09-xxxxxxxxx" />
+                  <input type="text" name="phone" value={tempProfile.phone || ''}
+                    onChange={handleProfileChange} className="detail-input"
+                    placeholder="09-xxxxxxxxx" autoComplete="off" />
                 ) : (
                   <span className="detail-value">{adminProfile.phone || 'N/A'}</span>
                 )}
@@ -609,8 +907,9 @@ function Settings() {
               <div className="detail-content">
                 <span className="detail-label">Address</span>
                 {isEditingProfile ? (
-                  <input type="text" name="address" value={tempProfile.address}
-                    onChange={handleProfileChange} className="detail-input" placeholder="Street address" />
+                  <input type="text" name="address" value={tempProfile.address || ''}
+                    onChange={handleProfileChange} className="detail-input"
+                    placeholder="Street address" autoComplete="off" />
                 ) : (
                   <span className="detail-value">{adminProfile.address || 'N/A'}</span>
                 )}
@@ -622,8 +921,9 @@ function Settings() {
               <div className="detail-content">
                 <span className="detail-label">Township</span>
                 {isEditingProfile ? (
-                  <input type="text" name="township" value={tempProfile.township}
-                    onChange={handleProfileChange} className="detail-input" placeholder="Township" />
+                  <input type="text" name="township" value={tempProfile.township || ''}
+                    onChange={handleProfileChange} className="detail-input"
+                    placeholder="Township" autoComplete="off" />
                 ) : (
                   <span className="detail-value">{adminProfile.township || 'N/A'}</span>
                 )}
@@ -635,8 +935,9 @@ function Settings() {
               <div className="detail-content">
                 <span className="detail-label">Region</span>
                 {isEditingProfile ? (
-                  <input type="text" name="region" value={tempProfile.region}
-                    onChange={handleProfileChange} className="detail-input" placeholder="Region" />
+                  <input type="text" name="region" value={tempProfile.region || ''}
+                    onChange={handleProfileChange} className="detail-input"
+                    placeholder="Region" autoComplete="off" />
                 ) : (
                   <span className="detail-value">{adminProfile.region || 'N/A'}</span>
                 )}
@@ -648,8 +949,8 @@ function Settings() {
               <div className="detail-content">
                 <span className="detail-label">Department</span>
                 {isEditingProfile ? (
-                  <input type="text" name="department" value={tempProfile.department}
-                    onChange={handleProfileChange} className="detail-input" />
+                  <input type="text" name="department" value={tempProfile.department || ''}
+                    onChange={handleProfileChange} className="detail-input" autoComplete="off" />
                 ) : (
                   <span className="detail-value">{adminProfile.department}</span>
                 )}
@@ -717,13 +1018,13 @@ function Settings() {
               </button>
             </div>
           ) : (
-            <button className="edit-profile-btn" onClick={() => setIsEditingProfile(true)} disabled={loading}>
+            <button className="edit-profile-btn" onClick={handleStartEdit} disabled={loading}>
               <i className="bi bi-pencil-square"></i> Edit Profile
             </button>
           )}
         </div>
 
-        {/* Right Column - Settings Tabs and Content */}
+        {/* ============ Right Column - Settings Tabs ============ */}
         <div className="settings-right-column">
           <div className="settings-tabs-container">
             <div className="settings-tabs">
@@ -746,7 +1047,7 @@ function Settings() {
           </div>
 
           <div className="settings-content">
-            {/* General Settings */}
+            {/* General */}
             {activeTab === 'general' && (
               <div className="settings-section">
                 <h2 className="section-title">
@@ -830,7 +1131,7 @@ function Settings() {
               </div>
             )}
 
-            {/* Notification Settings */}
+            {/* Notifications */}
             {activeTab === 'notifications' && (
               <div className="settings-section">
                 <h2 className="section-title">
@@ -882,7 +1183,7 @@ function Settings() {
               </div>
             )}
 
-            {/* Security Settings */}
+            {/* Security */}
             {activeTab === 'security' && (
               <div className="settings-section">
                 <h2 className="section-title">
@@ -930,7 +1231,7 @@ function Settings() {
               </div>
             )}
 
-            {/* Appearance Settings */}
+            {/* Appearance */}
             {activeTab === 'appearance' && (
               <div className="settings-section">
                 <h2 className="section-title">
@@ -988,7 +1289,7 @@ function Settings() {
               </div>
             )}
 
-            {/* Backup Settings */}
+            {/* Backup */}
             {activeTab === 'backup' && (
               <div className="settings-section">
                 <h2 className="section-title">

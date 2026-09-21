@@ -55,6 +55,47 @@ function Login() {
     }
   }, [navigate]);
 
+  // ============ Helper: user object ကို key အမျိုးမျိုးနဲ့ သိမ်းခြင်း ============
+  const saveUserToStorage = (userObject) => {
+    if (!userObject || typeof userObject !== 'object') return;
+
+    try {
+      // Main 'user' key
+      localStorage.setItem('user', JSON.stringify(userObject));
+
+      // Backup keys (Settings.jsx fallback အတွက်)
+      localStorage.setItem('userData', JSON.stringify(userObject));
+      localStorage.setItem('userInfo', JSON.stringify(userObject));
+      localStorage.setItem('currentUser', JSON.stringify(userObject));
+      localStorage.setItem('profile', JSON.stringify(userObject));
+
+      // Role
+      if (userObject.role) {
+        localStorage.setItem('role', userObject.role);
+      }
+
+      // Shop-specific
+      if (userObject.role === 'shop' || userObject.shop_id) {
+        localStorage.setItem('shop', JSON.stringify({
+          shop_id: userObject.shop_id,
+          shop_name: userObject.shop_name || userObject.name,
+          email: userObject.email,
+          phone: userObject.phone || userObject.shop_phone,
+          address: userObject.address || userObject.shop_address,
+          township: userObject.township,
+          region: userObject.region,
+          type: userObject.type,
+          image: userObject.image,
+          slug: userObject.slug,
+        }));
+      }
+
+      console.log('💾 User saved to localStorage:', userObject);
+    } catch (e) {
+      console.warn('❌ Failed to save user to localStorage:', e);
+    }
+  };
+
   // ---------- Login handler ----------
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -73,25 +114,49 @@ function Login() {
         password: password,
       });
 
+      console.log('✅ Login Response:', response.data);
+
       if (response.data?.success === true && response.data?.token) {
         localStorage.clear();
+
         const token = response.data.token;
         localStorage.setItem('token', token);
-        const user = response.data.user;
-        if (user) {
-          localStorage.setItem('user', JSON.stringify(user));
-          if (user.role) localStorage.setItem('role', user.role);
-        }
 
-        // Save shop type & shop ID if shop
-        if (user?.role === 'shop') {
-          const shopId = response.data.shop?.id || user?.shop_id || null;
+        // ============ User Object ကို စုစည်းခြင်း ============
+        // Backend က response.data.user ဒါမှမဟုတ် response.data.data ဒါမှမဟုတ် response.data ကိုယ်တိုင် ဖြစ်နိုင်တယ်
+        const userRaw =
+          response.data.user ||
+          response.data.data ||
+          response.data.shop ||
+          response.data;
+
+        // user က Array ဖြစ်နိုင်တယ်
+        const user = Array.isArray(userRaw) ? (userRaw[0] || {}) : (userRaw || {});
+
+        console.log('👤 User Object:', user);
+
+        // User ကို localStorage ထဲ သိမ်း
+        saveUserToStorage(user);
+
+        // ============ Shop-specific data ============
+        if (user?.role === 'shop' || user?.shop_id) {
+          const shopId =
+            response.data.shop?.id ||
+            user?.shop_id ||
+            user?.id ||
+            null;
+
           if (shopId) {
             localStorage.setItem('shopId', String(shopId));
             console.log('✅ Shop ID saved:', shopId);
           }
 
-          const shopType = response.data.shop?.type || user?.type || null;
+          const shopType =
+            response.data.shop?.type ||
+            user?.type ||
+            user?.shop_type ||
+            null;
+
           if (shopType) {
             localStorage.setItem('shopType', shopType);
           } else {
@@ -100,11 +165,35 @@ function Login() {
               const meRes = await api.get('/auth/me', {
                 headers: { Authorization: `Bearer ${token}` },
               });
-              const meShopId = meRes.data?.shop?.id || meRes.data?.id || null;
-              if (meShopId) localStorage.setItem('shopId', String(meShopId));
-              
-              const meType = meRes.data?.shop?.type || meRes.data?.type || null;
-              if (meType) localStorage.setItem('shopType', meType);
+
+              const meData = meRes.data?.data || meRes.data;
+              const meShop = Array.isArray(meData) ? meData[0] : meData;
+
+              const meShopId =
+                meShop?.shop?.id ||
+                meShop?.shop_id ||
+                meShop?.id ||
+                null;
+
+              if (meShopId) {
+                localStorage.setItem('shopId', String(meShopId));
+              }
+
+              const meType =
+                meShop?.shop?.type ||
+                meShop?.type ||
+                meShop?.shop_type ||
+                null;
+
+              if (meType) {
+                localStorage.setItem('shopType', meType);
+              }
+
+              // /auth/me က data ပြန်ပေးရင် user object ကိုလည်း merge လုပ်
+              if (meShop && typeof meShop === 'object') {
+                const merged = { ...user, ...meShop };
+                saveUserToStorage(merged);
+              }
             } catch (e) {
               console.warn('Could not fetch shop data from /auth/me');
             }
