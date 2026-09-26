@@ -22,6 +22,7 @@ import Reviews from './components/Reviews';
 import Reports from './components/Reports';
 import Settings from './components/Settings';
 import Message from './components/Message';
+import Finance from './components/Finance';   // 👈 Finance page (added)
 
 // ===== Order Components (All Uncommented) =====
 import HotelsOrder from './components/HotelsOrder';
@@ -289,6 +290,17 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
+
+        {/* ===== Finance Route (added) ===== */}
+        <Route path="/finance" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <Finance />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+        {/* ================================== */}
+
         <Route path="/message" element={
           <ProtectedRoute>
             <MainLayout>

@@ -173,6 +173,18 @@ function Sidebar() {
           ))}
         </ul>
       </li>
+
+      {/* ================= FINANCE TAB (added) ================= */}
+      <li className={`nav-item ${isActive('/finance') ? 'active' : ''}`}>
+        <Link to="/finance" className="nav-link">
+          <div className="flex-items">
+            <i className="bi bi-cash-coin icon"></i>
+            <span>Finances</span>
+          </div>
+        </Link>
+      </li>
+      {/* ======================================================= */}
+
       <li className={`nav-item ${isActive('/reviews') ? 'active' : ''}`}>
         <Link to="/reviews" className="nav-link">
           <div className="flex-items">
