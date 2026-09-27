@@ -19,7 +19,7 @@ function Sidebar() {
 
   // ---------- Menu definitions ----------
   const addMenuItems = [
-    { name: 'Travel To Do', icon: 'bi-list', path: '/traveltodos' },
+    // { name: 'Travel To Do', icon: 'bi-list', path: '/traveltodos' }, // 👈 ပိတ်ထားသည်
     { name: 'History Of Pagodas', icon: 'bi-building', path: '/historyofpagodas' },
     { name: 'Hotels', icon: 'bi-building', path: '/hotels' },
     { name: 'Destinations', icon: 'bi-geo-alt', path: '/destinations' },
