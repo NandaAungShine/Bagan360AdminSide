@@ -7,7 +7,7 @@ function Header({ title, onThemeChange }) {
     return savedTheme === 'dark';
   });
 
-  // ---------- User data from localStorage ----------
+  // ---------- User data ----------
   const [userData, setUserData] = useState(() => {
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
@@ -34,7 +34,72 @@ function Header({ title, onThemeChange }) {
     }
   }, [isDarkMode, onThemeChange]);
 
-  // ---------- Listen for storage changes (in case user logs in/out in another tab) ----------
+  // ---------- Fetch profile based on role ----------
+  useEffect(() => {
+    const fetchProfile = async () => {
+      // Get current user from localStorage
+      const storedUser = localStorage.getItem('user');
+      if (!storedUser) return;
+
+      let parsedUser;
+      try {
+        parsedUser = JSON.parse(storedUser);
+      } catch {
+        return;
+      }
+
+      const role = (parsedUser?.role || '').toLowerCase();
+      const token = localStorage.getItem('token');
+
+      // ✅ Shop အတွက် → /auth/shop/profile API မှ fetch
+      if (role === 'shop') {
+        try {
+          const res = await fetch('http://130.94.21.185:8000/auth/shop/profile', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            // API response က { user: {...} } (သို့) { data: {...} } (သို့) direct object ဖြစ်နိုင်
+            const profile = data?.user || data?.data || data;
+
+            const mergedUser = {
+              ...parsedUser,
+              name: profile?.name || profile?.shopName || parsedUser?.name || 'Shop',
+              role: profile?.role || parsedUser?.role || 'shop',
+              image: profile?.image || profile?.logo || parsedUser?.image || '',
+            };
+
+            setUserData(mergedUser);
+            localStorage.setItem('user', JSON.stringify(mergedUser));
+          } else {
+            console.warn('⚠️ Shop profile fetch failed with status:', res.status);
+            // Fail ဖြစ်ရင် localStorage data ကိုပဲ ဆက်သုံး
+            setUserData(parsedUser);
+          }
+        } catch (err) {
+          console.error('❌ Shop profile fetch error:', err);
+          setUserData(parsedUser);
+        }
+      }
+      // ✅ Admin အတွက် → /auth/login ကနေ ရလာတဲ့ data ကို localStorage ကနေ သုံး
+      else if (role === 'admin') {
+        setUserData(parsedUser);
+      }
+      // အခြား role များ
+      else {
+        setUserData(parsedUser);
+      }
+    };
+
+    fetchProfile();
+  }, []);
+
+  // ---------- Listen for storage changes (multi-tab sync) ----------
   useEffect(() => {
     const handleStorageChange = (e) => {
       if (e.key === 'user') {
@@ -59,11 +124,14 @@ function Header({ title, onThemeChange }) {
   };
 
   // ---------- Helper to get display name and role ----------
-  const displayName = userData?.name || 'Guest';
+  const displayName = userData?.name || userData?.shopName || 'Guest';
   const displayRole = userData?.role
     ? userData.role.charAt(0).toUpperCase() + userData.role.slice(1)
     : 'User';
-  const avatarSrc = userData?.image || 'https://via.placeholder.com/40';
+  const avatarSrc =
+    userData?.image ||
+    userData?.logo ||
+    'https://via.placeholder.com/40';
 
   return (
     <header className="dashboard-header">
@@ -79,7 +147,7 @@ function Header({ title, onThemeChange }) {
           ></i>
         </button>
         <div className="header-actions">
-          <i className="bi bi-envelope-fill message-icon"></i>
+          {/* ❌ Message icon ဖြုတ်လိုက်ပါပြီ */}
           <div className="notification-wrapper">
             <i className="bi bi-bell-fill notification-icon"></i>
             <span className="notification-badge">3</span>
@@ -91,7 +159,6 @@ function Header({ title, onThemeChange }) {
                 alt="Profile"
                 className="avatar-image"
                 onError={(e) => {
-                  // Fallback if image fails to load
                   e.target.src = 'https://via.placeholder.com/40';
                 }}
               />

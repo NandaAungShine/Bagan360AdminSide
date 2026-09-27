@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
 // ===== HELPER FUNCTIONS =====
-// Parse date string like "12-08-2026" (DD-MM-YYYY) to Date object
 const parseDate = (dateStr) => {
   if (!dateStr) return null;
   const parts = dateStr.split('-');
@@ -19,7 +18,6 @@ const parseDate = (dateStr) => {
   return null;
 };
 
-// Map backend status to frontend status
 const mapStatus = (backendStatus) => {
   if (backendStatus === 'available') return 'pending';
   return backendStatus;
@@ -28,7 +26,7 @@ const mapStatus = (backendStatus) => {
 function TricycleOrder() {
   // ===== 0. USER ROLE CHECK =====
   const user = (() => {
-    try { return JSON.parse(localStorage.getItem('user')); } 
+    try { return JSON.parse(localStorage.getItem('user')); }
     catch { return null; }
   })();
   const admin = user?.role === 'admin';
@@ -49,9 +47,12 @@ function TricycleOrder() {
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [error, setError] = useState(null);
-  
+
   // ===== 2a. USER TRICYCLE IDs =====
   const [userTricycleIds, setUserTricycleIds] = useState([]);
+
+  // Image map: tricycleId → url
+  const tricycleImageMapRef = useRef({});
 
   // ===== 3. TOAST =====
   const [toast, setToast] = useState({
@@ -71,6 +72,7 @@ function TricycleOrder() {
   };
 
   // ===== 4. API HELPERS =====
+  const BACKEND_URL = 'http://130.94.21.185:8000';
   const getToken = () => localStorage.getItem('token');
   const getHeaders = () => ({
     'Authorization': `Bearer ${getToken()}`,
@@ -83,16 +85,101 @@ function TricycleOrder() {
     setTimeout(() => window.location.href = '/login', 1500);
   };
 
+  // ===== 4b. IMAGE HELPERS =====
+  const pickString = (obj, keys) => {
+    if (!obj || typeof obj !== 'object') return null;
+    for (const k of keys) {
+      const v = obj[k];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+    return null;
+  };
+
+  const extractImage = (value) => {
+    if (!value) return null;
+    if (Array.isArray(value)) {
+      for (const v of value) {
+        const got = extractImage(v);
+        if (got) return got;
+      }
+      return null;
+    }
+    if (typeof value === 'string') {
+      const s = value.trim();
+      return s || null;
+    }
+    if (typeof value === 'object') {
+      return pickString(value, [
+        'url', 'path', 'src', 'image', 'image_url',
+        'filename', 'file_name', 'file', 'image_path',
+      ]);
+    }
+    return null;
+  };
+
+  const buildFullUrl = (raw) => {
+    if (!raw) return null;
+    const cleaned = String(raw).trim();
+    if (!cleaned) return null;
+    if (/^https?:\/\//i.test(cleaned)) return cleaned;
+    if (cleaned.startsWith('data:')) return cleaned;
+    return `${BACKEND_URL}/${cleaned.replace(/^\/+/, '')}`;
+  };
+
+  const resolveImageUrl = (item) => {
+    if (!item || typeof item !== 'object') return null;
+
+    const containers = [
+      item,
+      item.tricycle,
+      item.thonebane,
+      item.thonebane_info,
+      item.tricycle_info,
+      item.booking,
+      item.details,
+      item.meta,
+    ].filter(Boolean);
+
+    const imageKeys = [
+      'image',
+      'image_url',
+      'imageUrl',
+      'img',
+      'photo',
+      'thumbnail',
+      'thumbnail_url',
+      'cover',
+      'cover_image',
+      'coverImage',
+      'tricycle_image',
+      'tricycleImage',
+      'tricycle_image_url',
+      'thonebane_image',
+      'thonebaneImage',
+      'thonebane_image_url',
+      'banner',
+      'banner_image',
+      'images',
+      'photos',
+    ];
+
+    for (const c of containers) {
+      for (const k of imageKeys) {
+        if (c[k] !== undefined && c[k] !== null) {
+          const got = extractImage(c[k]);
+          if (got) return buildFullUrl(got);
+        }
+      }
+    }
+    return null;
+  };
+
   // ===== 5. API BASE =====
   const API_BASE = '/api/admin/thonebane';
   const TRICYCLE_API = '/api/admin/thonebane';
 
-  // ===== 6. FETCH USER'S TRICYCLES (FIXED - using shop_id) =====
+  // ===== 6. FETCH USER'S TRICYCLES (also builds image map) =====
   const fetchUserTricycles = async () => {
-    if (admin) {
-      setUserTricycleIds([]);
-      return;
-    }
     try {
       const response = await fetch(`${TRICYCLE_API}/list`, {
         method: 'GET',
@@ -105,38 +192,50 @@ function TricycleOrder() {
       }
       const result = await response.json();
       console.log('✅ User Tricycles:', result);
-      
+
       let tricycles = [];
       if (result.data && Array.isArray(result.data)) {
         tricycles = result.data;
       } else if (Array.isArray(result)) {
         tricycles = result;
+      } else if (Array.isArray(result.tricycles)) {
+        tricycles = result.tricycles;
       } else {
         tricycles = [];
       }
-      
+
+      // Build image map: id → image url
+      const imgMap = {};
+      tricycles.forEach((t) => {
+        const id = t.id ?? t.thonebane_id;
+        const img = resolveImageUrl(t);
+        if (id != null && img) imgMap[String(id)] = img;
+      });
+      tricycleImageMapRef.current = imgMap;
+      console.log('🖼️ Tricycle image map:', imgMap);
+
+      if (admin) {
+        setUserTricycleIds([]);
+        return;
+      }
+
       const shopId = localStorage.getItem('shopId');
       console.log('🏪 Shop ID from localStorage:', shopId);
-      
-      // 🔑 Filter tricycles by shop_id (priority) or createdBy (fallback)
+
       const ids = tricycles
         .filter(t => {
-          // Priority: match by shop_id
           if (shopId && t.shop_id) {
             return String(t.shop_id) === String(shopId);
           }
-          // Fallback: match by createdBy
           if (t.createdBy) {
             return t.createdBy === userId;
           }
           return false;
         })
         .map(t => t.id);
-      
+
       setUserTricycleIds(ids);
       console.log('🔑 User Tricycle IDs:', ids);
-      console.log('👤 User ID:', userId);
-      console.log('📊 Admin:', admin);
     } catch (err) {
       console.error('❌ Fetch User Tricycles Error:', err);
       showToast('error', 'Failed to load your tricycles.');
@@ -160,7 +259,6 @@ function TricycleOrder() {
       const result = await response.json();
       console.log('✅ Bookings response:', result);
 
-      // ---- 1. Extract array ----
       let rawBookings = [];
       if (Array.isArray(result.booking)) {
         rawBookings = result.booking;
@@ -179,34 +277,48 @@ function TricycleOrder() {
       }
 
       console.log('📦 Raw Bookings Count:', rawBookings.length);
+      if (rawBookings[0]) {
+        console.log('🔎 First booking (full):', rawBookings[0]);
+      }
 
-      // ---- 2. Map to component shape ----
-      const mappedBookings = rawBookings.map((item) => ({
-        id: item.booking_id || item.id,
-        customerName: item.customer_name || 'Guest',
-        customerPhone: item.customer_phone || '',
-        customerEmail: '',
-        tricycleName: item.thonebane_name || 'Tricycle',
-        tricycleId: item.thonebane_id,
-        tricycle: {
-          id: item.thonebane_id,
-          name: item.thonebane_name || 'Tricycle',
-        },
-        status: mapStatus(item.status),
-        startDate: parseDate(item.booking_date || item.start_date),
-        endDate: item.end_date ? parseDate(item.end_date) : null,
-        totalPrice: item.price || 0,
-        notes: item.note || '',
-        shopName: item.shop_name || '',
-        location: item.location || '',
-        image: item.image || '',
-        passengerCount: item.passenger_count || 0,
-        _raw: item,
-      }));
+      const imgMap = tricycleImageMapRef.current;
+
+      const mappedBookings = rawBookings.map((item) => {
+        const tricycleId = item.thonebane_id ?? item.tricycle_id;
+
+        // Image priority:
+        //  1) booking's own / nested image
+        //  2) tricycle image matched by id
+        let img = resolveImageUrl(item);
+        if (!img && tricycleId != null && imgMap[String(tricycleId)]) {
+          img = imgMap[String(tricycleId)];
+        }
+
+        return {
+          id: item.booking_id || item.id,
+          customerName: item.customer_name || 'Guest',
+          customerPhone: item.customer_phone || '',
+          customerEmail: '',
+          tricycleName: item.thonebane_name || 'Tricycle',
+          tricycleId,
+          tricycle: {
+            id: tricycleId,
+            name: item.thonebane_name || 'Tricycle',
+          },
+          status: mapStatus(item.status),
+          startDate: parseDate(item.booking_date || item.start_date),
+          endDate: item.end_date ? parseDate(item.end_date) : null,
+          totalPrice: item.price || 0,
+          notes: item.note || '',
+          shopName: item.shop_name || '',
+          location: item.location || '',
+          image: img,
+          passengerCount: item.passenger_count || 0,
+          _raw: item,
+        };
+      });
 
       console.log('📦 Mapped Bookings:', mappedBookings);
-      console.log('📊 Tricycle IDs in bookings:', mappedBookings.map(b => b.tricycleId));
-
       setBookings(mappedBookings);
     } catch (err) {
       setError(err.message);
@@ -225,15 +337,12 @@ function TricycleOrder() {
       showToast('error', 'Please login first');
       return;
     }
-    
     const loadData = async () => {
-      // First get user's tricycle IDs (if not admin)
       await fetchUserTricycles();
-      // Then fetch all bookings
       await fetchBookings();
     };
-    
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ===== 9. THEME HANDLER =====
@@ -276,27 +385,18 @@ function TricycleOrder() {
     }
   };
 
-  // ===== 11. FILTER LOGIC (FIXED) =====
-  // Step 1: Filter by user role (admin sees all, shop sees only their tricycle bookings)
-  const roleFilteredBookings = admin 
-    ? bookings 
+  // ===== 11. FILTER LOGIC =====
+  const roleFilteredBookings = admin
+    ? bookings
     : bookings.filter(booking => {
         const tricycleId = String(booking.tricycleId || '');
-        // Check if this tricycle is in the user's allowed list
         const isAllowed = userTricycleIds.some(id => String(id) === tricycleId);
-        if (!isAllowed && tricycleId) {
-          console.log('❌ Booking filtered out:', booking.id, 'Tricycle ID:', tricycleId, 'My IDs:', userTricycleIds);
-        }
         return isAllowed;
       });
 
-  console.log('📊 Role Filtered Bookings Count:', roleFilteredBookings.length);
-
-  // Step 2: Apply search, status & time filters
   const filteredBookings = roleFilteredBookings.filter((booking) => {
     const searchStr = `${booking.id} ${booking.customerName || ''} ${booking.tricycleName || ''}`.toLowerCase();
     const matchesSearch = searchStr.includes(searchTerm.toLowerCase());
-
     const matchesStatus = statusFilter ? booking.status === statusFilter : true;
 
     let matchesTime = true;
@@ -344,19 +444,15 @@ function TricycleOrder() {
     return matchesSearch && matchesStatus && matchesTime;
   });
 
-  console.log('🔍 Final Filtered Bookings Count:', filteredBookings.length);
-  console.log('📊 User Tricycle IDs:', userTricycleIds);
-  console.log('📊 Total Bookings:', bookings.length);
-
-  // ===== 12. SUMMARY DATA (based on filtered bookings) =====
+  // ===== 12. SUMMARY DATA =====
   const totalBookings = filteredBookings.length;
-  const pendingCount = filteredBookings.filter(b => 
+  const pendingCount = filteredBookings.filter(b =>
     (b.status || '').toLowerCase() === 'pending' || (b.status || '').toLowerCase() === 'available'
   ).length;
-  const approvedCount = filteredBookings.filter(b => 
+  const approvedCount = filteredBookings.filter(b =>
     ['approved', 'confirmed', 'completed'].includes((b.status || '').toLowerCase())
   ).length;
-  const cancelledCount = filteredBookings.filter(b => 
+  const cancelledCount = filteredBookings.filter(b =>
     (b.status || '').toLowerCase() === 'cancelled'
   ).length;
   const tricycleCount = new Set(filteredBookings.map(b => b.tricycle?.id || b.tricycleId)).size;
@@ -479,6 +575,15 @@ function TricycleOrder() {
             </button>
           </div>
           <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+            {booking.image && (
+              <div style={{ marginBottom: '16px', borderRadius: '10px', overflow: 'hidden' }}>
+                <img
+                  src={booking.image}
+                  alt={booking.tricycleName}
+                  style={{ width: '100%', maxHeight: '240px', objectFit: 'cover' }}
+                />
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div><strong>Customer:</strong> {booking.customerName || 'N/A'}</div>
               <div><strong>Phone:</strong> {booking.customerPhone || 'N/A'}</div>
@@ -506,6 +611,7 @@ function TricycleOrder() {
   const BookingCard = ({ booking }) => {
     const tricycleName = booking.tricycleName || 'Tricycle';
     const customerName = booking.customerName || 'Guest';
+    const [imgFailed, setImgFailed] = useState(false);
 
     const formatDateDisplay = (date) => {
       if (!date) return 'N/A';
@@ -516,9 +622,29 @@ function TricycleOrder() {
 
     return (
       <div className="hotel-card-vertical" style={{ cursor: 'default' }}>
-        <div className="hotel-card-image" style={{ height : '200px'}}>
-          <div className="image-slider" style={{ background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '120px' }}>
-            <i className="bi bi-calendar-check" style={{ fontSize: '48px', color: '#888' }}></i>
+        <div className="hotel-card-image" style={{ height: '200px', position: 'relative' }}>
+          <div
+            className="image-slider"
+            style={{
+              width: '100%',
+              height: '100%',
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'linear-gradient(135deg, #6f42c1 0%, #0d6efd 100%)',
+            }}
+          >
+            {booking.image && !imgFailed ? (
+              <img
+                src={booking.image}
+                alt={tricycleName}
+                onError={() => setImgFailed(true)}
+                style={{ objectFit: 'cover', width: '100%', height: '100%' }}
+              />
+            ) : (
+              <i className="bi bi-bicycle" style={{ fontSize: '60px', color: '#fff' }}></i>
+            )}
           </div>
           <CardActions booking={booking} />
         </div>
@@ -579,7 +705,6 @@ function TricycleOrder() {
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Tricycle Bookings" onThemeChange={handleThemeChange} />
 
-      {/* Toast */}
       {toast.visible && (
         <div style={{
           position: 'fixed',
@@ -604,15 +729,7 @@ function TricycleOrder() {
         </div>
       )}
 
-      {/* ===== SUMMARY BOXES (based on filtered bookings) ===== */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(5, 1fr)',
-          gap: '15px',
-          marginBottom: '20px',
-        }}
-      >
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '15px', marginBottom: '20px' }}>
         {summaryData.map((item, index) => (
           <div
             key={index}
@@ -645,18 +762,13 @@ function TricycleOrder() {
               <i className={item.icon}></i>
             </div>
             <div>
-              <div style={{ fontSize: '12px', color: '#bbb', fontWeight: '500' }}>
-                {item.label}
-              </div>
-              <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#ffffff' }}>
-                {item.count}
-              </div>
+              <div style={{ fontSize: '12px', color: '#bbb', fontWeight: '500' }}>{item.label}</div>
+              <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#ffffff' }}>{item.count}</div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* ===== SEARCH + STATUS + TIME FILTERS ===== */}
       <div className="search-actions-row" style={{ flexWrap: 'wrap', gap: '12px' }}>
         <div className="search-bar-wrapper" style={{ flex: 1, minWidth: '200px' }}>
           <i className="bi bi-search search-icon"></i>
@@ -684,7 +796,6 @@ function TricycleOrder() {
           </select>
         </div>
 
-        {/* ===== TIME FILTER BUTTONS ===== */}
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
           <label style={{ fontSize: '14px', fontWeight: '500', marginRight: '4px' }}>Period:</label>
           {['all', 'daily', 'weekly', 'monthly', 'yearly'].map((period) => (
@@ -695,7 +806,7 @@ function TricycleOrder() {
                 padding: '4px 14px',
                 borderRadius: '20px',
                 border: '1px solid #6c757d',
-                background: timeFilter === period ? (isDarkMode ? '#0d6efd' : '#0d6efd') : 'transparent',
+                background: timeFilter === period ? '#0d6efd' : 'transparent',
                 color: timeFilter === period ? '#fff' : (isDarkMode ? '#eee' : '#333'),
                 cursor: 'pointer',
                 fontSize: '13px',
@@ -709,35 +820,17 @@ function TricycleOrder() {
         </div>
       </div>
 
-      {/* ===== BOOKING CARDS (3 per row) ===== */}
       <div className="hotels-two-columns">
         <div className="hotels-cards-column" style={{ gridColumn: '1 / -1' }}>
           <div className="hotels-scroll-area">
-            <div
-              className="hotels-grid-3cols"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: '20px',
-              }}
-            >
+            <div className="hotels-grid-3cols" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
               {filteredBookings.length > 0 ? (
                 filteredBookings.map((booking) => (
                   <BookingCard key={booking.id} booking={booking} />
                 ))
               ) : (
-                <div
-                  style={{
-                    gridColumn: '1 / -1',
-                    textAlign: 'center',
-                    padding: '50px',
-                    color: '#999',
-                  }}
-                >
-                  <i
-                    className="bi bi-inbox"
-                    style={{ fontSize: '48px', display: 'block', marginBottom: '10px' }}
-                  ></i>
+                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '50px', color: '#999' }}>
+                  <i className="bi bi-inbox" style={{ fontSize: '48px', display: 'block', marginBottom: '10px' }}></i>
                   <p>No bookings match the current filters.</p>
                   <p style={{ fontSize: '12px', color: '#666' }}>
                     Total Bookings: {bookings.length} | Your Tricycle IDs: {JSON.stringify(userTricycleIds)}
@@ -749,7 +842,6 @@ function TricycleOrder() {
         </div>
       </div>
 
-      {/* ===== DETAIL MODAL ===== */}
       {showDetailModal && (
         <DetailModal
           booking={selectedBooking}

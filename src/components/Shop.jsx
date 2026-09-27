@@ -4,50 +4,50 @@ import Header from './Header';
 
 const API_BASE = 'http://130.94.21.185:8000';
 
-// Sample data (fallback) - updated to match API structure
+// Sample data (fallback) - updated to match API structure (.txt)
 const SAMPLE_REQUESTS = [
+  {
+    id: 15,
+    user_id: 68,
+    type: 'restaurant',
+    shop_name: 'Test Restaurant New01',
+    shop_address: 'Magway',
+    location: 'New Bagan',
+    shop_phone: '095434864666',
+    nrc: '8 / ရနခ (N) 123456',
+    status: 'approved'
+  },
+  {
+    id: 12,
+    user_id: 61,
+    type: 'hotel',
+    shop_name: 'Aunglar Shop',
+    shop_address: 'Old Bagan, Nyaung U',
+    location: 'Old Bagan',
+    shop_phone: '09988888888',
+    nrc: '12/lakana(N)43434',
+    status: 'pending'
+  },
   {
     id: 6,
     user_id: 43,
-    type: 'thonebane',
+    type: 'e_bike',
     shop_name: 'Thar Sis',
     shop_address: '163758/B',
+    location: 'Old Bagan',
     shop_phone: '09763341727',
     nrc: '12 / ဒဂတ (N) 099020',
-    image: null,
-    status: 'approved'
-  },
-  {
-    id: 5,
-    user_id: 36,
-    type: 'restaurant',
-    shop_name: 'Royal Bagan',
-    shop_address: 'Old Bagan, 12 streets',
-    shop_phone: '09123456789',
-    nrc: '1/TaTaNa(N)123456',
-    image: null,
-    status: 'approved'
-  },
-  {
-    id: 4,
-    user_id: 32,
-    type: 'restaurant',
-    shop_name: 'let eat ',
-    shop_address: 'yangon',
-    shop_phone: '09769361178',
-    nrc: '4 / ပလဝ (N) 177155',
-    image: null,
     status: 'approved'
   },
   {
     id: 3,
     user_id: 31,
     type: 'restaurant',
-    shop_name: 'Moe May Moe May',
-    shop_address: '157954/B',
+    shop_name: 'Moe Ma May 00',
+    shop_address: '157/B',
+    location: 'Old Bagan',
     shop_phone: '09763341727',
     nrc: '12 / ဒဂတ (N) 099020',
-    image: null,
     status: 'approved'
   },
   {
@@ -56,9 +56,9 @@ const SAMPLE_REQUESTS = [
     type: 'hotel',
     shop_name: 'Bagan Hotel',
     shop_address: 'Old Bagan, Nyaung U',
+    location: 'Old Bagan',
     shop_phone: '09988888888',
     nrc: '12/lakana(N)308086',
-    image: null,
     status: 'approved'
   },
   {
@@ -67,12 +67,32 @@ const SAMPLE_REQUESTS = [
     type: 'restaurant',
     shop_name: 'Bagan Hotel',
     shop_address: 'Old Bagan, Nyaung U',
+    location: 'Nyaung Oo',
     shop_phone: '09988888888',
     nrc: '12/lakana(N)308086',
-    image: null,
     status: 'approved'
   }
 ];
+
+// ===== TYPE CONFIG (single source of truth) =====
+// Normalize API variants (e_bike / ebike / e-bike) to a canonical key
+const normalizeType = (type) => {
+  if (!type) return '';
+  const t = String(type).toLowerCase().replace(/[-\s]/g, '_');
+  if (t === 'ebike' || t === 'e_bike' || t === 'e_bikes') return 'e_bike';
+  if (t === 'horse_cart' || t === 'horsecart') return 'horsecart';
+  return t;
+};
+
+const TYPE_CONFIG = {
+  hotel:      { label: 'Hotel',      color: '#0d6efd', bg: '#cfe2ff', icon: 'bi-building' },
+  restaurant: { label: 'Restaurant', color: '#d63384', bg: '#f5d4e1', icon: 'bi-egg-fried' },
+  thonebane:  { label: 'Thonebane',  color: '#17a2b8', bg: '#cff4fc', icon: 'bi-shop' },
+  car:        { label: 'Car',        color: '#fd7e14', bg: '#ffe5d0', icon: 'bi-car-front' },
+  e_bike:     { label: 'E-Bike',     color: '#198754', bg: '#d1e7dd', icon: 'bi-bicycle' },
+  balloon:    { label: 'Balloon',    color: '#dc3545', bg: '#f8d7da', icon: 'bi-balloon' },
+  horsecart:  { label: 'Horse Cart', color: '#6f42c1', bg: '#e2d9f3', icon: 'bi-truck' },
+};
 
 function Shop() {
   // ===== 1. THEME =====
@@ -158,7 +178,28 @@ function Shop() {
     // eslint-disable-next-line
   }, []);
 
-  // ===== 7. FETCH REQUESTS =====
+  // ===== 7. MAP API ITEM -> UI ITEM =====
+  // Mirrors exactly the fields returned by /auth/shop/list
+  const mapApiItem = (item) => ({
+    id: item.id,
+    user_id: item.user_id,
+    type: normalizeType(item.type),                // e_bike kept as e_bike
+    type_raw: item.type,                           // keep the raw value if needed
+    shop_name: item.shop_name || 'N/A',
+    shop_address: item.shop_address || 'N/A',
+    location: item.location || 'N/A',              // NEW field from API
+    shop_phone: item.shop_phone || 'N/A',
+    nrc: item.nrc || 'N/A',
+    status: item.status || 'pending',
+    // Extra compatibility fields (not in API)
+    image: item.image || null,
+    owner_name: 'N/A',
+    email: 'N/A',
+    description: '',
+    created_at: null
+  });
+
+  // ===== 8. FETCH REQUESTS =====
   const fetchRequests = async () => {
     setLoading(true);
     try {
@@ -187,49 +228,27 @@ function Shop() {
       console.log('✅ Shop API Response:', result);
 
       let shopData = [];
-      if (result.success && Array.isArray(result.data)) {
+      if (result && result.success && Array.isArray(result.data)) {
         shopData = result.data;
       } else if (Array.isArray(result)) {
         shopData = result;
+      } else if (result && Array.isArray(result.data)) {
+        shopData = result.data;
       } else {
         throw new Error('Unexpected API response format');
       }
 
-      // Map fields to component structure
-      const mapped = shopData.map(item => ({
-        id: item.id,
-        user_id: item.user_id,
-        shop_name: item.shop_name || 'N/A',
-        type: item.type || 'N/A',
-        shop_address: item.shop_address || 'N/A',
-        shop_phone: item.shop_phone || 'N/A',
-        nrc: item.nrc || 'N/A',
-        image: item.image || null,
-        status: item.status || 'pending',
-        // Fallback fields for compatibility
-        owner_name: 'N/A',
-        email: 'N/A',
-        description: '',
-        created_at: null
-      }));
-
-      setRequests(mapped);
+      setRequests(shopData.map(mapApiItem));
     } catch (err) {
       console.error('❌ Fetch Error:', err);
       showToast('error', 'Failed to fetch shop data. Using sample data.');
-      setRequests(SAMPLE_REQUESTS.map(item => ({
-        ...item,
-        owner_name: 'N/A',
-        email: 'N/A',
-        description: '',
-        created_at: null
-      })));
+      setRequests(SAMPLE_REQUESTS.map(mapApiItem));
     } finally {
       setLoading(false);
     }
   };
 
-  // ===== 8. UPDATE STATUS (Approve / Reject) =====
+  // ===== 9. UPDATE STATUS (Approve / Reject) =====
   const performStatusUpdate = async (requestId, newStatus) => {
     const action = newStatus === 'approved' ? 'Approve' : 'Reject';
     setLoading(true);
@@ -237,7 +256,6 @@ function Shop() {
       const token = getToken();
       if (!token) throw new Error('Not authenticated');
 
-      // API endpoint - adjust if your backend uses different path
       const endpoint = newStatus === 'approved'
         ? `${API_BASE}/auth/shop/account/approved/${requestId}`
         : `${API_BASE}/auth/shop/account/cancelled/${requestId}`;
@@ -281,7 +299,7 @@ function Shop() {
     });
   };
 
-  // ===== 9. DELETE =====
+  // ===== 10. DELETE =====
   const performDelete = async (id) => {
     setLoading(true);
     try {
@@ -324,7 +342,7 @@ function Shop() {
     });
   };
 
-  // ===== 10. EDIT =====
+  // ===== 11. EDIT =====
   const handleEdit = (request) => {
     setSelectedRequestForEdit({ ...request });
     setShowEditModal(true);
@@ -345,6 +363,7 @@ function Shop() {
         body: JSON.stringify({
           shop_name: selectedRequestForEdit.shop_name,
           shop_address: selectedRequestForEdit.shop_address,
+          location: selectedRequestForEdit.location,
           shop_phone: selectedRequestForEdit.shop_phone,
           nrc: selectedRequestForEdit.nrc,
           type: selectedRequestForEdit.type
@@ -375,7 +394,7 @@ function Shop() {
     }
   };
 
-  // ===== 11. FILTER & SORT =====
+  // ===== 12. FILTER & SORT =====
   const getSortedRequests = (list) => {
     let result = [...list];
     if (sortById === 'newest') {
@@ -389,10 +408,11 @@ function Shop() {
   const filteredRequests = requests.filter(req => {
     const search = searchTerm.toLowerCase();
     const matchSearch =
-      req.shop_name.toLowerCase().includes(search) ||
-      req.shop_address.toLowerCase().includes(search) ||
-      req.type.toLowerCase().includes(search) ||
-      req.shop_phone.includes(searchTerm);
+      (req.shop_name || '').toLowerCase().includes(search) ||
+      (req.shop_address || '').toLowerCase().includes(search) ||
+      (req.location || '').toLowerCase().includes(search) ||
+      (req.type || '').toLowerCase().includes(search) ||
+      String(req.shop_phone || '').includes(searchTerm);
     const matchStatus = filterStatus === 'all' || req.status === filterStatus;
     const matchType = filterType === 'all' || req.type === filterType;
     return matchSearch && matchStatus && matchType;
@@ -400,7 +420,7 @@ function Shop() {
 
   const finalSortedRequests = getSortedRequests(filteredRequests);
 
-  // ===== 12. STATS =====
+  // ===== 13. STATS =====
   const stats = {
     total: requests.length,
     pending: requests.filter(r => r.status === 'pending').length,
@@ -408,7 +428,7 @@ function Shop() {
     rejected: requests.filter(r => r.status === 'rejected' || r.status === 'cancelled').length,
   };
 
-  // ===== 13. HELPERS =====
+  // ===== 14. HELPERS =====
   const getStatusBadge = (status) => {
     const map = {
       pending: { label: 'Pending', color: '#ffc107', bg: '#fff3cd' },
@@ -436,16 +456,8 @@ function Shop() {
   };
 
   const getTypeBadge = (type) => {
-    const map = {
-      hotel: { color: '#0d6efd', bg: '#cfe2ff' },
-      restaurant: { color: '#d63384', bg: '#f5d4e1' },
-      thonebane: { color: '#17a2b8', bg: '#cff4fc' },
-      car: { color: '#fd7e14', bg: '#ffe5d0' },
-      ebike: { color: '#198754', bg: '#d1e7dd' },
-      balloon: { color: '#dc3545', bg: '#f8d7da' },
-      horsecart: { color: '#6f42c1', bg: '#e2d9f3' },
-    };
-    const s = map[type?.toLowerCase()] || { color: '#6c757d', bg: '#e9ecef' };
+    const key = normalizeType(type);
+    const s = TYPE_CONFIG[key] || { label: type || 'N/A', color: '#6c757d', bg: '#e9ecef' };
     return (
       <span style={{
         display: 'inline-block',
@@ -459,25 +471,17 @@ function Shop() {
         minWidth: '70px',
         textAlign: 'center'
       }}>
-        {type}
+        {s.label}
       </span>
     );
   };
 
   const getTypeIcon = (type) => {
-    const map = {
-      hotel: 'bi-building',
-      restaurant: 'bi-egg-fried',
-      thonebane: 'bi-shop',
-      car: 'bi-car-front',
-      ebike: 'bi-bicycle',
-      balloon: 'bi-balloon',
-      horsecart: 'bi-truck',
-    };
-    return map[type?.toLowerCase()] || 'bi-shop';
+    const key = normalizeType(type);
+    return (TYPE_CONFIG[key] && TYPE_CONFIG[key].icon) || 'bi-shop';
   };
 
-  // ===== 14. NOT LOGGED IN =====
+  // ===== 15. NOT LOGGED IN =====
   if (!isLoggedIn) {
     return (
       <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
@@ -510,7 +514,7 @@ function Shop() {
     );
   }
 
-  // ===== 15. MAIN RENDER =====
+  // ===== 16. MAIN RENDER =====
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Shop Management" onThemeChange={handleThemeChange} />
@@ -584,7 +588,7 @@ function Shop() {
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
         <div className="search-bar-wrapper" style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
           <i className="bi bi-search search-icon" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#6c757d' }}></i>
-          <input type="text" placeholder="Search by shop name, address, type..." className="search-input-full" style={{ width: '100%', padding: '8px 15px 8px 35px', borderRadius: '40px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: '0.9rem' }} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+          <input type="text" placeholder="Search by shop name, address, location, type..." className="search-input-full" style={{ width: '100%', padding: '8px 15px 8px 35px', borderRadius: '40px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: '0.9rem' }} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
         <select className="filter-select" style={{ padding: '8px 12px', borderRadius: '40px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: '0.9rem', minWidth: '130px' }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
           <option value="all">All Status</option>
@@ -599,7 +603,7 @@ function Shop() {
           <option value="restaurant">Restaurant</option>
           <option value="thonebane">Thonebane</option>
           <option value="car">Car</option>
-          <option value="ebike">E-Bike</option>
+          <option value="e_bike">E-Bike</option>
           <option value="balloon">Balloon</option>
           <option value="horsecart">Horse Cart</option>
         </select>
@@ -701,6 +705,7 @@ function Shop() {
                 <div><strong>Phone:</strong> {selectedRequest.shop_phone}</div>
                 <div><strong>Status:</strong> {getStatusBadge(selectedRequest.status)}</div>
                 <div style={{ gridColumn: '1 / -1' }}><strong>Address:</strong> {selectedRequest.shop_address}</div>
+                <div><strong>Location:</strong> {selectedRequest.location}</div>
                 <div><strong>NRC:</strong> {selectedRequest.nrc}</div>
                 <div><strong>User ID:</strong> {selectedRequest.user_id}</div>
                 {selectedRequest.image && (
@@ -750,7 +755,7 @@ function Shop() {
                   <option value="restaurant">Restaurant</option>
                   <option value="thonebane">Thonebane</option>
                   <option value="car">Car</option>
-                  <option value="ebike">E-Bike</option>
+                  <option value="e_bike">E-Bike</option>
                   <option value="balloon">Balloon</option>
                   <option value="horsecart">Horse Cart</option>
                 </select>
@@ -762,6 +767,10 @@ function Shop() {
               <div className="form-group mb-3" style={{ marginBottom: '15px' }}>
                 <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500' }}>Address</label>
                 <input type="text" className="form-control" value={selectedRequestForEdit.shop_address} onChange={(e) => setSelectedRequestForEdit({ ...selectedRequestForEdit, shop_address: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)' }} />
+              </div>
+              <div className="form-group mb-3" style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500' }}>Location</label>
+                <input type="text" className="form-control" value={selectedRequestForEdit.location || ''} onChange={(e) => setSelectedRequestForEdit({ ...selectedRequestForEdit, location: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)' }} />
               </div>
               <div className="form-group mb-3" style={{ marginBottom: '15px' }}>
                 <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500' }}>NRC</label>

@@ -60,7 +60,121 @@ function PackagePlansOrder() {
     }
   }, [isDarkMode]);
 
-  // ===== 6. FETCH BOOKINGS (FIXED - Robust Array Detection) =====
+  // ===== 6. HELPER: PICK FIRST NON-EMPTY STRING FROM AN OBJECT =====
+  const pickString = (obj, keys) => {
+    if (!obj || typeof obj !== 'object') return null;
+    for (const k of keys) {
+      const v = obj[k];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+    return null;
+  };
+
+  // Try to pull an image path out of any shape:
+  //  - direct string key
+  //  - nested object (e.g. { url, path, src, filename })
+  //  - array of strings or array of objects
+  const extractImage = (value) => {
+    if (!value) return null;
+
+    // array → first usable entry
+    if (Array.isArray(value)) {
+      for (const v of value) {
+        const got = extractImage(v);
+        if (got) return got;
+      }
+      return null;
+    }
+
+    // plain string
+    if (typeof value === 'string') {
+      const s = value.trim();
+      return s || null;
+    }
+
+    // object
+    if (typeof value === 'object') {
+      const got = pickString(value, [
+        'url', 'path', 'src', 'image', 'image_url',
+        'filename', 'file_name', 'file', 'image_path',
+      ]);
+      return got || null;
+    }
+
+    return null;
+  };
+
+  // ===== 7. IMAGE URL RESOLVER (ROBUST) =====
+  // Checks every common shape / nesting level used by package-booking APIs.
+  const resolveImageUrl = (item) => {
+    if (!item || typeof item !== 'object') return null;
+
+    // Containers where the image might live
+    const containers = [
+      item,
+      item.package,
+      item.package_plan,
+      item.plan,
+      item.package_info,
+      item.package_details,
+      item.package_data,
+      item.booking,
+      item.details,
+      item.meta,
+    ].filter(Boolean);
+
+    const imageKeys = [
+      'image',
+      'image_url',
+      'imageUrl',
+      'img',
+      'photo',
+      'thumbnail',
+      'thumbnail_url',
+      'cover',
+      'cover_image',
+      'coverImage',
+      'package_image',
+      'packageImage',
+      'package_image_url',
+      'packageImageUrl',
+      'plan_image',
+      'planImage',
+      'banner',
+      'banner_image',
+      'images',
+      'photos',
+    ];
+
+    let raw = null;
+    for (const c of containers) {
+      for (const k of imageKeys) {
+        if (c[k] !== undefined && c[k] !== null) {
+          const got = extractImage(c[k]);
+          if (got) {
+            raw = got;
+            break;
+          }
+        }
+      }
+      if (raw) break;
+    }
+
+    if (!raw) return null;
+
+    const cleaned = String(raw).trim();
+    if (!cleaned) return null;
+
+    // Already absolute
+    if (/^https?:\/\//i.test(cleaned)) return cleaned;
+    // Data URI
+    if (cleaned.startsWith('data:')) return cleaned;
+
+    // Relative path → prefix with backend
+    return `${BACKEND_URL}/${cleaned.replace(/^\/+/, '')}`;
+  };
+
+  // ===== 8. FETCH BOOKINGS =====
   const fetchBookings = async () => {
     const token = getToken();
     if (!token) {
@@ -89,9 +203,8 @@ function PackagePlansOrder() {
       }
 
       const result = await response.json();
-      console.log('✅ Full API Response:', result); // ဘယ် key ပါလာလဲ ကြည့်ဖို့
+      console.log('✅ Full API Response:', result);
 
-      // ---- Array ကို အောက်ပါ key တွေထဲက ရှာဖွေမယ် ----
       let bookingList = null;
       if (Array.isArray(result.booking)) bookingList = result.booking;
       else if (Array.isArray(result.data)) bookingList = result.data;
@@ -100,8 +213,14 @@ function PackagePlansOrder() {
       else if (Array.isArray(result.list)) bookingList = result.list;
       else if (Array.isArray(result)) bookingList = result;
 
-      // ---- တွေ့ရင် mapping လုပ်မယ်၊ မတွေ့ရင် error ပစ်မယ် ----
       if (bookingList) {
+        // 🔎 DEBUG: log the first item so you can see which key holds the image
+        if (bookingList[0]) {
+          console.log('🔎 First booking item keys:', Object.keys(bookingList[0]));
+          console.log('🔎 First booking item (full):', bookingList[0]);
+          console.log('🖼️ Resolved image URL:', resolveImageUrl(bookingList[0]));
+        }
+
         const mapped = bookingList.map((item) => ({
           id: item.booking_id || item.id,
           user_id: item.user_id,
@@ -117,7 +236,8 @@ function PackagePlansOrder() {
           hotels: Array.isArray(item.hotels) ? item.hotels : [],
           restaurants: Array.isArray(item.restaurants) ? item.restaurants : [],
           transports: Array.isArray(item.transports) ? item.transports : [],
-          image: item.image ? `${BACKEND_URL}/${item.image.replace(/^\/+/, '')}` : null,
+          // ✅ FIX: robust image resolution
+          image: resolveImageUrl(item),
           passenger: item.passenger || 1,
           selected_price: item.selected_price || 0,
         }));
@@ -125,7 +245,6 @@ function PackagePlansOrder() {
         setTotalItems(result.total || mapped.length);
         setTotalPages(result.totalPages || Math.ceil(mapped.length / limit) || 1);
       } else {
-        // API က success: true ပြန်ပေမယ့် list မပါရင် (ဥပမာ empty array ပြန်တာ)
         if (result.success === true) {
           setBookings([]);
           setTotalItems(0);
@@ -144,7 +263,7 @@ function PackagePlansOrder() {
     }
   };
 
-  // ===== 7. UPDATE STATUS (Approve / Cancel) =====
+  // ===== 9. UPDATE STATUS (Approve / Cancel) =====
   const updateBookingStatus = async (bookingId, newStatus) => {
     const token = getToken();
     if (!token) {
@@ -187,7 +306,7 @@ function PackagePlansOrder() {
     }
   };
 
-  // ===== 8. CONFIRM DIALOG TRIGGER =====
+  // ===== 10. CONFIRM DIALOG TRIGGER =====
   const handleStatusChange = (bookingId, newStatus) => {
     const actionText = newStatus === 'approved' ? 'approve' : 'cancel';
     setConfirmDialog({
@@ -197,7 +316,7 @@ function PackagePlansOrder() {
     });
   };
 
-  // ===== 9. SEARCH / FILTER / PAGINATION =====
+  // ===== 11. SEARCH / FILTER / PAGINATION =====
   useEffect(() => {
     fetchBookings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -218,7 +337,7 @@ function PackagePlansOrder() {
     setPage(newPage);
   };
 
-  // ===== 10. STATUS BADGE =====
+  // ===== 12. STATUS BADGE =====
   const getStatusBadge = (status) => {
     const statusMap = {
       pending: { label: 'Pending', color: '#ffc107', bg: '#fff3cd' },
@@ -243,7 +362,7 @@ function PackagePlansOrder() {
     );
   };
 
-  // ===== 11. CARD ACTIONS (Dropdown) =====
+  // ===== 13. CARD ACTIONS (Dropdown) =====
   const CardActions = ({ booking }) => {
     const [isOpen, setIsOpen] = useState(false);
     const wrapperRef = useRef(null);
@@ -281,7 +400,6 @@ function PackagePlansOrder() {
       }
     };
 
-    // Dynamic positioning: if not enough space below, show above
     useEffect(() => {
       if (isOpen && dropdownRef.current && wrapperRef.current) {
         const dropdown = dropdownRef.current;
@@ -447,7 +565,7 @@ function PackagePlansOrder() {
     );
   };
 
-  // ===== 12. DETAIL MODAL =====
+  // ===== 14. DETAIL MODAL =====
   const DetailModal = ({ booking, onClose }) => {
     if (!booking) return null;
 
@@ -477,7 +595,6 @@ function PackagePlansOrder() {
                 <strong>Note:</strong> {booking.note || 'None'}
               </div>
 
-              {/* Hotels */}
               {booking.hotels && booking.hotels.length > 0 && (
                 <div style={{ gridColumn: '1 / -1' }}>
                   <strong>🏨 Hotels:</strong>
@@ -489,7 +606,6 @@ function PackagePlansOrder() {
                 </div>
               )}
 
-              {/* Restaurants */}
               {booking.restaurants && booking.restaurants.length > 0 && (
                 <div style={{ gridColumn: '1 / -1' }}>
                   <strong>🍽️ Restaurants:</strong>
@@ -501,7 +617,6 @@ function PackagePlansOrder() {
                 </div>
               )}
 
-              {/* Transports */}
               {booking.transports && booking.transports.length > 0 && (
                 <div style={{ gridColumn: '1 / -1' }}>
                   <strong>🚗 Transports:</strong>
@@ -522,7 +637,7 @@ function PackagePlansOrder() {
     );
   };
 
-  // ===== 13. ORDER CARD =====
+  // ===== 15. ORDER CARD =====
   const BookingCard = ({ booking }) => (
     <div className="hotel-card-vertical" style={{ cursor: 'default', position: 'relative' }}>
       <div className="hotel-card-image" style={{ height: '200px', position: 'relative' }}>
@@ -576,7 +691,7 @@ function PackagePlansOrder() {
     </div>
   );
 
-  // ===== 14. LOADING =====
+  // ===== 16. LOADING =====
   if (loading && bookings.length === 0) {
     return (
       <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
@@ -591,7 +706,7 @@ function PackagePlansOrder() {
     );
   }
 
-  // ===== 15. SUMMARY DATA =====
+  // ===== 17. SUMMARY DATA =====
   const summaryData = [
     { label: 'Total Bookings', count: bookings.length, icon: 'bi-box-seam', color: '#0d6efd' },
     {
@@ -615,12 +730,11 @@ function PackagePlansOrder() {
     { label: 'Packages', count: bookings.length, icon: 'bi-box', color: '#6f42c1' },
   ];
 
-  // ===== 16. MAIN RENDER =====
+  // ===== 18. MAIN RENDER =====
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Package Plan Bookings" onThemeChange={handleThemeChange} />
 
-      {/* TOAST */}
       {toast.visible && (
         <div
           style={{
@@ -697,7 +811,6 @@ function PackagePlansOrder() {
         </div>
       )}
 
-      {/* CONFIRM DIALOG */}
       {confirmDialog.visible && (
         <div
           style={{
@@ -759,7 +872,6 @@ function PackagePlansOrder() {
         </div>
       )}
 
-      {/* SUMMARY BOXES (5 Cards) */}
       <div
         style={{
           display: 'grid',
@@ -825,7 +937,6 @@ function PackagePlansOrder() {
         ))}
       </div>
 
-      {/* SEARCH + FILTER */}
       <div className="search-actions-row" style={{ marginBottom: '20px' }}>
         <div className="search-bar-wrapper">
           <i className="bi bi-search search-icon"></i>
@@ -853,7 +964,6 @@ function PackagePlansOrder() {
         </div>
       </div>
 
-      {/* BOOKING CARDS (3 per row) */}
       <div className="hotels-two-columns">
         <div className="hotels-cards-column" style={{ gridColumn: '1 / -1' }}>
           <div className="hotels-scroll-area">
@@ -887,7 +997,6 @@ function PackagePlansOrder() {
               )}
             </div>
 
-            {/* PAGINATION */}
             {totalPages > 1 && (
               <div
                 style={{
@@ -954,7 +1063,6 @@ function PackagePlansOrder() {
         </div>
       </div>
 
-      {/* DETAIL MODAL */}
       {showDetailModal && (
         <DetailModal
           booking={selectedBooking}

@@ -21,12 +21,12 @@ const parseDate = (dateStr) => {
 function EBikesOrder() {
   // ===== User & Shop =====
   const user = (() => {
-    try { return JSON.parse(localStorage.getItem('user')); } 
+    try { return JSON.parse(localStorage.getItem('user')); }
     catch { return null; }
   })();
   const admin = user?.role === 'admin';
   const userId = user?.id;
-  const shopId = localStorage.getItem('shopId'); // 👈 ထည့်ပါ
+  const shopId = localStorage.getItem('shopId');
 
   // ===== 1. THEME =====
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -45,9 +45,10 @@ function EBikesOrder() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [error, setError] = useState(null);
 
-  // ===== 3. E-Bike Data for Filtering =====
+  // ===== 3. E-Bike Data for Filtering + Image Lookup =====
   const [eBikes, setEBikes] = useState([]);
   const [myEBikeIds, setMyEBikeIds] = useState([]);
+  const ebikeImageMapRef = useRef({}); // id → image url
 
   // ===== 4. TOAST =====
   const [toast, setToast] = useState({
@@ -67,6 +68,7 @@ function EBikesOrder() {
   };
 
   // ===== 5. API HELPERS =====
+  const BACKEND_URL = 'http://130.94.21.185:8000';
   const getToken = () => localStorage.getItem('token');
   const getHeaders = () => ({
     'Content-Type': 'application/json',
@@ -81,7 +83,94 @@ function EBikesOrder() {
 
   const API_BASE = '/api/admin/e-bike';
 
-  // ===== 6. FETCH E-BIKES (ပြင်ဆင်ပြီး) =====
+  // ===== 5b. IMAGE HELPERS =====
+  const pickString = (obj, keys) => {
+    if (!obj || typeof obj !== 'object') return null;
+    for (const k of keys) {
+      const v = obj[k];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+    return null;
+  };
+
+  const extractImage = (value) => {
+    if (!value) return null;
+    if (Array.isArray(value)) {
+      for (const v of value) {
+        const got = extractImage(v);
+        if (got) return got;
+      }
+      return null;
+    }
+    if (typeof value === 'string') {
+      const s = value.trim();
+      return s || null;
+    }
+    if (typeof value === 'object') {
+      return pickString(value, [
+        'url', 'path', 'src', 'image', 'image_url',
+        'filename', 'file_name', 'file', 'image_path',
+      ]);
+    }
+    return null;
+  };
+
+  const buildFullUrl = (raw) => {
+    if (!raw) return null;
+    const cleaned = String(raw).trim();
+    if (!cleaned) return null;
+    if (/^https?:\/\//i.test(cleaned)) return cleaned;
+    if (cleaned.startsWith('data:')) return cleaned;
+    return `${BACKEND_URL}/${cleaned.replace(/^\/+/, '')}`;
+  };
+
+  const resolveImageUrl = (item) => {
+    if (!item || typeof item !== 'object') return null;
+
+    const containers = [
+      item,
+      item.ebike,
+      item.e_bike,
+      item.bike,
+      item.ebike_info,
+      item.booking,
+      item.details,
+      item.meta,
+    ].filter(Boolean);
+
+    const imageKeys = [
+      'image',
+      'image_url',
+      'imageUrl',
+      'img',
+      'photo',
+      'thumbnail',
+      'thumbnail_url',
+      'cover',
+      'cover_image',
+      'coverImage',
+      'ebike_image',
+      'ebikeImage',
+      'ebike_image_url',
+      'e_bike_image',
+      'bike_image',
+      'bikeImage',
+      'images',
+      'photos',
+    ];
+
+    for (const c of containers) {
+      for (const k of imageKeys) {
+        if (c[k] !== undefined && c[k] !== null) {
+          const got = extractImage(c[k]);
+          if (got) return buildFullUrl(got);
+        }
+      }
+    }
+    return null;
+  };
+
+  // ===== 6. FETCH E-BIKES (builds image map too) =====
   const fetchEBikes = async () => {
     try {
       const response = await fetch(`${API_BASE}/list`, {
@@ -95,10 +184,20 @@ function EBikesOrder() {
       }
       const result = await response.json();
       console.log('✅ E-Bikes response:', result);
-      
+
       const list = result.data || result || [];
       setEBikes(list);
-      
+
+      // Build image map: id → resolved image url
+      const imgMap = {};
+      list.forEach((e) => {
+        const id = e.id ?? e.e_bike_id;
+        const img = resolveImageUrl(e);
+        if (id != null && img) imgMap[String(id)] = img;
+      });
+      ebikeImageMapRef.current = imgMap;
+      console.log('🖼️ E-Bike image map:', imgMap);
+
       // Filter e-bikes by userId OR shop_id
       if (!admin) {
         const myIds = list
@@ -116,7 +215,7 @@ function EBikesOrder() {
     }
   };
 
-  // ===== 7. FETCH ORDERS (ပြင်ဆင်ပြီး) =====
+  // ===== 7. FETCH ORDERS =====
   const fetchOrders = async () => {
     await fetchEBikes();
 
@@ -156,58 +255,78 @@ function EBikesOrder() {
         }
       }
 
-      const mappedOrders = rawOrders.map((item) => ({
-        id: item.booking_id || item.id,
-        status: item.status || 'pending',
-        totalPrice: item.selected_price || item.total_price || item.price || 0,
-        startDate: parseDate(item.booking_date || item.start_date),
-        endDate: null,
-        createdAt: parseDate(item.created_at || item.createdAt),
-        specialRequests: item.note || item.special_requests || '',
-        passenger_count: item.passenger_count || 0,
-        shop_id: item.shop_id, // 👈 ထည့်ပါ
+      if (rawOrders[0]) {
+        console.log('🔎 First E-Bike booking keys:', Object.keys(rawOrders[0]));
+        console.log('🔎 First E-Bike booking (full):', rawOrders[0]);
+      }
 
-        user: {
-          id: item.user_id,
-          name: item.customer_name || 'Guest',
-          email: item.customer_email || '',
-          phone: item.customer_phone || '',
-        },
+      const imgMap = ebikeImageMapRef.current;
 
-        ebike: {
-          id: item.e_bike_id,
-          name: item.e_bike_name || 'E-Bike',
-          brand: item.brand || '',
-          color: item.color || '',
-          location: item.location || '',
-          battery_capacity: item.battery_capacity || '',
-          battery_percentage: item.battery_percentage || 0,
-          battery_voltage: item.battery_voltage || '',
-          passenger_count: item.bike_passenger_count || 0,
-          image: item.image || '/default-ebike.jpg',
-          code: item.code || '',
-          bike_status: item.bike_status || '',
-          helmet: item.helmet || '',
-          phone_holder: item.phone_holder || '',
-          type_name: item.type_name || '',
-          distance: item.distance || '',
-        },
+      const mappedOrders = rawOrders.map((item) => {
+        const bikeId = item.e_bike_id ?? item.ebike_id ?? item.bike_id;
 
-        priceDetails: {
-          price_id: item.price_id,
-          selected_price_type: item.selected_price_type || '',
-          start_time: item.start_time || '',
-          end_time: item.end_time || '',
-        },
+        // Image resolution priority:
+        //  1) booking's own / nested image
+        //  2) e-bike image from list (matched by id)
+        let img = resolveImageUrl(item);
+        if (!img && bikeId != null && imgMap[String(bikeId)]) {
+          img = imgMap[String(bikeId)];
+        }
 
-        shop: {
-          id: item.shop_id,
-          name: item.shop_name || '',
-        },
+        return {
+          id: item.booking_id || item.id,
+          status: item.status || 'pending',
+          totalPrice: item.selected_price || item.total_price || item.price || 0,
+          startDate: parseDate(item.booking_date || item.start_date),
+          endDate: null,
+          createdAt: parseDate(item.created_at || item.createdAt),
+          specialRequests: item.note || item.special_requests || '',
+          passenger_count: item.passenger_count || 0,
+          shop_id: item.shop_id,
 
-        _raw: item,
-      }));
+          user: {
+            id: item.user_id,
+            name: item.customer_name || 'Guest',
+            email: item.customer_email || '',
+            phone: item.customer_phone || '',
+          },
 
+          ebike: {
+            id: bikeId,
+            name: item.e_bike_name || 'E-Bike',
+            brand: item.brand || '',
+            color: item.color || '',
+            location: item.location || '',
+            battery_capacity: item.battery_capacity || '',
+            battery_percentage: item.battery_percentage || 0,
+            battery_voltage: item.battery_voltage || '',
+            passenger_count: item.bike_passenger_count || 0,
+            image: img, // resolved image URL (or null → fallback icon)
+            code: item.code || '',
+            bike_status: item.bike_status || '',
+            helmet: item.helmet || '',
+            phone_holder: item.phone_holder || '',
+            type_name: item.type_name || '',
+            distance: item.distance || '',
+          },
+
+          priceDetails: {
+            price_id: item.price_id,
+            selected_price_type: item.selected_price_type || '',
+            start_time: item.start_time || '',
+            end_time: item.end_time || '',
+          },
+
+          shop: {
+            id: item.shop_id,
+            name: item.shop_name || '',
+          },
+
+          _raw: item,
+        };
+      });
+
+      console.log('📦 Mapped E-Bike Orders:', mappedOrders);
       setOrders(mappedOrders);
     } catch (err) {
       setError(err.message);
@@ -226,6 +345,7 @@ function EBikesOrder() {
       return;
     }
     fetchOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ===== 8. THEME =====
@@ -269,11 +389,10 @@ function EBikesOrder() {
     }
   };
 
-  // ===== 10. FILTER LOGIC (ပြင်ဆင်ပြီး) =====
+  // ===== 10. FILTER LOGIC =====
   const filteredOrders = orders
     .filter((order) => {
       if (admin) return true;
-      // shop_id နဲ့ စစ် (ဒါမှမဟုတ် ebike.id က myEBikeIds ထဲမှာရှိလား)
       return order.shop_id === parseInt(shopId) || myEBikeIds.includes(order.ebike?.id);
     })
     .filter((order) => {
@@ -352,9 +471,6 @@ function EBikesOrder() {
       </span>
     );
   };
-
-  // ===== 12-17: CardActions, DetailModal, OrderCard, Loading, Summary, Main Render (အထက်ပါအတိုင်း) =====
-  // ဒီနေရာမှာ ကျန်တဲ့ Code တွေကို ထည့်ပါ (အထက်ပါအတိုင်း ပြန်ကူးထည့်ပါ)
 
   // ===== 12. CARD ACTIONS =====
   const CardActions = ({ order }) => {
@@ -444,6 +560,15 @@ function EBikesOrder() {
             </button>
           </div>
           <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+            {order.ebike?.image && (
+              <div style={{ marginBottom: '16px', borderRadius: '10px', overflow: 'hidden' }}>
+                <img
+                  src={order.ebike.image}
+                  alt={order.ebike.name}
+                  style={{ width: '100%', maxHeight: '240px', objectFit: 'cover' }}
+                />
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div><strong>E-Bike:</strong> {order.ebike?.name || 'N/A'}</div>
               <div><strong>Brand:</strong> {order.ebike?.brand || 'N/A'}</div>
@@ -479,6 +604,8 @@ function EBikesOrder() {
 
   // ===== 14. ORDER CARD =====
   const OrderCard = ({ order }) => {
+    const [imgFailed, setImgFailed] = useState(false);
+
     const formatDateDisplay = (date) => {
       if (!date) return 'N/A';
       if (typeof date === 'string') return new Date(date).toLocaleDateString();
@@ -488,17 +615,29 @@ function EBikesOrder() {
 
     return (
       <div className="hotel-card-vertical" style={{ cursor: 'default' }}>
-        <div className="hotel-card-image" style={{ height : '200px'}}>
-          <div className="image-slider">
-            <img
-              src={order.ebike?.image || '/default-ebike.jpg'}
-              alt={order.ebike?.name || 'E-Bike'}
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.src = '/default-ebike.jpg';
-              }}
-              style={{ objectFit: 'cover', width: '100%', height: '100%' }}
-            />
+        <div className="hotel-card-image" style={{ height: '200px', position: 'relative' }}>
+          <div
+            className="image-slider"
+            style={{
+              width: '100%',
+              height: '100%',
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'linear-gradient(135deg, #17a2b8 0%, #0d6efd 100%)',
+            }}
+          >
+            {order.ebike?.image && !imgFailed ? (
+              <img
+                src={order.ebike.image}
+                alt={order.ebike?.name || 'E-Bike'}
+                onError={() => setImgFailed(true)}
+                style={{ objectFit: 'cover', width: '100%', height: '100%' }}
+              />
+            ) : (
+              <i className="bi bi-bicycle" style={{ fontSize: '60px', color: '#fff' }}></i>
+            )}
           </div>
           <CardActions order={order} />
         </div>
@@ -683,7 +822,7 @@ function EBikesOrder() {
                 padding: '4px 14px',
                 borderRadius: '20px',
                 border: '1px solid #6c757d',
-                background: timeFilter === period ? (isDarkMode ? '#0d6efd' : '#0d6efd') : 'transparent',
+                background: timeFilter === period ? '#0d6efd' : 'transparent',
                 color: timeFilter === period ? '#fff' : (isDarkMode ? '#eee' : '#333'),
                 cursor: 'pointer',
                 fontSize: '13px',

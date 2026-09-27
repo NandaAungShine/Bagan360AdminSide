@@ -2,6 +2,25 @@ import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 import axios from 'axios';
 
+// ==================== CONSTANTS ====================
+const LOCATION_OPTIONS = ['Old Bagan', 'New Bagan', 'Nyaung Oo'];
+const TAG_OPTIONS = [
+  'Temple',
+  'Buddhist',
+  'Pagoda',
+  'Ancient',
+  'Historical',
+  'Cultural',
+  'Religious',
+  'Heritage',
+  'Meditation',
+  'Sunset View',
+];
+const MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
 function HistoryOfPagodas() {
   // ==================== THEME ====================
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -28,6 +47,22 @@ function HistoryOfPagodas() {
   const [editImages, setEditImages] = useState([]);
   const [editImageFiles, setEditImageFiles] = useState([]);
 
+  // Visit Date Range (Add form)
+  const [visitStartMonth, setVisitStartMonth] = useState('');
+  const [visitEndMonth, setVisitEndMonth] = useState('');
+
+  // Visit Date Range (Edit form)
+  const [editVisitStartMonth, setEditVisitStartMonth] = useState('');
+  const [editVisitEndMonth, setEditVisitEndMonth] = useState('');
+
+  // Tags Multi-select (Add form)
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
+
+  // Tags Multi-select (Edit form)
+  const [editSelectedTags, setEditSelectedTags] = useState([]);
+  const [editTagDropdownOpen, setEditTagDropdownOpen] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [pagodas, setPagodas] = useState([]);
@@ -43,7 +78,7 @@ function HistoryOfPagodas() {
     images: []
   });
 
-  // ==================== TOAST & CONFIRM STATES (Alert အစားထိုးရန်) ====================
+  // ==================== TOAST & CONFIRM STATES ====================
   const [toast, setToast] = useState({
     visible: false,
     type: 'success',
@@ -57,7 +92,24 @@ function HistoryOfPagodas() {
     onConfirm: null,
   });
 
-  // ==================== TOAST HELPER (3s အကြာမှာ အလိုအလျောက်ပျောက်မယ်) ====================
+  // ==================== TAG DROPDOWN REFS (outside click) ====================
+  const addTagDropdownRef = useRef(null);
+  const editTagDropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (addTagDropdownRef.current && !addTagDropdownRef.current.contains(e.target)) {
+        setTagDropdownOpen(false);
+      }
+      if (editTagDropdownRef.current && !editTagDropdownRef.current.contains(e.target)) {
+        setEditTagDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // ==================== TOAST HELPER ====================
   const showToast = (type, message) => {
     if (toastTimeoutRef.current) {
       clearTimeout(toastTimeoutRef.current);
@@ -101,8 +153,7 @@ function HistoryOfPagodas() {
     (response) => response,
     (error) => {
       console.error('API Error:', error);
-      
-      // 🔥 401 ရှိရင် အလိုအလျောက် Login ခေါ်သွားမယ်
+
       if (error.response && error.response.status === 401) {
         handle401Error();
         return Promise.reject(error);
@@ -182,7 +233,6 @@ function HistoryOfPagodas() {
       console.error('❌ Fetch Error:', err);
       setError('Failed to fetch pagodas. Please try again.');
       setPagodas([]);
-      // 401 မဟုတ်ရင် ဒီ Toast ပြမယ်
       if (err.response?.status !== 401) {
         showToast('error', 'Failed to fetch pagodas');
       }
@@ -259,6 +309,17 @@ function HistoryOfPagodas() {
     setFormData({ ...formData, images: newImages });
   };
 
+  // ---------- Tags Multi-Select (Add) ----------
+  const toggleTag = (tag) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  };
+
+  const removeTag = (tag) => {
+    setSelectedTags((prev) => prev.filter((t) => t !== tag));
+  };
+
   // ==================== EDIT MODAL IMAGE HANDLERS ====================
   const handleEditImageUpload = (e) => {
     const file = e.target.files[0];
@@ -279,6 +340,17 @@ function HistoryOfPagodas() {
     setEditImageFiles(newFiles);
   };
 
+  // ---------- Tags Multi-Select (Edit) ----------
+  const toggleEditTag = (tag) => {
+    setEditSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  };
+
+  const removeEditTag = (tag) => {
+    setEditSelectedTags((prev) => prev.filter((t) => t !== tag));
+  };
+
   // ==================== ADD PAGODA ====================
   const handleAddPagoda = async () => {
     if (!formData.pagodaName || !formData.location) {
@@ -297,13 +369,20 @@ function HistoryOfPagodas() {
       const formDataToSend = new FormData();
       formDataToSend.append('name', formData.pagodaName.trim());
       formDataToSend.append('location', formData.location.trim());
-      formDataToSend.append('visit_date', formData.startDate.trim() || '');
+
+      // Compose visit_date from start & end month
+      const visitDate =
+        visitStartMonth && visitEndMonth
+          ? `${visitStartMonth} to ${visitEndMonth}`
+          : visitStartMonth || visitEndMonth || '';
+      formDataToSend.append('visit_date', visitDate);
+
       formDataToSend.append('description', formData.description.trim() || '');
       formDataToSend.append('history', formData.history.trim() || '');
 
-      if (formData.tags) {
-        const tagsArray = formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag);
-        formDataToSend.append('tags', JSON.stringify(tagsArray));
+      // Tags from multi-select
+      if (selectedTags.length > 0) {
+        formDataToSend.append('tags', JSON.stringify(selectedTags));
       }
 
       imageFiles.forEach((file) => formDataToSend.append('images', file));
@@ -315,6 +394,7 @@ function HistoryOfPagodas() {
       if (response.data && response.data.success) {
         showToast('success', 'Pagoda added successfully!');
         await fetchPagodas({ pageNum: 1 });
+        // Reset
         setFormData({
           pagodaName: '',
           location: '',
@@ -326,13 +406,16 @@ function HistoryOfPagodas() {
         });
         setImages([]);
         setImageFiles([]);
+        setSelectedTags([]);
+        setVisitStartMonth('');
+        setVisitEndMonth('');
       } else {
         showToast('error', response.data?.message || 'Failed to add pagoda.');
       }
     } catch (err) {
       console.error('❌ Create Error:', err);
       console.error('📦 Response Data:', err.response?.data);
-      if (err.response?.status === 401) return; // Interceptor က handle လုပ်သွားပြီးသားပါ
+      if (err.response?.status === 401) return;
       const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message || 'Unknown error';
       showToast('error', `Error: ${errorMsg}`);
     } finally {
@@ -340,7 +423,7 @@ function HistoryOfPagodas() {
     }
   };
 
-  // ==================== DELETE PAGODA (With Custom Confirm) ====================
+  // ==================== DELETE PAGODA ====================
   const performDeletePagoda = async (id) => {
     if (!id) {
       showToast('error', 'Invalid pagoda ID.');
@@ -406,6 +489,22 @@ function HistoryOfPagodas() {
       images: pagoda.images || []
     });
 
+    // Parse visit_date "Jan to May" → start & end
+    if (pagoda.visit_date && pagoda.visit_date.includes(' to ')) {
+      const [s, e] = pagoda.visit_date.split(' to ').map((x) => x.trim());
+      setEditVisitStartMonth(MONTHS.includes(s) ? s : '');
+      setEditVisitEndMonth(MONTHS.includes(e) ? e : '');
+    } else {
+      setEditVisitStartMonth('');
+      setEditVisitEndMonth('');
+    }
+
+    // Parse tags
+    const tagsArr = pagoda.tags
+      ? pagoda.tags.split(',').map((t) => t.trim()).filter((t) => t)
+      : [];
+    setEditSelectedTags(tagsArr);
+
     setEditImages(pagoda.images || []);
     setEditImageFiles([]);
     setShowEditModal(true);
@@ -429,13 +528,18 @@ function HistoryOfPagodas() {
       const formDataToSend = new FormData();
       formDataToSend.append('name', formData.pagodaName.trim());
       formDataToSend.append('location', formData.location.trim());
-      formDataToSend.append('visit_date', formData.startDate.trim() || '');
+
+      const visitDate =
+        editVisitStartMonth && editVisitEndMonth
+          ? `${editVisitStartMonth} to ${editVisitEndMonth}`
+          : editVisitStartMonth || editVisitEndMonth || '';
+      formDataToSend.append('visit_date', visitDate);
+
       formDataToSend.append('description', formData.description.trim() || '');
       formDataToSend.append('history', formData.history.trim() || '');
 
-      if (formData.tags) {
-        const tagsArray = formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag);
-        formDataToSend.append('tags', JSON.stringify(tagsArray));
+      if (editSelectedTags.length > 0) {
+        formDataToSend.append('tags', JSON.stringify(editSelectedTags));
       }
 
       editImageFiles.forEach((file) => formDataToSend.append('images', file));
@@ -450,6 +554,9 @@ function HistoryOfPagodas() {
         setSelectedPagodaForEdit(null);
         setEditImages([]);
         setEditImageFiles([]);
+        setEditSelectedTags([]);
+        setEditVisitStartMonth('');
+        setEditVisitEndMonth('');
         await fetchPagodas({ pageNum: page });
         setFormData({
           pagodaName: '',
@@ -492,6 +599,61 @@ function HistoryOfPagodas() {
       </>
     );
   };
+
+  // ==================== Tag Multi-Select Renderer ====================
+  const renderTagMultiSelect = ({
+    selected,
+    toggle,
+    remove,
+    isOpen,
+    setIsOpen,
+    dropdownRef,
+    placeholder = 'Select tags...',
+  }) => (
+    <div className="multiselect-wrapper" ref={dropdownRef}>
+      <div
+        className={`multiselect-control ${isOpen ? 'open' : ''}`}
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        {selected.length === 0 ? (
+          <span className="multiselect-placeholder">{placeholder}</span>
+        ) : (
+          <div className="multiselect-chips">
+            {selected.map((tag) => (
+              <span key={tag} className="chip">
+                {tag}
+                <button
+                  type="button"
+                  className="chip-remove"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    remove(tag);
+                  }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <i className={`bi bi-chevron-${isOpen ? 'up' : 'down'} multiselect-arrow`}></i>
+      </div>
+      {isOpen && (
+        <div className="multiselect-dropdown">
+          {TAG_OPTIONS.map((tag) => (
+            <label key={tag} className="multiselect-option">
+              <input
+                type="checkbox"
+                checked={selected.includes(tag)}
+                onChange={() => toggle(tag)}
+              />
+              <span>{tag}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   // ==================== CardActions Component ====================
   const CardActions = ({ pagodaId }) => {
@@ -561,7 +723,7 @@ function HistoryOfPagodas() {
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Bagan Pagodas History Management" onThemeChange={handleThemeChange} />
 
-      {/* 🟢 Screen အလယ် Toast Alert UI */}
+      {/* Toast */}
       {toast.visible && (
         <div style={{
           position: 'fixed',
@@ -597,7 +759,7 @@ function HistoryOfPagodas() {
         </div>
       )}
 
-      {/* 🟢 Screen အလယ် Confirm Delete Modal */}
+      {/* Confirm Delete Modal */}
       {confirmDialog.visible && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: isDarkMode ? '#2d2d2d' : '#fff', padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%', boxShadow: '0 15px 40px rgba(0,0,0,0.2)' }}>
@@ -605,7 +767,7 @@ function HistoryOfPagodas() {
             <p style={{ color: isDarkMode ? '#ccc' : '#555' }}>{confirmDialog.message}</p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
               <button onClick={() => setConfirmDialog({ ...confirmDialog, visible: false })} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', background: 'transparent', cursor: 'pointer', color: isDarkMode ? '#ccc' : '#333' }}>Cancel</button>
-              <button onClick={() => { if(confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({ ...confirmDialog, visible: false }); }} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc3545', color: '#fff', cursor: 'pointer' }}>Delete</button>
+              <button onClick={() => { if (confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({ ...confirmDialog, visible: false }); }} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc3545', color: '#fff', cursor: 'pointer' }}>Delete</button>
             </div>
           </div>
         </div>
@@ -710,36 +872,65 @@ function HistoryOfPagodas() {
                   onChange={handleInputChange}
                 />
               </div>
+
+              {/* Location Dropdown */}
               <div className="add-form-group">
                 <label>Location *</label>
-                <input
-                  type="text"
+                <select
                   name="location"
-                  placeholder="e.g., Nyaung U, Bagan"
                   value={formData.location}
                   onChange={handleInputChange}
-                />
+                  className="form-select-input"
+                >
+                  <option value="">-- Select Location --</option>
+                  {LOCATION_OPTIONS.map((loc) => (
+                    <option key={loc} value={loc}>{loc}</option>
+                  ))}
+                </select>
               </div>
+
+              {/* Tags Multi-Select */}
               <div className="add-form-group">
-                <label>Tags (comma separated)</label>
-                <input
-                  type="text"
-                  name="tags"
-                  placeholder="e.g., Buddhist, Temple"
-                  value={formData.tags}
-                  onChange={handleInputChange}
-                />
+                <label>Tags</label>
+                {renderTagMultiSelect({
+                  selected: selectedTags,
+                  toggle: toggleTag,
+                  remove: removeTag,
+                  isOpen: tagDropdownOpen,
+                  setIsOpen: setTagDropdownOpen,
+                  dropdownRef: addTagDropdownRef,
+                  placeholder: 'Select tags...',
+                })}
               </div>
+
+              {/* Visit Date / Best Time - Two dropdowns */}
               <div className="add-form-group">
                 <label>Visit Date / Best Time</label>
-                <input
-                  type="text"
-                  name="startDate"
-                  placeholder="e.g., Jan to May"
-                  value={formData.startDate}
-                  onChange={handleInputChange}
-                />
+                <div className="date-range-row">
+                  <select
+                    value={visitStartMonth}
+                    onChange={(e) => setVisitStartMonth(e.target.value)}
+                    className="form-select-input"
+                  >
+                    <option value="">From Month</option>
+                    {MONTHS.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <span className="date-range-sep">to</span>
+                  <select
+                    value={visitEndMonth}
+                    onChange={(e) => setVisitEndMonth(e.target.value)}
+                    className="form-select-input"
+                  >
+                    <option value="">To Month</option>
+                    {MONTHS.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
+
               <div className="add-form-group">
                 <label>Description</label>
                 <textarea
@@ -942,7 +1133,7 @@ function HistoryOfPagodas() {
               </button>
             </div>
             <div className="modal-body">
-              {/* ===== EDIT MODAL IMAGE GALLERY - TOP ===== */}
+              {/* Edit Modal Image Gallery */}
               <div className="form-group" style={{ marginBottom: '20px' }}>
                 <label style={{ fontWeight: 'bold' }}>📸 Edit Images</label>
                 <div className="image-gallery-wrapper" style={{ marginTop: '10px' }}>
@@ -975,7 +1166,6 @@ function HistoryOfPagodas() {
                 </small>
               </div>
 
-              {/* Edit Form Fields */}
               <div className="form-group">
                 <label>Pagoda Name *</label>
                 <input
@@ -985,33 +1175,65 @@ function HistoryOfPagodas() {
                   onChange={handleInputChange}
                 />
               </div>
+
+              {/* Location Dropdown (Edit) */}
               <div className="form-group">
                 <label>Location *</label>
-                <input
-                  type="text"
+                <select
                   name="location"
                   value={formData.location}
                   onChange={handleInputChange}
-                />
+                  className="form-select-input"
+                >
+                  <option value="">-- Select Location --</option>
+                  {LOCATION_OPTIONS.map((loc) => (
+                    <option key={loc} value={loc}>{loc}</option>
+                  ))}
+                </select>
               </div>
+
+              {/* Tags Multi-Select (Edit) */}
               <div className="form-group">
-                <label>Tags (comma separated)</label>
-                <input
-                  type="text"
-                  name="tags"
-                  value={formData.tags}
-                  onChange={handleInputChange}
-                />
+                <label>Tags</label>
+                {renderTagMultiSelect({
+                  selected: editSelectedTags,
+                  toggle: toggleEditTag,
+                  remove: removeEditTag,
+                  isOpen: editTagDropdownOpen,
+                  setIsOpen: setEditTagDropdownOpen,
+                  dropdownRef: editTagDropdownRef,
+                  placeholder: 'Select tags...',
+                })}
               </div>
+
+              {/* Visit Date / Best Time - Two dropdowns (Edit) */}
               <div className="form-group">
                 <label>Visit Date / Best Time</label>
-                <input
-                  type="text"
-                  name="startDate"
-                  value={formData.startDate}
-                  onChange={handleInputChange}
-                />
+                <div className="date-range-row">
+                  <select
+                    value={editVisitStartMonth}
+                    onChange={(e) => setEditVisitStartMonth(e.target.value)}
+                    className="form-select-input"
+                  >
+                    <option value="">From Month</option>
+                    {MONTHS.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <span className="date-range-sep">to</span>
+                  <select
+                    value={editVisitEndMonth}
+                    onChange={(e) => setEditVisitEndMonth(e.target.value)}
+                    className="form-select-input"
+                  >
+                    <option value="">To Month</option>
+                    {MONTHS.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
+
               <div className="form-group">
                 <label>Description</label>
                 <textarea
@@ -1042,6 +1264,133 @@ function HistoryOfPagodas() {
           </div>
         </div>
       )}
+
+      {/* ==================== EXTRA STYLES ==================== */}
+      <style>{`
+        /* -------- Form Select Input -------- */
+        .form-select-input {
+          width: 100%;
+          padding: 10px 12px;
+          border: 1px solid #ced4da;
+          border-radius: 8px;
+          font-size: 14px;
+          background: ${isDarkMode ? '#2a2a2a' : '#fff'};
+          color: ${isDarkMode ? '#eee' : '#333'};
+          outline: none;
+          transition: border 0.2s;
+        }
+        .form-select-input:focus {
+          border-color: #6f42c1;
+        }
+
+        /* -------- Date Range Row -------- */
+        .date-range-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .date-range-row .form-select-input {
+          flex: 1;
+        }
+        .date-range-sep {
+          font-weight: 600;
+          color: ${isDarkMode ? '#bbb' : '#6c757d'};
+          font-size: 14px;
+        }
+
+        /* -------- Multi-Select -------- */
+        .multiselect-wrapper {
+          position: relative;
+          width: 100%;
+        }
+        .multiselect-control {
+          min-height: 42px;
+          padding: 6px 36px 6px 12px;
+          border: 1px solid #ced4da;
+          border-radius: 8px;
+          cursor: pointer;
+          background: ${isDarkMode ? '#2a2a2a' : '#fff'};
+          color: ${isDarkMode ? '#eee' : '#333'};
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          position: relative;
+          transition: border 0.2s;
+        }
+        .multiselect-control.open,
+        .multiselect-control:focus-within {
+          border-color: #6f42c1;
+        }
+        .multiselect-placeholder {
+          color: #999;
+          font-size: 14px;
+        }
+        .multiselect-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 5px;
+        }
+        .chip {
+          background: #6f42c1;
+          color: #fff;
+          font-size: 12px;
+          padding: 3px 8px;
+          border-radius: 12px;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .chip-remove {
+          background: transparent;
+          border: none;
+          color: #fff;
+          cursor: pointer;
+          font-size: 14px;
+          line-height: 1;
+          padding: 0 2px;
+        }
+        .multiselect-arrow {
+          position: absolute;
+          right: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #888;
+          font-size: 12px;
+          pointer-events: none;
+        }
+        .multiselect-dropdown {
+          position: absolute;
+          top: calc(100% + 4px);
+          left: 0;
+          right: 0;
+          background: ${isDarkMode ? '#2a2a2a' : '#fff'};
+          border: 1px solid #ced4da;
+          border-radius: 8px;
+          box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+          max-height: 220px;
+          overflow-y: auto;
+          z-index: 100;
+          padding: 6px;
+        }
+        .multiselect-option {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 10px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 14px;
+          color: ${isDarkMode ? '#eee' : '#333'};
+          transition: background 0.15s;
+        }
+        .multiselect-option:hover {
+          background: ${isDarkMode ? '#3a3a3a' : '#f3f0fa'};
+        }
+        .multiselect-option input {
+          cursor: pointer;
+          accent-color: #6f42c1;
+        }
+      `}</style>
     </div>
   );
 }
