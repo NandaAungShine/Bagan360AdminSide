@@ -19,7 +19,11 @@ function Settings() {
   // ---------- API States ----------
   const [loading, setLoading] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [togglingActive, setTogglingActive] = useState(false);
   const [error, setError] = useState(null);
+
+  // ---------- Shop Active State ----------
+  const [isShopActive, setIsShopActive] = useState(true);
 
   // ---------- Toast ----------
   const [toast, setToast] = useState({ visible: false, type: 'success', message: '' });
@@ -43,11 +47,32 @@ function Settings() {
   const API_BASE_SHOP = '/auth/shop';
   const BACKEND_URL = 'http://130.94.21.185:8000';
 
+  // ⭐ Shop On/Off endpoint (single endpoint — PUT with is_active in body)
+  //   PUT  /auth/shop/activate/
+  //   Body: { "is_active": true }  → Shop ON
+  //   Body: { "is_active": false } → Shop OFF
+  const ACTIVATE_API = `${BACKEND_URL}/auth/shop/activate/`;
+
   const handle401Error = () => {
     localStorage.removeItem('token');
     showToast('error', 'Session expired. Please login again.');
     setTimeout(() => { window.location.href = '/login'; }, 1500);
   };
+
+  // ---------- Role Check ----------
+  const getRole = () => {
+    const storedRole = localStorage.getItem('role');
+    if (storedRole) return String(storedRole).toLowerCase();
+    try {
+      const u = JSON.parse(localStorage.getItem('user') || '{}');
+      return String(u.role || '').toLowerCase();
+    } catch {
+      return '';
+    }
+  };
+  const userRole = getRole();
+  const isShopRole = userRole === 'shop';
+  const isAdminRole = userRole === 'admin' || userRole === 'superadmin';
 
   // ---------- Profile Data ----------
   const [adminProfile, setAdminProfile] = useState({
@@ -92,7 +117,7 @@ function Settings() {
   // ============ localStorage ထဲက user object ရှာဖွေခြင်း ============
   const getStoredUser = () => {
     const keys = ['user', 'userData', 'userInfo', 'shop', 'shopData', 'currentUser', 'profile', 'authUser', 'loggedUser'];
-    
+
     for (const key of keys) {
       try {
         const raw = localStorage.getItem(key);
@@ -100,7 +125,6 @@ function Settings() {
           const parsed = JSON.parse(raw);
           const obj = Array.isArray(parsed) ? parsed[0] : parsed;
           if (obj && typeof obj === 'object' && Object.keys(obj).length > 0) {
-            // nested user object ရှိရင် ပေါင်းစပ်
             if (obj.user && typeof obj.user === 'object') {
               return { ...obj, ...obj.user };
             }
@@ -116,12 +140,28 @@ function Settings() {
     return {};
   };
 
-  // Field အမျိုးမျိုးကနေ value ဆွဲထုတ်ခြင်း
   const pick = (...values) => {
     for (const v of values) {
       if (v !== undefined && v !== null && v !== '') return v;
     }
     return '';
+  };
+
+  // ---------- Determine Active Status ----------
+  const deriveActiveStatus = (data, storedUser) => {
+    const rawStatus = pick(
+      data.is_active, data.active, data.status, data.shop_status,
+      storedUser.is_active, storedUser.active, storedUser.status, storedUser.shop_status
+    );
+
+    if (typeof rawStatus === 'boolean') return rawStatus;
+    if (typeof rawStatus === 'number') return rawStatus === 1;
+    if (typeof rawStatus === 'string') {
+      const lower = rawStatus.toLowerCase();
+      if (['active', 'open', '1', 'true', 'yes'].includes(lower)) return true;
+      if (['inactive', 'closed', '0', 'false', 'no', 'disable', 'disabled'].includes(lower)) return false;
+    }
+    return true; // default active
   };
 
   // ---------- FETCH SHOP PROFILE ----------
@@ -141,11 +181,9 @@ function Settings() {
       const result = await response.json();
       console.log('✅ Shop Profile (Raw):', result);
 
-      // data က Array ဖြစ်နိုင်တယ်
       const rawData = result.data || result.shop || result.user || result || {};
       const data = Array.isArray(rawData) ? (rawData[0] || {}) : rawData;
 
-      // localStorage fallback
       const storedUser = getStoredUser();
 
       const mapped = {
@@ -248,7 +286,6 @@ function Settings() {
         ),
       };
 
-      // profile_url မရှိရင် slug/id နဲ့ auto build
       if (!mapped.profileUrl) {
         const key = mapped.slug || mapped.id;
         if (key) mapped.profileUrl = buildProfileUrl(key);
@@ -258,6 +295,10 @@ function Settings() {
 
       setAdminProfile(mapped);
       setTempProfile({ ...mapped });
+
+      const activeStatus = deriveActiveStatus(data, storedUser);
+      setIsShopActive(activeStatus);
+      console.log('🏪 Shop Active Status:', activeStatus);
     } catch (err) {
       setError(err.message);
       console.error('❌ Fetch Shop Profile Error:', err);
@@ -472,6 +513,115 @@ function Settings() {
     }
   };
 
+  // ============ ⭐ TOGGLE SHOP ACTIVE/INACTIVE ============
+  //  Endpoint: PUT  /auth/shop/activate/
+  //  Body    : { "is_active": true }  → Shop ON
+  //            { "is_active": false } → Shop OFF
+  const handleToggleActive = async () => {
+    if (!isShopRole) {
+      showToast('warning', 'Only shop accounts can toggle this.');
+      return;
+    }
+
+    const token = getToken();
+    if (!token) {
+      showToast('error', 'Please login first');
+      return;
+    }
+
+    const previousState = isShopActive;
+    const newState = !isShopActive;
+
+    setTogglingActive(true);
+    setIsShopActive(newState);
+
+    try {
+      console.log(`🔄 Toggling Shop → ${newState ? 'ON' : 'OFF'}`);
+      console.log(`🌐 PUT ${ACTIVATE_API}`);
+      console.log(`📦 Body: { is_active: ${newState} }`);
+
+      const response = await fetch(ACTIVATE_API, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          is_active: newState,
+        }),
+      });
+
+      if (response.status === 401) {
+        setIsShopActive(previousState);
+        return handle401Error();
+      }
+
+      let result = {};
+      try {
+        result = await response.json();
+      } catch {
+        // empty/non-JSON
+      }
+
+      console.log('✅ Toggle Response:', result);
+
+      if (!response.ok || result.success === false) {
+        setIsShopActive(previousState);
+        const msg =
+          result.message ||
+          result.error ||
+          `Failed to turn shop ${newState ? 'ON' : 'OFF'} (${response.status})`;
+        throw new Error(msg);
+      }
+
+      try {
+        const keys = ['user', 'userData', 'userInfo', 'shop', 'shopData', 'currentUser'];
+        for (const key of keys) {
+          try {
+            const raw = localStorage.getItem(key);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              const merged = {
+                ...parsed,
+                status: newState ? 'Active' : 'Inactive',
+                is_active: newState,
+                active: newState,
+              };
+              localStorage.setItem(key, JSON.stringify(merged));
+            }
+          } catch (e) { /* ignore */ }
+        }
+      } catch (e) {
+        console.warn('localStorage update failed:', e);
+      }
+
+      setAdminProfile((prev) => ({
+        ...prev,
+        status: newState ? 'Active' : 'Inactive',
+        raw: {
+          ...prev.raw,
+          status: newState ? 'active' : 'inactive',
+          is_active: newState,
+          active: newState,
+        },
+      }));
+
+      showToast(
+        'success',
+        newState
+          ? '🏪 Shop turned ON successfully!'
+          : '🔒 Shop turned OFF successfully!'
+      );
+    } catch (err) {
+      console.error(`❌ Toggle Shop Error:`, err);
+      setIsShopActive(previousState);
+      showToast('error', 'Error: ' + (err.message || 'Toggle failed'));
+    } finally {
+      setTogglingActive(false);
+    }
+  };
+
   // ---------- SAVE SHOP PROFILE (PUT) ----------
   const handleSaveProfile = async () => {
     if (!tempProfile.fullName || !tempProfile.fullName.trim()) {
@@ -528,7 +678,6 @@ function Settings() {
         throw new Error(result.message || 'Update failed');
       }
 
-      // ============ localStorage ကို update (key အားလုံး) ============
       try {
         const updateKeys = ['user', 'userData', 'userInfo', 'shop', 'shopData', 'currentUser', 'profile'];
         for (const key of updateKeys) {
@@ -552,7 +701,6 @@ function Settings() {
             }
           } catch (e) { /* ignore */ }
         }
-        // 'user' key မရှိသေးရင် အသစ်ဖန်တီး
         if (!localStorage.getItem('user')) {
           localStorage.setItem('user', JSON.stringify({
             name: tempProfile.fullName,
@@ -570,7 +718,6 @@ function Settings() {
         console.warn('localStorage update failed:', e);
       }
 
-      // Backend မှ fresh data ပြန်ဆွဲ
       await fetchProfile();
 
       setIsEditingProfile(false);
@@ -595,7 +742,6 @@ function Settings() {
     setIsEditingProfile(false);
   };
 
-  // Edit နှိပ်တဲ့အခါ adminProfile ကို tempProfile ထဲ copy
   const handleStartEdit = () => {
     console.log('✏️ Start Edit with:', adminProfile);
     setTempProfile({ ...adminProfile });
@@ -796,8 +942,195 @@ function Settings() {
             </div>
           </div>
 
+          {/* ============ SHOP ON / OFF TOGGLE ============ */}
+          <div
+            className="shop-active-section"
+            style={{
+              margin: '12px 0 0',
+              padding: '14px 16px',
+              borderRadius: 10,
+              background: isDarkMode
+                ? (isShopActive ? 'rgba(40,167,69,0.12)' : 'rgba(220,53,69,0.12)')
+                : (isShopActive ? '#e6f7ed' : '#fdeaec'),
+              border: `1px solid ${
+                isShopActive
+                  ? (isDarkMode ? 'rgba(40,167,69,0.35)' : '#b7e4c7')
+                  : (isDarkMode ? 'rgba(220,53,69,0.35)' : '#f5c6cb')
+              }`,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <i
+                  className={`bi ${
+                    isShopActive ? 'bi-shop-window' : 'bi-shop'
+                  }`}
+                  style={{
+                    fontSize: 22,
+                    color: isShopActive ? '#28a745' : '#dc3545',
+                  }}
+                ></i>
+                <div>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: 14,
+                      color: isDarkMode ? '#eee' : '#333',
+                    }}
+                  >
+                    Shop Status
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: isShopActive
+                        ? (isDarkMode ? '#b7eb8f' : '#155724')
+                        : (isDarkMode ? '#ffa39e' : '#721c24'),
+                    }}
+                  >
+                    {isShopActive
+                      ? 'Currently ON — customers can see your shop'
+                      : 'Currently OFF — hidden from customers'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Toggle Switch */}
+              <button
+                type="button"
+                onClick={handleToggleActive}
+                disabled={!isShopRole || togglingActive || loading}
+                title={
+                  !isShopRole
+                    ? 'Only shop accounts can toggle this'
+                    : isShopActive
+                      ? 'Click to turn shop OFF'
+                      : 'Click to turn shop ON'
+                }
+                style={{
+                  position: 'relative',
+                  width: 64,
+                  height: 32,
+                  borderRadius: 16,
+                  border: 'none',
+                  cursor: !isShopRole || togglingActive ? 'not-allowed' : 'pointer',
+                  background: isShopActive
+                    ? '#28a745'
+                    : (isDarkMode ? '#555' : '#ccc'),
+                  opacity: !isShopRole || togglingActive ? 0.55 : 1,
+                  transition: 'background 0.25s ease',
+                  flexShrink: 0,
+                }}
+              >
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 3,
+                    left: isShopActive ? 34 : 3,
+                    width: 26,
+                    height: 26,
+                    borderRadius: '50%',
+                    background: '#fff',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+                    transition: 'left 0.25s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {togglingActive ? (
+                    <i
+                      className="bi bi-arrow-repeat"
+                      style={{
+                        fontSize: 14,
+                        color: '#333',
+                        animation: 'spin 1s linear infinite',
+                      }}
+                    ></i>
+                  ) : (
+                    <i
+                      className={`bi ${
+                        isShopActive ? 'bi-check-lg' : 'bi-x-lg'
+                      }`}
+                      style={{
+                        fontSize: 12,
+                        color: isShopActive ? '#28a745' : '#999',
+                      }}
+                    ></i>
+                  )}
+                </span>
+              </button>
+            </div>
+
+            {/* Admin notice */}
+            {!isShopRole && (
+              <div
+                style={{
+                  marginTop: 10,
+                  fontSize: 11,
+                  color: isDarkMode ? '#bbb' : '#666',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  borderTop: `1px dashed ${
+                    isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
+                  }`,
+                  paddingTop: 8,
+                }}
+              >
+                <i className="bi bi-info-circle"></i>
+                {isAdminRole
+                  ? 'Admin accounts cannot toggle shop status. Only shop owners can.'
+                  : 'You do not have permission to toggle shop status.'}
+              </div>
+            )}
+
+            {/* Current status pill */}
+            <div
+              style={{
+                marginTop: 10,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: 11,
+              }}
+            >
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '2px 10px',
+                  borderRadius: 12,
+                  background: isShopActive
+                    ? (isDarkMode ? 'rgba(40,167,69,0.25)' : '#d4edda')
+                    : (isDarkMode ? 'rgba(220,53,69,0.25)' : '#f8d7da'),
+                  color: isShopActive
+                    ? (isDarkMode ? '#b7eb8f' : '#155724')
+                    : (isDarkMode ? '#ffa39e' : '#721c24'),
+                  fontWeight: 600,
+                }}
+              >
+                <i
+                  className={`bi ${
+                    isShopActive ? 'bi-circle-fill' : 'bi-circle'
+                  }`}
+                  style={{ fontSize: 8 }}
+                ></i>
+                {isShopActive ? 'ON' : 'OFF'}
+              </span>
+            </div>
+          </div>
+
           {/* ============ Shareable Profile Link ============ */}
-          <div className="profile-link-section">
+          <div className="profile-link-section" style={{ marginTop: 12 }}>
             <div className="profile-link-header">
               <i className="bi bi-link-45deg"></i>
               <span className="detail-label">Profile Link (Shareable)</span>
@@ -1362,6 +1695,14 @@ function Settings() {
           </div>
         </div>
       </div>
+
+      {/* Spinner keyframes (inline) */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

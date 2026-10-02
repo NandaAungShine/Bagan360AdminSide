@@ -3,6 +3,186 @@ import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 import axios from 'axios';
 
+/* ============================================================
+   FacilitiesEditor — moved OUTSIDE Hotels component
+   ------------------------------------------------------------
+   ဒီ component ကို Hotels function ရဲ့ အပြင်မှာ ထားလိုက်တဲ့အတွက်
+   တစ်ခါ render လုပ်တိုင်း React က "component type" အသစ် မဟုတ်တော့ဘူး။
+   ➜ Input တွေ unmount/remount မဖြစ်တော့ဘူး
+   ➜ Cursor က တစ်လုံးရေးပြီး နောက်ပြန်မခုန်တော့ဘူး
+============================================================ */
+const FacilitiesEditor = ({
+  facilities,
+  isDarkMode,
+  onAdd,
+  onRemove,
+  onUpdate,
+  onImageChange,
+  onImageRemove,
+}) => (
+  <div className="add-form-group">
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+      }}
+    >
+      <label style={{ margin: 0 }}>
+        Facilities (name · description · image)
+      </label>
+      <button
+        type="button"
+        onClick={onAdd}
+        style={{
+          padding: '4px 10px',
+          fontSize: 12,
+          borderRadius: 6,
+          border: '1px solid #17a2b8',
+          background: 'transparent',
+          color: '#17a2b8',
+          cursor: 'pointer',
+        }}
+      >
+        <i className="bi bi-plus-lg"></i> Add Facility
+      </button>
+    </div>
+
+    {facilities.length === 0 && (
+      <small style={{ opacity: 0.6 }}>No facilities added yet.</small>
+    )}
+
+    {facilities.map((f, index) => (
+      <div
+        key={f._key ?? index}
+        style={{
+          border: '1px solid rgba(128,128,128,0.3)',
+          borderRadius: 8,
+          padding: 10,
+          marginBottom: 10,
+          display: 'flex',
+          gap: 10,
+          alignItems: 'flex-start',
+          background: isDarkMode
+            ? 'rgba(255,255,255,0.02)'
+            : 'rgba(0,0,0,0.01)',
+        }}
+      >
+        {/* Facility Image */}
+        <div style={{ flexShrink: 0 }}>
+          <input
+            type="file"
+            accept="image/*"
+            id={`facility-image-${index}`}
+            style={{ display: 'none' }}
+            onChange={(e) => onImageChange(index, e.target.files[0])}
+          />
+          {f.imagePreview ? (
+            <div style={{ position: 'relative', width: 72, height: 72 }}>
+              <img
+                src={f.imagePreview}
+                alt="facility"
+                style={{
+                  width: 72,
+                  height: 72,
+                  objectFit: 'cover',
+                  borderRadius: 6,
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => onImageRemove(index)}
+                style={{
+                  position: 'absolute',
+                  top: -6,
+                  right: -6,
+                  width: 20,
+                  height: 20,
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: '#dc3545',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: 10,
+                  lineHeight: '20px',
+                  padding: 0,
+                }}
+              >
+                <i className="bi bi-x"></i>
+              </button>
+            </div>
+          ) : (
+            <label
+              htmlFor={`facility-image-${index}`}
+              style={{
+                width: 72,
+                height: 72,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '1px dashed rgba(128,128,128,0.5)',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontSize: 10,
+                gap: 2,
+                color: isDarkMode ? '#ccc' : '#666',
+              }}
+            >
+              <i className="bi bi-image" style={{ fontSize: 18 }}></i>
+              <span>Image</span>
+            </label>
+          )}
+        </div>
+
+        {/* Facility Name + Description */}
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+          }}
+        >
+          <input
+            type="text"
+            placeholder="Facility name (e.g. Free WiFi)"
+            value={f.name}
+            onChange={(e) => onUpdate(index, 'name', e.target.value)}
+          />
+          <textarea
+            rows={2}
+            placeholder="Facility description..."
+            value={f.description}
+            onChange={(e) => onUpdate(index, 'description', e.target.value)}
+          ></textarea>
+        </div>
+
+        {/* Remove Facility */}
+        <button
+          type="button"
+          onClick={() => onRemove(index)}
+          style={{
+            alignSelf: 'flex-start',
+            border: 'none',
+            background: 'transparent',
+            color: '#dc3545',
+            cursor: 'pointer',
+            padding: 4,
+          }}
+          title="Remove facility"
+        >
+          <i className="bi bi-trash"></i>
+        </button>
+      </div>
+    ))}
+  </div>
+);
+
+/* ============================================================
+   Hotels component
+============================================================ */
 function Hotels() {
   // ===== API Config =====
   const BACKEND_URL = 'http://130.94.21.185:8000';
@@ -23,16 +203,21 @@ function Hotels() {
   // ===== Data States =====
   const [hotels, setHotels] = useState([]);
 
-  // ===== Image States =====
+  // ===== Main Image States =====
   const [imagePreview, setImagePreview] = useState(null);
   const [imageFile, setImageFile] = useState(null);
 
-  // ===== Form Data (API fields only) =====
+  // ===== Gallery Images =====
+  const [hotelImages, setHotelImages] = useState([]);
+
+  // ===== Facilities (each: { _key, id, name, description, image, imagePreview, existingImage }) =====
+  const [facilities, setFacilities] = useState([]);
+
+  // ===== Form Data (NO location) =====
   const [formData, setFormData] = useState({
     name: '',
     price: '',
     description: '',
-    facilities: '', // comma separated string in UI
   });
 
   // ===== Toast & Confirm =====
@@ -70,7 +255,7 @@ function Hotels() {
     toastTimeoutRef.current = setTimeout(() => {
       setToast((prev) => ({ ...prev, visible: false }));
       toastTimeoutRef.current = null;
-    }, 3000);
+    }, 4000);
   };
 
   // ===== 401 Handler =====
@@ -80,6 +265,60 @@ function Hotels() {
     setTimeout(() => {
       window.location.href = '/login';
     }, 1500);
+  };
+
+  // ===== Error Message Extractor (HTML 500 page ကိုပါ ဖမ်းမယ်) =====
+  const extractErrorMessage = (err) => {
+    if (!err) return 'Unknown error';
+
+    const data = err.response?.data;
+
+    // No response data
+    if (!data) {
+      return err.message || `Request failed with status ${err.response?.status || '?'}`;
+    }
+
+    // Response is HTML (Laravel/Express 500 error page)
+    if (typeof data === 'string') {
+      // Try to extract specific PHP/Node error message
+      const patterns = [
+        /ReferenceError[^<\n\r]*/i,
+        /TypeError[^<\n\r]*/i,
+        /SyntaxError[^<\n\r]*/i,
+        /Call to a member function[^<\n\r]*/i,
+        /SQLSTATE[^<\n\r]*/i,
+        /Undefined variable[^<\n\r]*/i,
+        /Class "[^"]*" not found/i,
+        /Method [^ ]* does not exist/i,
+      ];
+      for (const p of patterns) {
+        const m = data.match(p);
+        if (m) return m[0].trim();
+      }
+      // Fall back: strip tags
+      const stripped = data.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      return stripped.substring(0, 250);
+    }
+
+    // Response is JSON object
+    if (typeof data === 'object') {
+      // Laravel validation errors
+      if (data.errors && typeof data.errors === 'object') {
+        const firstKey = Object.keys(data.errors)[0];
+        const firstMsg = Array.isArray(data.errors[firstKey])
+          ? data.errors[firstKey][0]
+          : data.errors[firstKey];
+        if (firstMsg) return `${firstKey}: ${firstMsg}`;
+      }
+      return (
+        data.message ||
+        data.error ||
+        data.detail ||
+        JSON.stringify(data).substring(0, 250)
+      );
+    }
+
+    return err.message || 'Unknown error';
   };
 
   // ===== Theme Handler =====
@@ -108,17 +347,13 @@ function Hotels() {
   const api = axios.create({
     baseURL: API_BASE,
     timeout: 30000,
-    headers: {
-      Accept: 'application/json',
-    },
+    headers: { Accept: 'application/json' },
   });
 
   api.interceptors.request.use(
     (config) => {
       const token = getToken();
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
+      if (token) config.headers.Authorization = `Bearer ${token}`;
       return config;
     },
     (error) => Promise.reject(error)
@@ -144,24 +379,84 @@ function Hotels() {
     return `${BACKEND_URL}/${trimmed}`;
   };
 
+  // ===== Unique key generator =====
+  let _facilityKeyCounter = 0;
+  const nextFacilityKey = () => `fac-${Date.now()}-${_facilityKeyCounter++}`;
+
   // ===== Map API → UI object =====
-  const mapApiToHotel = (hotel) => ({
-    id: hotel.id,
-    shop_id: hotel.shop_id,
-    shop_name: hotel.shop_name || '',
-    shop_address: hotel.shop_address || '',
-    shop_phone: hotel.shop_phone || '',
-    name: hotel.name || '',
-    price: hotel.price || 0,
-    // facilities ကို array အဖြစ်ထား၊ UI မှာ join ပြ
-    facilities: Array.isArray(hotel.facilities)
-      ? hotel.facilities
-      : hotel.facilities
-      ? String(hotel.facilities).split(',').map((s) => s.trim())
-      : [],
-    description: hotel.description || '',
-    image: getImageUrl(hotel.image),
-  });
+  const mapApiToHotel = (hotel) => {
+    // Facilities (array of { id, name, description, image? })
+    let rawFacilities = [];
+    if (Array.isArray(hotel.facilities)) {
+      rawFacilities = hotel.facilities;
+    } else if (typeof hotel.facilities === 'string' && hotel.facilities.trim()) {
+      try {
+        const parsed = JSON.parse(hotel.facilities);
+        rawFacilities = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        rawFacilities = hotel.facilities
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+    }
+
+    const mappedFacilities = rawFacilities
+      .map((f) => {
+        if (typeof f === 'string') {
+          return {
+            _key: nextFacilityKey(),
+            id: null,
+            name: f,
+            description: '',
+            image: null,
+            imagePreview: null,
+            existingImage: '',
+          };
+        }
+        return {
+          _key: nextFacilityKey(),
+          id: f.id ?? null,
+          name: f.name ?? '',
+          description: f.description ?? f.detail ?? '',
+          image: null,
+          imagePreview: f.image ? getImageUrl(f.image) : null,
+          existingImage: f.image || '',
+        };
+      })
+      .filter((f) => f.name || f.description || f.existingImage);
+
+    // Main image + gallery
+    let mainImage = hotel.image || null;
+    const galleryImages = [];
+
+    if (Array.isArray(hotel.images) && hotel.images.length > 0) {
+      hotel.images.forEach((img) => {
+        const path = typeof img === 'string' ? img : img?.image;
+        if (!path) return;
+        galleryImages.push({
+          id: img?.id ?? null,
+          preview: getImageUrl(path),
+          existing: path,
+        });
+      });
+    }
+
+    return {
+      id: hotel.id,
+      shop_id: hotel.shop_id,
+      shop_name: hotel.shop_name || '',
+      shop_address: hotel.shop_address || '',
+      shop_phone: hotel.shop_phone || '',
+      name: hotel.name || '',
+      price: hotel.price || 0,
+      facilities: mappedFacilities,
+      description: hotel.description || '',
+      image: getImageUrl(mainImage),
+      images: galleryImages,
+      raw: hotel,
+    };
+  };
 
   // ===== Fetch Hotels =====
   const fetchHotels = async () => {
@@ -197,7 +492,7 @@ function Hotels() {
     setFormData({ ...formData, [name]: value });
   };
 
-  // ===== Image Upload =====
+  // ===== Main Image Upload =====
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -210,31 +505,105 @@ function Hotels() {
     setImageFile(null);
   };
 
+  // ===== Gallery Upload =====
+  const handleGalleryUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const mapped = files.map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+      existing: '',
+    }));
+    setHotelImages((prev) => [...prev, ...mapped]);
+  };
+
+  const removeGalleryImage = (index) => {
+    setHotelImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // ===== Facilities CRUD =====
+  const addFacility = () => {
+    setFacilities((prev) => [
+      ...prev,
+      {
+        _key: nextFacilityKey(),
+        id: null,
+        name: '',
+        description: '',
+        image: null,
+        imagePreview: null,
+        existingImage: '',
+      },
+    ]);
+  };
+
+  const removeFacility = (index) => {
+    setFacilities((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const updateFacility = (index, field, value) => {
+    setFacilities((prev) =>
+      prev.map((f, i) => (i === index ? { ...f, [field]: value } : f))
+    );
+  };
+
+  const handleFacilityImage = (index, file) => {
+    if (!file) return;
+    const preview = URL.createObjectURL(file);
+    setFacilities((prev) =>
+      prev.map((f, i) =>
+        i === index ? { ...f, image: file, imagePreview: preview } : f
+      )
+    );
+  };
+
+  const removeFacilityImage = (index) => {
+    setFacilities((prev) =>
+      prev.map((f, i) =>
+        i === index
+          ? { ...f, image: null, imagePreview: null, existingImage: '' }
+          : f
+      )
+    );
+  };
+
   // ===== Reset Form =====
   const resetForm = () => {
-    setFormData({
-      name: '',
-      price: '',
-      description: '',
-      facilities: '',
-    });
+    setFormData({ name: '', price: '', description: '' });
     setImagePreview(null);
     setImageFile(null);
+    setHotelImages([]);
+    setFacilities([]);
   };
 
-  // ===== Facilities string → array =====
-  const parseFacilities = (str) => {
-    if (!str) return [];
-    return str
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+  // ===== Append facilities to FormData =====
+  const appendFacilities = (form, facilitiesList) => {
+    facilitiesList.forEach((f, i) => {
+      const name = (f.name || '').trim();
+      const description = (f.description || '').trim();
+      if (!name && !description && !f.image && !f.existingImage) return;
+
+      form.append(`facilities[${i}][name]`, name);
+      form.append(`facilities[${i}][description]`, description);
+
+      if (f.id != null) form.append(`facilities[${i}][id]`, f.id);
+
+      if (f.existingImage && !f.image) {
+        form.append(`facilities[${i}][existing_image]`, f.existingImage);
+      }
+      if (f.image) {
+        form.append(`facilities[${i}][image]`, f.image);
+      }
+    });
   };
 
-  // ===== Append facilities to FormData (Laravel: facilities[]) =====
-  const appendFacilities = (form, facilitiesStr) => {
-    const list = parseFacilities(facilitiesStr);
-    list.forEach((f) => form.append('facilities[]', f));
+  // ===== Append gallery =====
+  const appendHotelImages = (form, gallery) => {
+    gallery.forEach((img, i) => {
+      if (img.file) form.append(`hotel_images[${i}]`, img.file);
+      else if (img.existing)
+        form.append(`existing_hotel_images[${i}]`, img.existing);
+    });
   };
 
   // ===== ADD HOTEL =====
@@ -260,13 +629,17 @@ function Hotels() {
       form.append('name', formData.name.trim());
       form.append('price', formData.price);
       form.append('description', formData.description.trim());
-      appendFacilities(form, formData.facilities);
       form.append('image', imageFile);
 
-      // shop role ဆိုရင် shop_id ပို့
+      appendHotelImages(form, hotelImages);
+      appendFacilities(form, facilities);
+
       if (role === 'shop' && shopId) {
         form.append('shop_id', shopId);
       }
+
+      console.log('📤 POST', `${API_BASE}/create`);
+      console.log('FormData keys:', Array.from(form.keys()));
 
       const response = await axios.post(`${API_BASE}/create`, form, {
         headers: {
@@ -277,18 +650,36 @@ function Hotels() {
       });
 
       if (response.data?.success) {
-        showToast('success', response.data.message || 'Hotel added successfully!');
+        showToast(
+          'success',
+          response.data.message || 'Hotel added successfully!'
+        );
         resetForm();
         fetchHotels();
       } else {
-        showToast('error', response.data?.message || 'Failed to add hotel.');
+        showToast(
+          'error',
+          response.data?.message || 'Failed to add hotel.'
+        );
       }
     } catch (err) {
-      console.error('Add Error:', err);
+      console.error('❌ Add Error:', err);
+      console.error('❌ Response:', err.response?.data);
       if (err.response?.status === 401) return;
-      const errorData = err.response?.data;
-      const msg = errorData?.message || errorData?.error || err.message;
-      showToast('error', `Error: ${msg}`);
+
+      const status = err.response?.status;
+      const msg = extractErrorMessage(err);
+
+      if (status === 500) {
+        showToast(
+          'error',
+          `Backend 500 Error: ${msg}`
+        );
+        // Also set page-level error so it stays visible
+        setError(`Backend 500 Error: ${msg}`);
+      } else {
+        showToast('error', `Error: ${msg}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -311,15 +702,21 @@ function Hotels() {
         },
       });
       if (response.data?.success) {
-        showToast('success', response.data.message || 'Hotel deleted successfully!');
+        showToast(
+          'success',
+          response.data.message || 'Hotel deleted successfully!'
+        );
         fetchHotels();
       } else {
-        showToast('error', response.data?.message || 'Failed to delete hotel.');
+        showToast(
+          'error',
+          response.data?.message || 'Failed to delete hotel.'
+        );
       }
     } catch (err) {
       console.error('Delete Error:', err);
       if (err.response?.status === 401) return;
-      showToast('error', `Error: ${err.response?.data?.message || err.message}`);
+      showToast('error', `Error: ${extractErrorMessage(err)}`);
     } finally {
       setLoading(false);
     }
@@ -345,10 +742,30 @@ function Hotels() {
       name: h.name || '',
       price: h.price || '',
       description: h.description || '',
-      facilities: Array.isArray(h.facilities) ? h.facilities.join(', ') : '',
     });
     setImagePreview(h.image || null);
     setImageFile(null);
+
+    setHotelImages(
+      (h.images || []).map((img) => ({
+        id: img.id,
+        preview: img.preview,
+        existing: img.existing,
+      }))
+    );
+
+    setFacilities(
+      (h.facilities || []).map((f) => ({
+        _key: f._key ?? nextFacilityKey(),
+        id: f.id ?? null,
+        name: f.name || '',
+        description: f.description || '',
+        image: null,
+        imagePreview: f.imagePreview || null,
+        existingImage: f.existingImage || '',
+      }))
+    );
+
     setShowEditModal(true);
   };
 
@@ -372,19 +789,18 @@ function Hotels() {
       form.append('name', formData.name.trim());
       form.append('price', formData.price);
       form.append('description', formData.description.trim());
-      appendFacilities(form, formData.facilities);
-      if (imageFile) {
-        form.append('image', imageFile);
-      }
+      if (imageFile) form.append('image', imageFile);
 
-      if (role === 'shop' && shopId) {
-        form.append('shop_id', shopId);
-      }
+      appendHotelImages(form, hotelImages);
+      appendFacilities(form, facilities);
 
-      // ⭐ Laravel method spoofing — PUT + multipart/form-data အတွက်
+      if (role === 'shop' && shopId) form.append('shop_id', shopId);
+
+      // Laravel method spoofing for PUT + multipart
       form.append('_method', 'PUT');
 
-      // ⚠️ POST နဲ့ပို့ပြီး _method=PUT spoofing လုပ်
+      console.log('📤 POST', `${API_BASE}/update/${selectedHotelForEdit.id}`);
+
       const response = await axios.post(
         `${API_BASE}/update/${selectedHotelForEdit.id}`,
         form,
@@ -398,19 +814,29 @@ function Hotels() {
       );
 
       if (response.data?.success) {
-        showToast('success', response.data.message || 'Hotel updated successfully!');
+        showToast(
+          'success',
+          response.data.message || 'Hotel updated successfully!'
+        );
         setShowEditModal(false);
         setSelectedHotelForEdit(null);
         resetForm();
         fetchHotels();
       } else {
-        showToast('error', response.data?.message || 'Failed to update hotel.');
+        showToast(
+          'error',
+          response.data?.message || 'Failed to update hotel.'
+        );
       }
     } catch (err) {
-      console.error('Update Error:', err);
+      console.error('❌ Update Error:', err);
+      console.error('❌ Response:', err.response?.data);
       if (err.response?.status === 401) return;
-      const errorData = err.response?.data;
-      showToast('error', `Error: ${errorData?.message || err.message}`);
+      const msg = extractErrorMessage(err);
+      showToast('error', `Error: ${msg}`);
+      if (err.response?.status === 500) {
+        setError(`Backend 500 Error: ${msg}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -419,10 +845,15 @@ function Hotels() {
   // ===== FILTER =====
   const filteredHotels = hotels.filter((h) => {
     const term = searchTerm.toLowerCase();
+    const facilityText = (h.facilities || [])
+      .map((f) => `${f.name} ${f.description}`)
+      .join(' ')
+      .toLowerCase();
     return (
       (h.name || '').toLowerCase().includes(term) ||
       (h.description || '').toLowerCase().includes(term) ||
-      (h.shop_name || '').toLowerCase().includes(term)
+      (h.shop_name || '').toLowerCase().includes(term) ||
+      facilityText.includes(term)
     );
   });
 
@@ -442,7 +873,8 @@ function Hotels() {
         }
       };
       document.addEventListener('click', handleClickOutside);
-      return () => document.removeEventListener('click', handleClickOutside);
+      return () =>
+        document.removeEventListener('click', handleClickOutside);
     }, [isOpen]);
 
     return (
@@ -450,7 +882,9 @@ function Hotels() {
         <button className="card-actions-btn" onClick={handleToggle}>
           <i className="bi bi-three-dots-vertical"></i>
         </button>
-        <div className={`card-actions-dropdown ${isOpen ? 'show' : ''}`}>
+        <div
+          className={`card-actions-dropdown ${isOpen ? 'show' : ''}`}
+        >
           <button
             className="edit-btn"
             onClick={(e) => {
@@ -478,8 +912,15 @@ function Hotels() {
 
   // ===== RENDER =====
   return (
-    <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
-      <Header title="Hotels Management" onThemeChange={handleThemeChange} />
+    <div
+      className={`dashboard-container ${
+        isDarkMode ? 'dark-theme' : 'light-theme'
+      }`}
+    >
+      <Header
+        title="Hotels Management"
+        onThemeChange={handleThemeChange}
+      />
 
       {/* Toast */}
       {toast.visible && (
@@ -553,11 +994,15 @@ function Hotels() {
               alignItems: 'center',
               padding: '16px 20px',
               borderBottom: `1px solid ${
-                isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
+                isDarkMode
+                  ? 'rgba(255,255,255,0.1)'
+                  : 'rgba(0,0,0,0.1)'
               }`,
             }}
           >
-            <div style={{ fontWeight: 'bold', fontSize: '16px' }}>Bagan 360</div>
+            <div style={{ fontWeight: 'bold', fontSize: '16px' }}>
+              Bagan 360
+            </div>
             <button
               onClick={() => {
                 if (toastTimeoutRef.current)
@@ -599,7 +1044,7 @@ function Hotels() {
                 <i className="bi bi-info-circle-fill"></i>
               )}
             </div>
-            <div style={{ fontSize: '15px', lineHeight: '1.5' }}>
+            <div style={{ fontSize: '15px', lineHeight: '1.5', wordBreak: 'break-word' }}>
               {toast.message}
             </div>
           </div>
@@ -650,7 +1095,10 @@ function Hotels() {
             >
               <button
                 onClick={() =>
-                  setConfirmDialog({ ...confirmDialog, visible: false })
+                  setConfirmDialog({
+                    ...confirmDialog,
+                    visible: false,
+                  })
                 }
                 style={{
                   padding: '8px 16px',
@@ -665,8 +1113,12 @@ function Hotels() {
               </button>
               <button
                 onClick={() => {
-                  if (confirmDialog.onConfirm) confirmDialog.onConfirm();
-                  setConfirmDialog({ ...confirmDialog, visible: false });
+                  if (confirmDialog.onConfirm)
+                    confirmDialog.onConfirm();
+                  setConfirmDialog({
+                    ...confirmDialog,
+                    visible: false,
+                  });
                 }}
                 style={{
                   padding: '8px 16px',
@@ -698,9 +1150,28 @@ function Hotels() {
         </div>
       </div>
 
+      {/* Error banner (from fetch) */}
       {error && (
-        <div className="alert alert-danger" role="alert">
-          <i className="bi bi-exclamation-triangle-fill"></i> {error}
+        <div
+          className="alert alert-danger"
+          role="alert"
+          style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+        >
+          <i className="bi bi-exclamation-triangle-fill"></i>
+          <span style={{ flex: 1, wordBreak: 'break-word' }}>{error}</span>
+          <button
+            onClick={() => setError(null)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'inherit',
+              fontSize: 16,
+            }}
+            title="Dismiss"
+          >
+            <i className="bi bi-x-lg"></i>
+          </button>
         </div>
       )}
 
@@ -709,7 +1180,7 @@ function Hotels() {
         <div className="add-form-column">
           <div className="add-form-card">
             <div className="image-gallery-top">
-              <label className="gallery-label">Image *</label>
+              <label className="gallery-label">Main Image *</label>
               <div className="image-gallery-wrapper">
                 <div className="image-upload-box">
                   <input
@@ -719,7 +1190,10 @@ function Hotels() {
                     style={{ display: 'none' }}
                     id="image-upload-gallery"
                   />
-                  <label htmlFor="image-upload-gallery" className="upload-box">
+                  <label
+                    htmlFor="image-upload-gallery"
+                    className="upload-box"
+                  >
                     <i className="bi bi-plus-lg"></i>
                     <span>Add Image</span>
                   </label>
@@ -736,6 +1210,45 @@ function Hotels() {
                       </button>
                     </div>
                   )}
+                </div>
+              </div>
+            </div>
+
+            {/* Hotel Gallery */}
+            <div className="image-gallery-top" style={{ marginTop: 10 }}>
+              <label className="gallery-label">
+                Hotel Gallery (multiple)
+              </label>
+              <div className="image-gallery-wrapper">
+                <div className="image-upload-box">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleGalleryUpload}
+                    style={{ display: 'none' }}
+                    id="gallery-upload"
+                  />
+                  <label
+                    htmlFor="gallery-upload"
+                    className="upload-box"
+                  >
+                    <i className="bi bi-images"></i>
+                    <span>Add</span>
+                  </label>
+                </div>
+                <div className="image-scroll-container-horizontal">
+                  {hotelImages.map((img, idx) => (
+                    <div className="image-item" key={idx}>
+                      <img src={img.preview} alt={`g-${idx}`} />
+                      <button
+                        className="remove-image-btn"
+                        onClick={() => removeGalleryImage(idx)}
+                      >
+                        <i className="bi bi-x-lg"></i>
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -763,16 +1276,16 @@ function Hotels() {
                 />
               </div>
 
-              <div className="add-form-group">
-                <label>Facilities (comma separated)</label>
-                <textarea
-                  name="facilities"
-                  rows="2"
-                  placeholder="Free WiFi, Air Conditioning, Swimming Pool"
-                  value={formData.facilities}
-                  onChange={handleInputChange}
-                ></textarea>
-              </div>
+              {/* ===== Facilities Editor ===== */}
+              <FacilitiesEditor
+                facilities={facilities}
+                isDarkMode={isDarkMode}
+                onAdd={addFacility}
+                onRemove={removeFacility}
+                onUpdate={updateFacility}
+                onImageChange={handleFacilityImage}
+                onImageRemove={removeFacilityImage}
+              />
 
               <div className="add-form-group">
                 <label>Description *</label>
@@ -801,7 +1314,13 @@ function Hotels() {
           <div className="hotels-scroll-area">
             <div className="hotels-grid-2cols">
               {loading && hotels.length === 0 ? (
-                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '50px' }}>
+                <div
+                  style={{
+                    gridColumn: '1 / -1',
+                    textAlign: 'center',
+                    padding: '50px',
+                  }}
+                >
                   <div className="spinner-border" role="status">
                     <span className="visually-hidden">Loading...</span>
                   </div>
@@ -844,29 +1363,50 @@ function Hotels() {
                       <p className="hotel-price">
                         Starting from <span>MMK {hotel.price}</span>
                       </p>
+
                       {hotel.facilities?.length > 0 && (
                         <div
                           style={{
                             display: 'flex',
                             flexWrap: 'wrap',
-                            gap: '4px',
-                            marginTop: '6px',
+                            gap: '6px',
+                            marginTop: '8px',
                           }}
                         >
-                          {hotel.facilities.slice(0, 4).map((f, i) => (
-                            <span
-                              key={i}
-                              style={{
-                                fontSize: '11px',
-                                padding: '2px 8px',
-                                borderRadius: '10px',
-                                background: isDarkMode ? '#333' : '#eef',
-                                color: isDarkMode ? '#ccc' : '#335',
-                              }}
-                            >
-                              {f}
-                            </span>
-                          ))}
+                          {hotel.facilities
+                            .slice(0, 4)
+                            .map((f, i) => (
+                              <span
+                                key={i}
+                                title={f.description || f.name}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  fontSize: '11px',
+                                  padding: '2px 8px 2px 4px',
+                                  borderRadius: '10px',
+                                  background: isDarkMode
+                                    ? '#333'
+                                    : '#eef',
+                                  color: isDarkMode ? '#ccc' : '#335',
+                                }}
+                              >
+                                {f.imagePreview && (
+                                  <img
+                                    src={f.imagePreview}
+                                    alt=""
+                                    style={{
+                                      width: 16,
+                                      height: 16,
+                                      borderRadius: '50%',
+                                      objectFit: 'cover',
+                                    }}
+                                  />
+                                )}
+                                {f.name || f.description}
+                              </span>
+                            ))}
                           {hotel.facilities.length > 4 && (
                             <span
                               style={{
@@ -910,8 +1450,14 @@ function Hotels() {
 
       {/* EDIT MODAL */}
       {showEditModal && (
-        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onClick={() => setShowEditModal(false)}
+        >
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <h2>Edit Hotel</h2>
               <button
@@ -923,7 +1469,9 @@ function Hotels() {
             </div>
             <div className="modal-body">
               <div className="form-group">
-                <label>Image (Optional - upload new to replace)</label>
+                <label>
+                  Main Image (Optional - upload new to replace)
+                </label>
                 <div
                   className="image-gallery-wrapper"
                   style={{ marginBottom: '10px' }}
@@ -963,6 +1511,46 @@ function Hotels() {
                 </small>
               </div>
 
+              {/* Gallery in edit */}
+              <div className="form-group">
+                <label>Hotel Gallery</label>
+                <div
+                  className="image-gallery-wrapper"
+                  style={{ marginBottom: '10px' }}
+                >
+                  <div className="image-upload-box">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleGalleryUpload}
+                      style={{ display: 'none' }}
+                      id="edit-gallery-upload"
+                    />
+                    <label
+                      htmlFor="edit-gallery-upload"
+                      className="upload-box"
+                      style={{ width: '80px', height: '80px' }}
+                    >
+                      <i className="bi bi-images"></i>
+                    </label>
+                  </div>
+                  <div className="image-scroll-container-horizontal">
+                    {hotelImages.map((img, idx) => (
+                      <div className="image-item" key={idx}>
+                        <img src={img.preview} alt={`g-${idx}`} />
+                        <button
+                          className="remove-image-btn"
+                          onClick={() => removeGalleryImage(idx)}
+                        >
+                          <i className="bi bi-x-lg"></i>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <div className="form-group">
                 <label>Hotel / Plan Name *</label>
                 <input
@@ -983,15 +1571,16 @@ function Hotels() {
                 />
               </div>
 
-              <div className="form-group">
-                <label>Facilities (comma separated)</label>
-                <textarea
-                  name="facilities"
-                  rows="2"
-                  value={formData.facilities}
-                  onChange={handleInputChange}
-                ></textarea>
-              </div>
+              {/* Facilities Editor */}
+              <FacilitiesEditor
+                facilities={facilities}
+                isDarkMode={isDarkMode}
+                onAdd={addFacility}
+                onRemove={removeFacility}
+                onUpdate={updateFacility}
+                onImageChange={handleFacilityImage}
+                onImageRemove={removeFacilityImage}
+              />
 
               <div className="form-group">
                 <label>Description *</label>
