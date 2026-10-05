@@ -2,7 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
 const API_BASE = 'http://130.94.21.185:8000/api/admin';
-const IMAGE_BASE = 'http://130.94.21.185:8000'; 
+const IMAGE_BASE = 'http://130.94.21.185:8000';
+// ⭐ Same endpoint as Settings.jsx
+const SHOP_ACTIVATE_API = 'http://130.94.21.185:8000/auth/shop/activate/';
 
 // Helper to get token
 const getAuthHeaders = () => {
@@ -41,7 +43,7 @@ function EBikes() {
   // Toast notification state
   const [toast, setToast] = useState({
     visible: false,
-    type: 'success', 
+    type: 'success',
     message: '',
   });
   const toastTimeoutRef = useRef(null);
@@ -62,26 +64,32 @@ function EBikes() {
   const [confirmDialog, setConfirmDialog] = useState({
     visible: false,
     message: '',
-    onConfirm: null, 
+    onConfirm: null,
   });
 
   // Data states
   const [eBikeTypes, setEBikeTypes] = useState([]);
   const [eBikes, setEBikes] = useState([]);
-  const [allPrices, setAllPrices] = useState([]); 
-  const [pricesByBike, setPricesByBike] = useState({}); 
+  const [allPrices, setAllPrices] = useState([]);
+  const [pricesByBike, setPricesByBike] = useState({});
   const [loading, setLoading] = useState(false);
   const [loadingTypes, setLoadingTypes] = useState(false);
 
-  // ----- User role check (added) -----
+  // ⭐ Shop Active States
+  const [shopActive, setShopActive] = useState(true);
+  const [togglingShop, setTogglingShop] = useState(false);
+
+  // ----- User role check -----
   const user = (() => {
-    try { return JSON.parse(localStorage.getItem('user')); } 
+    try { return JSON.parse(localStorage.getItem('user')); }
     catch { return null; }
   })();
   const admin = user?.role === 'admin';
   const userId = user?.id;
+  const roleLower = (localStorage.getItem('role') || user?.role || '').toLowerCase();
+  const isShopRole = roleLower === 'shop';
 
-  // Form states – discount removed
+  // Form states
   const [formData, setFormData] = useState({
     type_id: '',
     name: '',
@@ -130,6 +138,152 @@ function EBikes() {
       window.location.href = '/login';
     }, 1500);
   };
+
+  /* ============================================================
+     ⭐ SHOP ACTIVE STATUS (same as Settings + Hotels)
+  ============================================================ */
+  const readShopStatusFromStorage = () => {
+    const keys = [
+      'user', 'userData', 'userInfo', 'shop', 'shopData',
+      'currentUser', 'profile', 'authUser', 'loggedUser',
+    ];
+    for (const key of keys) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        const obj = Array.isArray(parsed) ? parsed[0] : parsed;
+        if (!obj || typeof obj !== 'object') continue;
+        const status =
+          obj.is_active ?? obj.active ?? obj.shop_status ?? obj.status;
+        if (status === undefined || status === null || status === '') continue;
+        if (typeof status === 'boolean') return status;
+        if (typeof status === 'number') return status === 1;
+        if (typeof status === 'string') {
+          const s = status.toLowerCase();
+          if (['active', 'open', '1', 'true', 'yes'].includes(s)) return true;
+          if (
+            ['inactive', 'closed', '0', 'false', 'no', 'disabled', 'disable'].includes(s)
+          )
+            return false;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return true;
+  };
+
+  const writeShopStatusToStorage = (isActive) => {
+    const keys = [
+      'user', 'userData', 'userInfo', 'shop', 'shopData', 'currentUser',
+    ];
+    keys.forEach((key) => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        const merged = {
+          ...parsed,
+          status: isActive ? 'Active' : 'Inactive',
+          is_active: isActive,
+          active: isActive,
+        };
+        localStorage.setItem(key, JSON.stringify(merged));
+      } catch {
+        // ignore
+      }
+    });
+  };
+
+  const loadShopStatus = () => {
+    setShopActive(readShopStatusFromStorage());
+  };
+
+  // ⭐ Toggle shop (same endpoint & body as Settings.jsx)
+  const handleToggleShop = async () => {
+    if (!isShopRole) {
+      showToast('warning', 'Only shop accounts can toggle shop status.');
+      return;
+    }
+    const token = localStorage.getItem('token');
+    if (!token) {
+      showToast('error', 'Please login first');
+      return;
+    }
+
+    const previous = shopActive;
+    const next = !shopActive;
+
+    setTogglingShop(true);
+    setShopActive(next);
+
+    try {
+      console.log(`🔄 [EBikes] Toggling Shop → ${next ? 'ON' : 'OFF'}`);
+      console.log(`🌐 PUT ${SHOP_ACTIVATE_API}`);
+      console.log(`📦 Body: { is_active: ${next} }`);
+
+      const response = await fetch(SHOP_ACTIVATE_API, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ is_active: next }),
+      });
+
+      if (response.status === 401) {
+        setShopActive(previous);
+        return handle401Error();
+      }
+
+      let result = {};
+      try {
+        result = await response.json();
+      } catch {
+        // non-JSON
+      }
+
+      console.log('✅ [EBikes] Toggle Response:', result);
+
+      if (!response.ok || result.success === false) {
+        setShopActive(previous);
+        throw new Error(
+          result.message ||
+            result.error ||
+            `Failed to turn shop ${next ? 'ON' : 'OFF'} (${response.status})`
+        );
+      }
+
+      writeShopStatusToStorage(next);
+      showToast(
+        'success',
+        next
+          ? '🏪 Shop turned ON — e-bikes are visible to customers.'
+          : '🔒 Shop turned OFF — e-bikes are hidden from customers.'
+      );
+    } catch (err) {
+      console.error('❌ [EBikes] Toggle Shop Error:', err);
+      setShopActive(previous);
+      showToast('error', 'Error: ' + (err.message || 'Toggle failed'));
+    } finally {
+      setTogglingShop(false);
+    }
+  };
+
+  // Listen to storage changes (cross-tab sync)
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (!e.key) return;
+      const watched = [
+        'user', 'userData', 'userInfo', 'shop', 'shopData', 'currentUser',
+      ];
+      if (watched.includes(e.key)) loadShopStatus();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   // ----- Fetch Functions -----
   const fetchEBikeTypes = async () => {
@@ -194,6 +348,7 @@ function EBikes() {
 
   // Initial data load
   useEffect(() => {
+    loadShopStatus();
     fetchEBikeTypes();
     fetchEBikes();
     fetchAllPrices();
@@ -237,8 +392,17 @@ function EBikes() {
     setImagePreview(null);
   };
 
-  // ===== ADD E-BIKE (with shop_id logic) =====
+  // ===== ADD E-BIKE =====
   const handleAddEBike = async () => {
+    // ⭐ Block when shop is OFF
+    if (isShopRole && !shopActive) {
+      showToast(
+        'warning',
+        'Shop is currently OFF. Please turn the shop ON first.'
+      );
+      return;
+    }
+
     if (!formData.type_id || !formData.name || !formData.price) {
       showToast('warning', 'Please fill in required fields: Type, Name, Price.');
       return;
@@ -250,7 +414,6 @@ function EBikes() {
       return;
     }
 
-    // 👇 Get shopId and role from localStorage
     const shopId = localStorage.getItem('shopId');
     const role = localStorage.getItem('role');
 
@@ -262,7 +425,6 @@ function EBikes() {
     form.append('color', formData.color || '');
     form.append('location', formData.location || '');
     form.append('price', formData.price);
-    // discount omitted
     form.append('description', formData.description || '');
     form.append('battery_voltage', formData.battery_voltage || '');
     form.append('battery_capacity', formData.battery_capacity || '');
@@ -273,7 +435,6 @@ function EBikes() {
       form.append('image', imageFile);
     }
 
-    // 👇 If shop, add shop_id to payload
     if (role === 'shop' && shopId) {
       form.append('shop_id', shopId);
     }
@@ -412,7 +573,6 @@ function EBikes() {
       color: bike.color || '',
       location: bike.location || '',
       price: bike.price || '',
-      // discount omitted
       description: bike.description || '',
       battery_voltage: bike.battery_voltage || '',
       battery_capacity: bike.battery_capacity || '',
@@ -431,7 +591,7 @@ function EBikes() {
     setShowEditModal(true);
   };
 
-  // ===== CONFIRM EDIT (with shop_id logic) =====
+  // ===== CONFIRM EDIT =====
   const handleConfirmEdit = async () => {
     if (!selectedEBikeForEdit) return;
     if (!formData.type_id || !formData.name || !formData.price) {
@@ -445,7 +605,6 @@ function EBikes() {
       return;
     }
 
-    // 👇 Get shopId and role from localStorage
     const shopId = localStorage.getItem('shopId');
     const role = localStorage.getItem('role');
 
@@ -457,7 +616,6 @@ function EBikes() {
     form.append('color', formData.color || '');
     form.append('location', formData.location || '');
     form.append('price', formData.price);
-    // discount omitted
     form.append('description', formData.description || '');
     form.append('battery_voltage', formData.battery_voltage || '');
     form.append('battery_capacity', formData.battery_capacity || '');
@@ -468,7 +626,6 @@ function EBikes() {
       form.append('image', imageFile);
     }
 
-    // 👇 If shop, add shop_id to payload
     if (role === 'shop' && shopId) {
       form.append('shop_id', shopId);
     }
@@ -651,24 +808,20 @@ function EBikes() {
     setCardMenuBikeId(cardMenuBikeId === id ? null : id);
   };
 
-  // ===== Modified filteredEBikes – filter by shop_id (priority) or createdBy =====
+  // ===== Filtered EBikes =====
   const filteredEBikes = eBikes
     .filter(ebike => {
-      if (admin) return true; // Admin sees all
+      if (admin) return true;
 
-      // For shop accounts: first check if item has shop_id and matches localStorage shopId
       const shopId = localStorage.getItem('shopId');
       if (ebike.shop_id && shopId) {
-        // Convert both to string for safe comparison
         return String(ebike.shop_id) === String(shopId);
       }
 
-      // Fallback: filter by createdBy (if backend sends that)
       if (ebike.createdBy) {
         return ebike.createdBy === userId;
       }
 
-      // If neither, don't show (should not happen)
       return false;
     })
     .filter(ebike =>
@@ -753,16 +906,16 @@ function EBikes() {
             <h3 style={{ color: isDarkMode ? '#eee' : '#333', marginBottom: '12px' }}>Confirm Delete</h3>
             <p style={{ color: isDarkMode ? '#ccc' : '#555' }}>{confirmDialog.message}</p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-              <button 
+              <button
                 onClick={() => setConfirmDialog({ ...confirmDialog, visible: false })}
                 style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', background: 'transparent', cursor: 'pointer', color: isDarkMode ? '#ccc' : '#333' }}
               >
                 Cancel
               </button>
-              <button 
-                onClick={() => { 
-                  if(confirmDialog.onConfirm) confirmDialog.onConfirm(); 
-                  setConfirmDialog({ ...confirmDialog, visible: false }); 
+              <button
+                onClick={() => {
+                  if(confirmDialog.onConfirm) confirmDialog.onConfirm();
+                  setConfirmDialog({ ...confirmDialog, visible: false });
                 }}
                 style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc3545', color: '#fff', cursor: 'pointer' }}
               >
@@ -802,6 +955,164 @@ function EBikes() {
           )}
         </div>
       </div>
+
+      {/* ============================================================
+          ⭐ SHOP STATUS STRIP (same design as Hotels)
+      ============================================================ */}
+      {isShopRole && (
+        <div
+          style={{
+            margin: '0 20px 12px',
+            padding: '10px 14px',
+            borderRadius: 10,
+            background: shopActive
+              ? isDarkMode
+                ? 'rgba(40,167,69,0.12)'
+                : '#e6f7ed'
+              : isDarkMode
+              ? 'rgba(220,53,69,0.12)'
+              : '#fdeaec',
+            border: `1px solid ${
+              shopActive
+                ? isDarkMode
+                  ? 'rgba(40,167,69,0.35)'
+                  : '#b7e4c7'
+                : isDarkMode
+                ? 'rgba(220,53,69,0.35)'
+                : '#f5c6cb'
+            }`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <i
+              className={`bi ${shopActive ? 'bi-shop-window' : 'bi-shop'}`}
+              style={{
+                fontSize: 20,
+                color: shopActive ? '#28a745' : '#dc3545',
+              }}
+            ></i>
+            <div>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: 13,
+                  color: isDarkMode ? '#eee' : '#333',
+                }}
+              >
+                Shop Status
+              </div>
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: shopActive
+                    ? isDarkMode
+                      ? '#b7eb8f'
+                      : '#155724'
+                    : isDarkMode
+                    ? '#ffa39e'
+                    : '#721c24',
+                }}
+              >
+                {shopActive
+                  ? 'ON — E-Bikes are visible to customers'
+                  : 'OFF — E-Bikes are hidden from customers'}
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleToggleShop}
+            disabled={togglingShop || loading}
+            title={shopActive ? 'Click to turn shop OFF' : 'Click to turn shop ON'}
+            style={{
+              position: 'relative',
+              width: 58,
+              height: 30,
+              borderRadius: 15,
+              border: 'none',
+              cursor: togglingShop ? 'not-allowed' : 'pointer',
+              background: shopActive
+                ? '#28a745'
+                : isDarkMode
+                ? '#555'
+                : '#ccc',
+              opacity: togglingShop ? 0.55 : 1,
+              transition: 'background 0.25s ease',
+              flexShrink: 0,
+            }}
+          >
+            <span
+              style={{
+                position: 'absolute',
+                top: 3,
+                left: shopActive ? 31 : 3,
+                width: 24,
+                height: 24,
+                borderRadius: '50%',
+                background: '#fff',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+                transition: 'left 0.25s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {togglingShop ? (
+                <i
+                  className="bi bi-arrow-repeat"
+                  style={{
+                    fontSize: 13,
+                    color: '#333',
+                    animation: 'spin 1s linear infinite',
+                  }}
+                ></i>
+              ) : (
+                <i
+                  className={`bi ${shopActive ? 'bi-check-lg' : 'bi-x-lg'}`}
+                  style={{
+                    fontSize: 12,
+                    color: shopActive ? '#28a745' : '#999',
+                  }}
+                ></i>
+              )}
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* ⭐ Shop OFF warning */}
+      {isShopRole && !shopActive && (
+        <div
+          style={{
+            margin: '0 20px 12px',
+            padding: '10px 14px',
+            borderRadius: 8,
+            background: isDarkMode
+              ? 'rgba(250,173,20,0.15)'
+              : '#fff8e6',
+            border: `1px dashed ${
+              isDarkMode ? 'rgba(250,173,20,0.5)' : '#ffd591'
+            }`,
+            color: isDarkMode ? '#ffe58f' : '#874d00',
+            fontSize: 12.5,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <i className="bi bi-info-circle"></i>
+          <span>
+            Your shop is <b>OFF</b>. Customers cannot see these e-bikes or make
+            new bookings. Turn the shop ON above to make them visible again.
+          </span>
+        </div>
+      )}
 
       <div className="hotels-two-columns">
         {/* Left Column - Add Form */}
@@ -917,7 +1228,6 @@ function EBikes() {
                 </div>
               </div>
 
-              {/* Price field – now full width, discount removed */}
               <div className="add-form-group">
                 <label>Price (MMK) <span style={{ color: 'red' }}>*</span></label>
                 <input
@@ -1004,8 +1314,25 @@ function EBikes() {
                 ></textarea>
               </div>
 
-              <button className="add-item-btn-full" onClick={handleAddEBike}>
-                Add E-Bike
+              {/* ⭐ Add button — disabled when shop is OFF */}
+              <button
+                className="add-item-btn-full"
+                onClick={handleAddEBike}
+                disabled={isShopRole && !shopActive}
+                title={
+                  isShopRole && !shopActive
+                    ? 'Shop is OFF — turn it ON to add e-bikes'
+                    : 'Add E-Bike'
+                }
+                style={
+                  isShopRole && !shopActive
+                    ? { opacity: 0.55, cursor: 'not-allowed' }
+                    : undefined
+                }
+              >
+                {isShopRole && !shopActive
+                  ? 'Shop is OFF — Cannot Add'
+                  : 'Add E-Bike'}
               </button>
             </div>
           </div>
@@ -1029,6 +1356,11 @@ function EBikes() {
                       key={ebike.id}
                       className={`hotel-card-vertical ${selectedEBikeId === ebike.id ? 'selected' : ''}`}
                       onClick={() => toggleEBikeSelection(ebike.id)}
+                      style={
+                        isShopRole && !shopActive
+                          ? { opacity: 0.65, position: 'relative' }
+                          : undefined
+                      }
                     >
                       <div className="hotel-card-image" style={{ position: 'relative' }}>
                         <div className="image-slider">
@@ -1038,6 +1370,32 @@ function EBikes() {
                             <span style={{ fontSize: '48px' }}>{imageUrl}</span>
                           )}
                         </div>
+
+                        {/* ⭐ HIDDEN badge when shop OFF */}
+                        {isShopRole && !shopActive && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: 8,
+                              left: 8,
+                              zIndex: 5,
+                              padding: '3px 10px',
+                              borderRadius: 12,
+                              background: 'rgba(220,53,69,0.92)',
+                              color: '#fff',
+                              fontSize: 10.5,
+                              fontWeight: 600,
+                              letterSpacing: 0.3,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 5,
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                            }}
+                          >
+                            <i className="bi bi-eye-slash-fill"></i> HIDDEN
+                          </div>
+                        )}
+
                         <div className="selection-check">
                           {selectedEBikeId === ebike.id && <i className="bi bi-check-circle-fill"></i>}
                         </div>
@@ -1132,7 +1490,6 @@ function EBikes() {
                         </div>
                         <p className="hotel-price">
                           Per Day <span>MMK {ebike.price}</span>
-                          {/* Discount removed – no strikethrough or total_price */}
                         </p>
 
                         {/* Price Section */}
@@ -1287,7 +1644,6 @@ function EBikes() {
                   />
                 </div>
               </div>
-              {/* Price – full width, discount removed */}
               <div className="form-group">
                 <label>Price (MMK) <span style={{ color: 'red' }}>*</span></label>
                 <input
@@ -1474,6 +1830,14 @@ function EBikes() {
           </div>
         </div>
       )}
+
+      {/* Spinner keyframes for toggle loading icon */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

@@ -5,11 +5,6 @@ import axios from 'axios';
 
 /* ============================================================
    FacilitiesEditor — moved OUTSIDE Hotels component
-   ------------------------------------------------------------
-   ဒီ component ကို Hotels function ရဲ့ အပြင်မှာ ထားလိုက်တဲ့အတွက်
-   တစ်ခါ render လုပ်တိုင်း React က "component type" အသစ် မဟုတ်တော့ဘူး။
-   ➜ Input တွေ unmount/remount မဖြစ်တော့ဘူး
-   ➜ Cursor က တစ်လုံးရေးပြီး နောက်ပြန်မခုန်တော့ဘူး
 ============================================================ */
 const FacilitiesEditor = ({
   facilities,
@@ -187,6 +182,8 @@ function Hotels() {
   // ===== API Config =====
   const BACKEND_URL = 'http://130.94.21.185:8000';
   const API_BASE = `${BACKEND_URL}/api/admin/hotel`;
+  // ⭐ Same endpoint as Settings.jsx
+  const SHOP_ACTIVATE_API = `${BACKEND_URL}/auth/shop/activate/`;
 
   // ===== Theme =====
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -210,15 +207,19 @@ function Hotels() {
   // ===== Gallery Images =====
   const [hotelImages, setHotelImages] = useState([]);
 
-  // ===== Facilities (each: { _key, id, name, description, image, imagePreview, existingImage }) =====
+  // ===== Facilities =====
   const [facilities, setFacilities] = useState([]);
 
-  // ===== Form Data (NO location) =====
+  // ===== Form Data =====
   const [formData, setFormData] = useState({
     name: '',
     price: '',
     description: '',
   });
+
+  // ===== ⭐ Shop Active States =====
+  const [shopActive, setShopActive] = useState(true);
+  const [togglingShop, setTogglingShop] = useState(false);
 
   // ===== Toast & Confirm =====
   const [toast, setToast] = useState({
@@ -242,8 +243,9 @@ function Hotels() {
       return null;
     }
   })();
-  const role = localStorage.getItem('role') || user?.role || '';
+  const role = (localStorage.getItem('role') || user?.role || '').toLowerCase();
   const shopId = localStorage.getItem('shopId') || user?.shop_id || '';
+  const isShopRole = role === 'shop';
 
   // ===== Toast Helper =====
   const showToast = (type, message) => {
@@ -267,20 +269,14 @@ function Hotels() {
     }, 1500);
   };
 
-  // ===== Error Message Extractor (HTML 500 page ကိုပါ ဖမ်းမယ်) =====
+  // ===== Error Message Extractor =====
   const extractErrorMessage = (err) => {
     if (!err) return 'Unknown error';
-
     const data = err.response?.data;
-
-    // No response data
     if (!data) {
       return err.message || `Request failed with status ${err.response?.status || '?'}`;
     }
-
-    // Response is HTML (Laravel/Express 500 error page)
     if (typeof data === 'string') {
-      // Try to extract specific PHP/Node error message
       const patterns = [
         /ReferenceError[^<\n\r]*/i,
         /TypeError[^<\n\r]*/i,
@@ -295,14 +291,10 @@ function Hotels() {
         const m = data.match(p);
         if (m) return m[0].trim();
       }
-      // Fall back: strip tags
       const stripped = data.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       return stripped.substring(0, 250);
     }
-
-    // Response is JSON object
     if (typeof data === 'object') {
-      // Laravel validation errors
       if (data.errors && typeof data.errors === 'object') {
         const firstKey = Object.keys(data.errors)[0];
         const firstMsg = Array.isArray(data.errors[firstKey])
@@ -317,7 +309,6 @@ function Hotels() {
         JSON.stringify(data).substring(0, 250)
       );
     }
-
     return err.message || 'Unknown error';
   };
 
@@ -385,7 +376,6 @@ function Hotels() {
 
   // ===== Map API → UI object =====
   const mapApiToHotel = (hotel) => {
-    // Facilities (array of { id, name, description, image? })
     let rawFacilities = [];
     if (Array.isArray(hotel.facilities)) {
       rawFacilities = hotel.facilities;
@@ -426,7 +416,6 @@ function Hotels() {
       })
       .filter((f) => f.name || f.description || f.existingImage);
 
-    // Main image + gallery
     let mainImage = hotel.image || null;
     const galleryImages = [];
 
@@ -476,12 +465,180 @@ function Hotels() {
     }
   };
 
+  /* ============================================================
+     ⭐ SHOP ACTIVE STATUS
+     ------------------------------------------------------------
+     • localStorage ကနေ ဖတ် (Settings.jsx က save လုပ်ထားတာ)
+     • Backend API ကိုလည်း background မှာ sync
+     • Settings မှာ toggle လုပ်လိုက်ရင် Hotels မှာ auto-reflect
+  ============================================================ */
+  const readShopStatusFromStorage = () => {
+    const keys = [
+      'user',
+      'userData',
+      'userInfo',
+      'shop',
+      'shopData',
+      'currentUser',
+      'profile',
+      'authUser',
+      'loggedUser',
+    ];
+    for (const key of keys) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        const obj = Array.isArray(parsed) ? parsed[0] : parsed;
+        if (!obj || typeof obj !== 'object') continue;
+        const status =
+          obj.is_active ?? obj.active ?? obj.shop_status ?? obj.status;
+        if (status === undefined || status === null || status === '') continue;
+        if (typeof status === 'boolean') return status;
+        if (typeof status === 'number') return status === 1;
+        if (typeof status === 'string') {
+          const s = status.toLowerCase();
+          if (['active', 'open', '1', 'true', 'yes'].includes(s)) return true;
+          if (
+            ['inactive', 'closed', '0', 'false', 'no', 'disabled', 'disable'].includes(s)
+          )
+            return false;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return true; // default ON
+  };
+
+  const writeShopStatusToStorage = (isActive) => {
+    const keys = [
+      'user',
+      'userData',
+      'userInfo',
+      'shop',
+      'shopData',
+      'currentUser',
+    ];
+    keys.forEach((key) => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        const merged = {
+          ...parsed,
+          status: isActive ? 'Active' : 'Inactive',
+          is_active: isActive,
+          active: isActive,
+        };
+        localStorage.setItem(key, JSON.stringify(merged));
+      } catch {
+        // ignore
+      }
+    });
+  };
+
+  const loadShopStatus = () => {
+    setShopActive(readShopStatusFromStorage());
+  };
+
+  // ⭐ Toggle shop (same endpoint & body as Settings.jsx)
+  const handleToggleShop = async () => {
+    if (!isShopRole) {
+      showToast('warning', 'Only shop accounts can toggle shop status.');
+      return;
+    }
+    const token = getToken();
+    if (!token) {
+      showToast('error', 'Please login first');
+      return;
+    }
+
+    const previous = shopActive;
+    const next = !shopActive;
+
+    setTogglingShop(true);
+    setShopActive(next); // optimistic
+
+    try {
+      console.log(`🔄 [Hotels] Toggling Shop → ${next ? 'ON' : 'OFF'}`);
+      console.log(`🌐 PUT ${SHOP_ACTIVATE_API}`);
+      console.log(`📦 Body: { is_active: ${next} }`);
+
+      const response = await fetch(SHOP_ACTIVATE_API, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ is_active: next }),
+      });
+
+      if (response.status === 401) {
+        setShopActive(previous);
+        return handle401Error();
+      }
+
+      let result = {};
+      try {
+        result = await response.json();
+      } catch {
+        // non-JSON
+      }
+
+      console.log('✅ [Hotels] Toggle Response:', result);
+
+      if (!response.ok || result.success === false) {
+        setShopActive(previous);
+        throw new Error(
+          result.message ||
+            result.error ||
+            `Failed to turn shop ${next ? 'ON' : 'OFF'} (${response.status})`
+        );
+      }
+
+      writeShopStatusToStorage(next);
+      showToast(
+        'success',
+        next
+          ? '🏪 Shop turned ON — hotels are visible to customers.'
+          : '🔒 Shop turned OFF — hotels are hidden from customers.'
+      );
+    } catch (err) {
+      console.error('❌ [Hotels] Toggle Shop Error:', err);
+      setShopActive(previous);
+      showToast('error', 'Error: ' + (err.message || 'Toggle failed'));
+    } finally {
+      setTogglingShop(false);
+    }
+  };
+
+  // Listen to storage changes (if Settings toggled in another tab)
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (!e.key) return;
+      const watched = [
+        'user',
+        'userData',
+        'userInfo',
+        'shop',
+        'shopData',
+        'currentUser',
+      ];
+      if (watched.includes(e.key)) loadShopStatus();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   useEffect(() => {
     const token = getToken();
     if (!token) {
       setError('Please login first');
       return;
     }
+    loadShopStatus();
     fetchHotels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -608,6 +765,13 @@ function Hotels() {
 
   // ===== ADD HOTEL =====
   const handleAddHotel = async () => {
+    if (!shopActive) {
+      showToast(
+        'warning',
+        'Shop is currently OFF. Please turn the shop ON first.'
+      );
+      return;
+    }
     if (!formData.name || !formData.price || !formData.description) {
       showToast('warning', 'Name, Price and Description are required.');
       return;
@@ -671,11 +835,7 @@ function Hotels() {
       const msg = extractErrorMessage(err);
 
       if (status === 500) {
-        showToast(
-          'error',
-          `Backend 500 Error: ${msg}`
-        );
-        // Also set page-level error so it stays visible
+        showToast('error', `Backend 500 Error: ${msg}`);
         setError(`Backend 500 Error: ${msg}`);
       } else {
         showToast('error', `Error: ${msg}`);
@@ -796,7 +956,6 @@ function Hotels() {
 
       if (role === 'shop' && shopId) form.append('shop_id', shopId);
 
-      // Laravel method spoofing for PUT + multipart
       form.append('_method', 'PUT');
 
       console.log('📤 POST', `${API_BASE}/update/${selectedHotelForEdit.id}`);
@@ -1044,7 +1203,13 @@ function Hotels() {
                 <i className="bi bi-info-circle-fill"></i>
               )}
             </div>
-            <div style={{ fontSize: '15px', lineHeight: '1.5', wordBreak: 'break-word' }}>
+            <div
+              style={{
+                fontSize: '15px',
+                lineHeight: '1.5',
+                wordBreak: 'break-word',
+              }}
+            >
               {toast.message}
             </div>
           </div>
@@ -1113,8 +1278,7 @@ function Hotels() {
               </button>
               <button
                 onClick={() => {
-                  if (confirmDialog.onConfirm)
-                    confirmDialog.onConfirm();
+                  if (confirmDialog.onConfirm) confirmDialog.onConfirm();
                   setConfirmDialog({
                     ...confirmDialog,
                     visible: false,
@@ -1150,7 +1314,143 @@ function Hotels() {
         </div>
       </div>
 
-      {/* Error banner (from fetch) */}
+      {/* ============================================================
+          ⭐ SHOP STATUS STRIP — same design language as Settings
+          ------------------------------------------------------------
+          Shop OFF ဖြစ်နေရင် Hotels တွေ customer တွေဆီ မပေါ်ဘူးဆိုတာ
+          ဒီနေရာမှာ ရှင်းရှင်းလင်းလင်း ပြပေးတယ်။
+          Design Flow Frame မပြောင်း — search bar ရဲ့ အောက်မှာတင်
+          banner တစ်ခုအနေနဲ့ ထည့်ထားတယ်။
+      ============================================================ */}
+      {isShopRole && (
+        <div
+          style={{
+            margin: '0 20px 12px',
+            padding: '10px 14px',
+            borderRadius: 10,
+            background: shopActive
+              ? isDarkMode
+                ? 'rgba(40,167,69,0.12)'
+                : '#e6f7ed'
+              : isDarkMode
+              ? 'rgba(220,53,69,0.12)'
+              : '#fdeaec',
+            border: `1px solid ${
+              shopActive
+                ? isDarkMode
+                  ? 'rgba(40,167,69,0.35)'
+                  : '#b7e4c7'
+                : isDarkMode
+                ? 'rgba(220,53,69,0.35)'
+                : '#f5c6cb'
+            }`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <i
+              className={`bi ${shopActive ? 'bi-shop-window' : 'bi-shop'}`}
+              style={{
+                fontSize: 20,
+                color: shopActive ? '#28a745' : '#dc3545',
+              }}
+            ></i>
+            <div>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: 13,
+                  color: isDarkMode ? '#eee' : '#333',
+                }}
+              >
+                Shop Status
+              </div>
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: shopActive
+                    ? isDarkMode
+                      ? '#b7eb8f'
+                      : '#155724'
+                    : isDarkMode
+                    ? '#ffa39e'
+                    : '#721c24',
+                }}
+              >
+                {shopActive
+                  ? 'ON — Hotels are visible to customers'
+                  : 'OFF — Hotels are hidden from customers'}
+              </div>
+            </div>
+          </div>
+
+          {/* Toggle Switch */}
+          <button
+            type="button"
+            onClick={handleToggleShop}
+            disabled={togglingShop || loading}
+            title={shopActive ? 'Click to turn shop OFF' : 'Click to turn shop ON'}
+            style={{
+              position: 'relative',
+              width: 58,
+              height: 30,
+              borderRadius: 15,
+              border: 'none',
+              cursor: togglingShop ? 'not-allowed' : 'pointer',
+              background: shopActive
+                ? '#28a745'
+                : isDarkMode
+                ? '#555'
+                : '#ccc',
+              opacity: togglingShop ? 0.55 : 1,
+              transition: 'background 0.25s ease',
+              flexShrink: 0,
+            }}
+          >
+            <span
+              style={{
+                position: 'absolute',
+                top: 3,
+                left: shopActive ? 31 : 3,
+                width: 24,
+                height: 24,
+                borderRadius: '50%',
+                background: '#fff',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+                transition: 'left 0.25s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {togglingShop ? (
+                <i
+                  className="bi bi-arrow-repeat"
+                  style={{
+                    fontSize: 13,
+                    color: '#333',
+                    animation: 'spin 1s linear infinite',
+                  }}
+                ></i>
+              ) : (
+                <i
+                  className={`bi ${shopActive ? 'bi-check-lg' : 'bi-x-lg'}`}
+                  style={{
+                    fontSize: 12,
+                    color: shopActive ? '#28a745' : '#999',
+                  }}
+                ></i>
+              )}
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* Error banner */}
       {error && (
         <div
           className="alert alert-danger"
@@ -1172,6 +1472,34 @@ function Hotels() {
           >
             <i className="bi bi-x-lg"></i>
           </button>
+        </div>
+      )}
+
+      {/* ⭐ Shop OFF warning (only shows when OFF) */}
+      {isShopRole && !shopActive && (
+        <div
+          style={{
+            margin: '0 20px 12px',
+            padding: '10px 14px',
+            borderRadius: 8,
+            background: isDarkMode
+              ? 'rgba(250,173,20,0.15)'
+              : '#fff8e6',
+            border: `1px dashed ${
+              isDarkMode ? 'rgba(250,173,20,0.5)' : '#ffd591'
+            }`,
+            color: isDarkMode ? '#ffe58f' : '#874d00',
+            fontSize: 12.5,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <i className="bi bi-info-circle"></i>
+          <span>
+            Your shop is <b>OFF</b>. Customers cannot see these hotels or add
+            new bookings. Turn the shop ON above to make them visible again.
+          </span>
         </div>
       )}
 
@@ -1229,10 +1557,7 @@ function Hotels() {
                     style={{ display: 'none' }}
                     id="gallery-upload"
                   />
-                  <label
-                    htmlFor="gallery-upload"
-                    className="upload-box"
-                  >
+                  <label htmlFor="gallery-upload" className="upload-box">
                     <i className="bi bi-images"></i>
                     <span>Add</span>
                   </label>
@@ -1276,7 +1601,7 @@ function Hotels() {
                 />
               </div>
 
-              {/* ===== Facilities Editor ===== */}
+              {/* Facilities Editor */}
               <FacilitiesEditor
                 facilities={facilities}
                 isDarkMode={isDarkMode}
@@ -1298,12 +1623,27 @@ function Hotels() {
                 ></textarea>
               </div>
 
+              {/* ⭐ Add button — disabled when shop is OFF */}
               <button
                 className="add-item-btn-full"
                 onClick={handleAddHotel}
-                disabled={loading}
+                disabled={loading || (isShopRole && !shopActive)}
+                title={
+                  isShopRole && !shopActive
+                    ? 'Shop is OFF — turn it ON to add hotels'
+                    : 'Add Hotel'
+                }
+                style={
+                  isShopRole && !shopActive
+                    ? { opacity: 0.55, cursor: 'not-allowed' }
+                    : undefined
+                }
               >
-                {loading ? 'Adding...' : 'Add Hotel'}
+                {loading
+                  ? 'Adding...'
+                  : isShopRole && !shopActive
+                  ? 'Shop is OFF — Cannot Add'
+                  : 'Add Hotel'}
               </button>
             </div>
           </div>
@@ -1328,7 +1668,15 @@ function Hotels() {
                 </div>
               ) : filteredHotels.length > 0 ? (
                 filteredHotels.map((hotel) => (
-                  <div key={hotel.id} className="hotel-card-vertical">
+                  <div
+                    key={hotel.id}
+                    className="hotel-card-vertical"
+                    style={
+                      isShopRole && !shopActive
+                        ? { opacity: 0.65, position: 'relative' }
+                        : undefined
+                    }
+                  >
                     <div className="hotel-card-image">
                       <div className="image-slider">
                         <img
@@ -1345,6 +1693,32 @@ function Hotels() {
                           }}
                         />
                       </div>
+
+                      {/* ⭐ Hidden badge when shop is OFF */}
+                      {isShopRole && !shopActive && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: 8,
+                            left: 8,
+                            zIndex: 5,
+                            padding: '3px 10px',
+                            borderRadius: 12,
+                            background: 'rgba(220,53,69,0.92)',
+                            color: '#fff',
+                            fontSize: 10.5,
+                            fontWeight: 600,
+                            letterSpacing: 0.3,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                          }}
+                        >
+                          <i className="bi bi-eye-slash-fill"></i> HIDDEN
+                        </div>
+                      )}
+
                       <CardActions hotelId={hotel.id} />
                     </div>
                     <div className="hotel-card-info">
@@ -1373,40 +1747,36 @@ function Hotels() {
                             marginTop: '8px',
                           }}
                         >
-                          {hotel.facilities
-                            .slice(0, 4)
-                            .map((f, i) => (
-                              <span
-                                key={i}
-                                title={f.description || f.name}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: 4,
-                                  fontSize: '11px',
-                                  padding: '2px 8px 2px 4px',
-                                  borderRadius: '10px',
-                                  background: isDarkMode
-                                    ? '#333'
-                                    : '#eef',
-                                  color: isDarkMode ? '#ccc' : '#335',
-                                }}
-                              >
-                                {f.imagePreview && (
-                                  <img
-                                    src={f.imagePreview}
-                                    alt=""
-                                    style={{
-                                      width: 16,
-                                      height: 16,
-                                      borderRadius: '50%',
-                                      objectFit: 'cover',
-                                    }}
-                                  />
-                                )}
-                                {f.name || f.description}
-                              </span>
-                            ))}
+                          {hotel.facilities.slice(0, 4).map((f, i) => (
+                            <span
+                              key={i}
+                              title={f.description || f.name}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                fontSize: '11px',
+                                padding: '2px 8px 2px 4px',
+                                borderRadius: '10px',
+                                background: isDarkMode ? '#333' : '#eef',
+                                color: isDarkMode ? '#ccc' : '#335',
+                              }}
+                            >
+                              {f.imagePreview && (
+                                <img
+                                  src={f.imagePreview}
+                                  alt=""
+                                  style={{
+                                    width: 16,
+                                    height: 16,
+                                    borderRadius: '50%',
+                                    objectFit: 'cover',
+                                  }}
+                                />
+                              )}
+                              {f.name || f.description}
+                            </span>
+                          ))}
                           {hotel.facilities.length > 4 && (
                             <span
                               style={{
@@ -1610,6 +1980,14 @@ function Hotels() {
           </div>
         </div>
       )}
+
+      {/* Spinner keyframes (for toggle loading icon) */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

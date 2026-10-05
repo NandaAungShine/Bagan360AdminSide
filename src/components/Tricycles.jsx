@@ -1,14 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
+// ⭐ Same endpoint as Settings/Hotels/EBikes/Restaurants
+const SHOP_ACTIVATE_API = 'http://130.94.21.185:8000/auth/shop/activate/';
+
 function Tricycles() {
   // ===== User Role Check =====
   const user = (() => {
-    try { return JSON.parse(localStorage.getItem('user')); } 
+    try { return JSON.parse(localStorage.getItem('user')); }
     catch { return null; }
   })();
   const admin = user?.role === 'admin';
   const userId = user?.id;
+  const roleLower = (localStorage.getItem('role') || user?.role || '').toLowerCase();
+  const isShopRole = roleLower === 'shop';
 
   // ===== Theme =====
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -35,6 +40,10 @@ function Tricycles() {
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [error, setError] = useState(null);
   const [categoryFormData, setCategoryFormData] = useState({ name: '', description: '' });
+
+  // ===== ⭐ Shop Active States =====
+  const [shopActive, setShopActive] = useState(true);
+  const [togglingShop, setTogglingShop] = useState(false);
 
   // ===== Toast & Confirm States =====
   const [toast, setToast] = useState({
@@ -74,10 +83,10 @@ function Tricycles() {
 
   // ===== Form State =====
   const [formData, setFormData] = useState({
-    name: '',           
-    type: '',           // category_id
+    name: '',
+    type: '',
     capacity: '',
-    price: '',          
+    price: '',
     pricePerDay: '',
     description: '',
     features: '',
@@ -96,6 +105,152 @@ function Tricycles() {
     'Content-Type': 'application/json',
   });
 
+  /* ============================================================
+     ⭐ SHOP ACTIVE STATUS (same as Settings/Hotels/EBikes/Restaurants)
+  ============================================================ */
+  const readShopStatusFromStorage = () => {
+    const keys = [
+      'user', 'userData', 'userInfo', 'shop', 'shopData',
+      'currentUser', 'profile', 'authUser', 'loggedUser',
+    ];
+    for (const key of keys) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        const obj = Array.isArray(parsed) ? parsed[0] : parsed;
+        if (!obj || typeof obj !== 'object') continue;
+        const status =
+          obj.is_active ?? obj.active ?? obj.shop_status ?? obj.status;
+        if (status === undefined || status === null || status === '') continue;
+        if (typeof status === 'boolean') return status;
+        if (typeof status === 'number') return status === 1;
+        if (typeof status === 'string') {
+          const s = status.toLowerCase();
+          if (['active', 'open', '1', 'true', 'yes'].includes(s)) return true;
+          if (
+            ['inactive', 'closed', '0', 'false', 'no', 'disabled', 'disable'].includes(s)
+          )
+            return false;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return true;
+  };
+
+  const writeShopStatusToStorage = (isActive) => {
+    const keys = [
+      'user', 'userData', 'userInfo', 'shop', 'shopData', 'currentUser',
+    ];
+    keys.forEach((key) => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        const merged = {
+          ...parsed,
+          status: isActive ? 'Active' : 'Inactive',
+          is_active: isActive,
+          active: isActive,
+        };
+        localStorage.setItem(key, JSON.stringify(merged));
+      } catch {
+        // ignore
+      }
+    });
+  };
+
+  const loadShopStatus = () => {
+    setShopActive(readShopStatusFromStorage());
+  };
+
+  // ⭐ Toggle shop (same endpoint & body as Settings.jsx)
+  const handleToggleShop = async () => {
+    if (!isShopRole) {
+      showToast('warning', 'Only shop accounts can toggle shop status.');
+      return;
+    }
+    const token = getToken();
+    if (!token) {
+      showToast('error', 'Please login first');
+      return;
+    }
+
+    const previous = shopActive;
+    const next = !shopActive;
+
+    setTogglingShop(true);
+    setShopActive(next);
+
+    try {
+      console.log(`🔄 [Tricycles] Toggling Shop → ${next ? 'ON' : 'OFF'}`);
+      console.log(`🌐 PUT ${SHOP_ACTIVATE_API}`);
+      console.log(`📦 Body: { is_active: ${next} }`);
+
+      const response = await fetch(SHOP_ACTIVATE_API, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ is_active: next }),
+      });
+
+      if (response.status === 401) {
+        setShopActive(previous);
+        return handle401Error();
+      }
+
+      let result = {};
+      try {
+        result = await response.json();
+      } catch {
+        // non-JSON
+      }
+
+      console.log('✅ [Tricycles] Toggle Response:', result);
+
+      if (!response.ok || result.success === false) {
+        setShopActive(previous);
+        throw new Error(
+          result.message ||
+            result.error ||
+            `Failed to turn shop ${next ? 'ON' : 'OFF'} (${response.status})`
+        );
+      }
+
+      writeShopStatusToStorage(next);
+      showToast(
+        'success',
+        next
+          ? '🏪 Shop turned ON — tricycles are visible to customers.'
+          : '🔒 Shop turned OFF — tricycles are hidden from customers.'
+      );
+    } catch (err) {
+      console.error('❌ [Tricycles] Toggle Shop Error:', err);
+      setShopActive(previous);
+      showToast('error', 'Error: ' + (err.message || 'Toggle failed'));
+    } finally {
+      setTogglingShop(false);
+    }
+  };
+
+  // Listen to storage changes (cross-tab sync)
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (!e.key) return;
+      const watched = [
+        'user', 'userData', 'userInfo', 'shop', 'shopData', 'currentUser',
+      ];
+      if (watched.includes(e.key)) loadShopStatus();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   // ========== FETCH CATEGORIES ==========
   const fetchCategories = async () => {
     setLoadingCategories(true);
@@ -113,10 +268,10 @@ function Tricycles() {
 
       const result = await response.json();
       console.log('✅ Categories loaded:', result);
-      
+
       const list = result.data || result || [];
       setCategories(list);
-      
+
       if (list.length === 0) {
         showToast('info', 'No categories found. Please add a category first.');
       }
@@ -164,11 +319,11 @@ function Tricycles() {
 
       const result = await response.json();
       console.log('✅ Category created:', result);
-      
+
       showToast('success', 'Category created successfully!');
       setShowCategoryModal(false);
       setCategoryFormData({ name: '', description: '' });
-      await fetchCategories(); // Refresh category list
+      await fetchCategories();
     } catch (err) {
       console.error('❌ Create Category Error:', err);
       showToast('error', 'Error: ' + err.message);
@@ -191,10 +346,10 @@ function Tricycles() {
         const text = await response.text();
         throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
       }
-      
+
       const result = await response.json();
       console.log('✅ ThoneBane List:', result);
-      
+
       const list = result.data || result || [];
       setTricycles(list);
     } catch (err) {
@@ -214,6 +369,7 @@ function Tricycles() {
       showToast('error', 'Please login first');
       return;
     }
+    loadShopStatus();
     fetchCategories();
     fetchTricycles();
   }, []);
@@ -266,6 +422,15 @@ function Tricycles() {
 
   // ========== CREATE TRICYCLE ==========
   const handleAddTricycle = async () => {
+    // ⭐ Block when shop is OFF
+    if (isShopRole && !shopActive) {
+      showToast(
+        'warning',
+        'Shop is currently OFF. Please turn the shop ON first.'
+      );
+      return;
+    }
+
     if (!formData.name || !formData.price || !formData.type) {
       showToast('warning', 'Please fill in Name, Price, and select a Type.');
       return;
@@ -284,7 +449,7 @@ function Tricycles() {
     setError(null);
     try {
       const form = new FormData();
-      
+
       form.append('name', String(formData.name || '').trim());
       form.append('category_id', String(formData.type || '').trim());
       form.append('capacity', String(formData.capacity || '').trim());
@@ -295,7 +460,7 @@ function Tricycles() {
       form.append('location', String(formData.location || '').trim());
       form.append('phone', String(formData.contactNumber || '').trim());
       form.append('status', 'available');
-      
+
       if (imageFile) {
         form.append('image', imageFile);
       }
@@ -328,14 +493,14 @@ function Tricycles() {
         }
         throw new Error(errorMsg);
       }
-      
+
       const result = await response.json();
       console.log('✅ Create Response:', result);
-      
+
       if (result.success === false) {
         throw new Error(result.message || 'Create failed');
       }
-      
+
       await fetchTricycles();
       resetForm();
       showToast('success', 'Tricycle added successfully!');
@@ -362,13 +527,13 @@ function Tricycles() {
         method: 'DELETE',
         headers: getHeaders(),
       });
-      
+
       if (response.status === 401) return handle401Error();
       if (!response.ok) {
         const text = await response.text();
         throw new Error(text.substring(0, 100) || 'Delete failed');
       }
-      
+
       await fetchTricycles();
       setSelectedId(null);
       showToast('success', 'Tricycle deleted successfully!');
@@ -404,13 +569,13 @@ function Tricycles() {
         method: 'DELETE',
         headers: getHeaders(),
       });
-      
+
       if (response.status === 401) return handle401Error();
       if (!response.ok) {
         const text = await response.text();
         throw new Error(text.substring(0, 100) || 'Delete failed');
       }
-      
+
       await fetchTricycles();
       showToast('success', 'Tricycle deleted successfully!');
     } catch (err) {
@@ -481,12 +646,12 @@ function Tricycles() {
 
     const shopId = localStorage.getItem('shopId');
     const role = localStorage.getItem('role');
-    
+
     setLoading(true);
     setError(null);
     try {
       const form = new FormData();
-      
+
       form.append('name', String(formData.name || '').trim());
       form.append('category_id', String(formData.type || '').trim());
       form.append('capacity', String(formData.capacity || '').trim());
@@ -497,7 +662,7 @@ function Tricycles() {
       form.append('location', String(formData.location || '').trim());
       form.append('phone', String(formData.contactNumber || '').trim());
       form.append('status', 'available');
-      
+
       if (imageFile) {
         form.append('image', imageFile);
       }
@@ -530,14 +695,14 @@ function Tricycles() {
         }
         throw new Error(errorMsg);
       }
-      
+
       const result = await response.json();
       console.log('✅ Update Response:', result);
-      
+
       if (result.success === false) {
         throw new Error(result.message || 'Update failed');
       }
-      
+
       await fetchTricycles();
       setShowEditModal(false);
       setSelectedId(null);
@@ -716,6 +881,165 @@ function Tricycles() {
         </div>
       </div>
 
+      {/* ============================================================
+          ⭐ SHOP STATUS STRIP (same design as Hotels/EBikes/Restaurants)
+      ============================================================ */}
+      {isShopRole && (
+        <div
+          style={{
+            margin: '0 20px 12px',
+            padding: '10px 14px',
+            borderRadius: 10,
+            background: shopActive
+              ? isDarkMode
+                ? 'rgba(40,167,69,0.12)'
+                : '#e6f7ed'
+              : isDarkMode
+              ? 'rgba(220,53,69,0.12)'
+              : '#fdeaec',
+            border: `1px solid ${
+              shopActive
+                ? isDarkMode
+                  ? 'rgba(40,167,69,0.35)'
+                  : '#b7e4c7'
+                : isDarkMode
+                ? 'rgba(220,53,69,0.35)'
+                : '#f5c6cb'
+            }`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <i
+              className={`bi ${shopActive ? 'bi-shop-window' : 'bi-shop'}`}
+              style={{
+                fontSize: 20,
+                color: shopActive ? '#28a745' : '#dc3545',
+              }}
+            ></i>
+            <div>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: 13,
+                  color: isDarkMode ? '#eee' : '#333',
+                }}
+              >
+                Shop Status
+              </div>
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: shopActive
+                    ? isDarkMode
+                      ? '#b7eb8f'
+                      : '#155724'
+                    : isDarkMode
+                    ? '#ffa39e'
+                    : '#721c24',
+                }}
+              >
+                {shopActive
+                  ? 'ON — Tricycles are visible to customers'
+                  : 'OFF — Tricycles are hidden from customers'}
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleToggleShop}
+            disabled={togglingShop || loading}
+            title={shopActive ? 'Click to turn shop OFF' : 'Click to turn shop ON'}
+            style={{
+              position: 'relative',
+              width: 58,
+              height: 30,
+              borderRadius: 15,
+              border: 'none',
+              cursor: togglingShop ? 'not-allowed' : 'pointer',
+              background: shopActive
+                ? '#28a745'
+                : isDarkMode
+                ? '#555'
+                : '#ccc',
+              opacity: togglingShop ? 0.55 : 1,
+              transition: 'background 0.25s ease',
+              flexShrink: 0,
+            }}
+          >
+            <span
+              style={{
+                position: 'absolute',
+                top: 3,
+                left: shopActive ? 31 : 3,
+                width: 24,
+                height: 24,
+                borderRadius: '50%',
+                background: '#fff',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+                transition: 'left 0.25s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {togglingShop ? (
+                <i
+                  className="bi bi-arrow-repeat"
+                  style={{
+                    fontSize: 13,
+                    color: '#333',
+                    animation: 'spin 1s linear infinite',
+                  }}
+                ></i>
+              ) : (
+                <i
+                  className={`bi ${shopActive ? 'bi-check-lg' : 'bi-x-lg'}`}
+                  style={{
+                    fontSize: 12,
+                    color: shopActive ? '#28a745' : '#999',
+                  }}
+                ></i>
+              )}
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* ⭐ Shop OFF warning */}
+      {isShopRole && !shopActive && (
+        <div
+          style={{
+            margin: '0 20px 12px',
+            padding: '10px 14px',
+            borderRadius: 8,
+            background: isDarkMode
+              ? 'rgba(250,173,20,0.15)'
+              : '#fff8e6',
+            border: `1px dashed ${
+              isDarkMode ? 'rgba(250,173,20,0.5)' : '#ffd591'
+            }`,
+            color: isDarkMode ? '#ffe58f' : '#874d00',
+            fontSize: 12.5,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <i className="bi bi-info-circle"></i>
+          <span>
+            Your shop is <b>OFF</b>. Customers cannot see these tricycles or
+            make new bookings. Turn the shop ON above to make them visible
+            again.
+          </span>
+        </div>
+      )}
+
       {/* Two Columns Layout */}
       <div className="hotels-two-columns">
         {/* Left Column - Add Form */}
@@ -825,8 +1149,27 @@ function Tricycles() {
                 <textarea name="description" rows="3" placeholder="Describe the tricycle experience..." value={formData.description} onChange={handleInputChange}></textarea>
               </div>
 
-              <button className="add-item-btn-full" onClick={handleAddTricycle} disabled={loading || loadingCategories}>
-                {loading ? 'Adding...' : 'Add Tricycle'}
+              {/* ⭐ Add button — disabled when shop is OFF */}
+              <button
+                className="add-item-btn-full"
+                onClick={handleAddTricycle}
+                disabled={loading || loadingCategories || (isShopRole && !shopActive)}
+                title={
+                  isShopRole && !shopActive
+                    ? 'Shop is OFF — turn it ON to add tricycles'
+                    : 'Add Tricycle'
+                }
+                style={
+                  isShopRole && !shopActive
+                    ? { opacity: 0.55, cursor: 'not-allowed' }
+                    : undefined
+                }
+              >
+                {loading
+                  ? 'Adding...'
+                  : isShopRole && !shopActive
+                  ? 'Shop is OFF — Cannot Add'
+                  : 'Add Tricycle'}
               </button>
             </div>
           </div>
@@ -851,11 +1194,42 @@ function Tricycles() {
                       key={item.id}
                       className={`hotel-card-vertical ${selectedId === item.id ? 'selected' : ''}`}
                       onClick={() => toggleSelection(item.id)}
+                      style={
+                        isShopRole && !shopActive
+                          ? { opacity: 0.65, position: 'relative' }
+                          : undefined
+                      }
                     >
-                      <div className="hotel-card-image">
+                      <div className="hotel-card-image" style={{ position: 'relative' }}>
                         <div className="image-slider">
                           <img src={imageUrl} alt={item.name} onError={(e) => { e.target.onerror = null; e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='200'%3E%3Crect width='300' height='200' fill='%23f0f0f0'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='14' fill='%23999' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E"; }} />
                         </div>
+
+                        {/* ⭐ HIDDEN badge when shop OFF */}
+                        {isShopRole && !shopActive && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: 8,
+                              left: 8,
+                              zIndex: 5,
+                              padding: '3px 10px',
+                              borderRadius: 12,
+                              background: 'rgba(220,53,69,0.92)',
+                              color: '#fff',
+                              fontSize: 10.5,
+                              fontWeight: 600,
+                              letterSpacing: 0.3,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 5,
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                            }}
+                          >
+                            <i className="bi bi-eye-slash-fill"></i> HIDDEN
+                          </div>
+                        )}
+
                         <div className="selection-check">
                           {selectedId === item.id && <i className="bi bi-check-circle-fill"></i>}
                         </div>
@@ -1061,6 +1435,14 @@ function Tricycles() {
           </div>
         </div>
       )}
+
+      {/* Spinner keyframes for toggle loading icon */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

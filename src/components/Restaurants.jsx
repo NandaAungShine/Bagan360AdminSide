@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
+// ⭐ Same endpoint as Settings.jsx / Hotels.jsx / EBikes.jsx
+const SHOP_ACTIVATE_API = 'http://130.94.21.185:8000/auth/shop/activate/';
+
 function Restaurants() {
   // ===== User Role Check =====
   const user = (() => {
@@ -9,6 +12,8 @@ function Restaurants() {
   })();
   const admin = user?.role === 'admin';
   const userId = user?.id;
+  const roleLower = (localStorage.getItem('role') || user?.role || '').toLowerCase();
+  const isShopRole = roleLower === 'shop';
 
   // ===== Theme =====
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -32,7 +37,11 @@ function Restaurants() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // ===== Form State (name, description, prices[]) =====
+  // ===== ⭐ Shop Active States =====
+  const [shopActive, setShopActive] = useState(true);
+  const [togglingShop, setTogglingShop] = useState(false);
+
+  // ===== Form State =====
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -84,6 +93,152 @@ function Restaurants() {
 
   // ===== Get Token =====
   const getToken = () => localStorage.getItem('token');
+
+  /* ============================================================
+     ⭐ SHOP ACTIVE STATUS (same as Settings/Hotels/EBikes)
+  ============================================================ */
+  const readShopStatusFromStorage = () => {
+    const keys = [
+      'user', 'userData', 'userInfo', 'shop', 'shopData',
+      'currentUser', 'profile', 'authUser', 'loggedUser',
+    ];
+    for (const key of keys) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        const obj = Array.isArray(parsed) ? parsed[0] : parsed;
+        if (!obj || typeof obj !== 'object') continue;
+        const status =
+          obj.is_active ?? obj.active ?? obj.shop_status ?? obj.status;
+        if (status === undefined || status === null || status === '') continue;
+        if (typeof status === 'boolean') return status;
+        if (typeof status === 'number') return status === 1;
+        if (typeof status === 'string') {
+          const s = status.toLowerCase();
+          if (['active', 'open', '1', 'true', 'yes'].includes(s)) return true;
+          if (
+            ['inactive', 'closed', '0', 'false', 'no', 'disabled', 'disable'].includes(s)
+          )
+            return false;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return true;
+  };
+
+  const writeShopStatusToStorage = (isActive) => {
+    const keys = [
+      'user', 'userData', 'userInfo', 'shop', 'shopData', 'currentUser',
+    ];
+    keys.forEach((key) => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        const merged = {
+          ...parsed,
+          status: isActive ? 'Active' : 'Inactive',
+          is_active: isActive,
+          active: isActive,
+        };
+        localStorage.setItem(key, JSON.stringify(merged));
+      } catch {
+        // ignore
+      }
+    });
+  };
+
+  const loadShopStatus = () => {
+    setShopActive(readShopStatusFromStorage());
+  };
+
+  // ⭐ Toggle shop (same endpoint & body as Settings.jsx)
+  const handleToggleShop = async () => {
+    if (!isShopRole) {
+      showToast('warning', 'Only shop accounts can toggle shop status.');
+      return;
+    }
+    const token = getToken();
+    if (!token) {
+      showToast('error', 'Please login first');
+      return;
+    }
+
+    const previous = shopActive;
+    const next = !shopActive;
+
+    setTogglingShop(true);
+    setShopActive(next);
+
+    try {
+      console.log(`🔄 [Restaurants] Toggling Shop → ${next ? 'ON' : 'OFF'}`);
+      console.log(`🌐 PUT ${SHOP_ACTIVATE_API}`);
+      console.log(`📦 Body: { is_active: ${next} }`);
+
+      const response = await fetch(SHOP_ACTIVATE_API, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ is_active: next }),
+      });
+
+      if (response.status === 401) {
+        setShopActive(previous);
+        return handle401Error();
+      }
+
+      let result = {};
+      try {
+        result = await response.json();
+      } catch {
+        // non-JSON
+      }
+
+      console.log('✅ [Restaurants] Toggle Response:', result);
+
+      if (!response.ok || result.success === false) {
+        setShopActive(previous);
+        throw new Error(
+          result.message ||
+            result.error ||
+            `Failed to turn shop ${next ? 'ON' : 'OFF'} (${response.status})`
+        );
+      }
+
+      writeShopStatusToStorage(next);
+      showToast(
+        'success',
+        next
+          ? '🏪 Shop turned ON — menus are visible to customers.'
+          : '🔒 Shop turned OFF — menus are hidden from customers.'
+      );
+    } catch (err) {
+      console.error('❌ [Restaurants] Toggle Shop Error:', err);
+      setShopActive(previous);
+      showToast('error', 'Error: ' + (err.message || 'Toggle failed'));
+    } finally {
+      setTogglingShop(false);
+    }
+  };
+
+  // Listen to storage changes (cross-tab sync)
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (!e.key) return;
+      const watched = [
+        'user', 'userData', 'userInfo', 'shop', 'shopData', 'currentUser',
+      ];
+      if (watched.includes(e.key)) loadShopStatus();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   // ========== FETCH MENUS ==========
   const fetchMenus = async () => {
@@ -138,6 +293,7 @@ function Restaurants() {
       setError('Please login first');
       return;
     }
+    loadShopStatus();
     fetchMenus();
   }, []);
 
@@ -201,7 +357,7 @@ function Restaurants() {
     removeImage();
   };
 
-  // ========== BUILD FORMDATA (shared by add/update) ==========
+  // ========== BUILD FORMDATA ==========
   const buildFormData = () => {
     const form = new FormData();
     form.append('name', formData.name.trim());
@@ -209,14 +365,12 @@ function Restaurants() {
 
     if (imageFile) form.append('image', imageFile);
 
-    // shop_id (if logged in as shop)
     const shopId = localStorage.getItem('shopId');
     const role = localStorage.getItem('role');
     if (role === 'shop' && shopId) {
       form.append('shop_id', shopId);
     }
 
-    // prices[]  -> prices[0][size], prices[0][price], prices[0][id] (if any)
     formData.prices.forEach((p, i) => {
       if (p.id !== undefined && p.id !== null && p.id !== '') {
         form.append(`prices[${i}][id]`, p.id);
@@ -233,6 +387,15 @@ function Restaurants() {
 
   // ========== ADD MENU ==========
   const handleAddMenu = async () => {
+    // ⭐ Block when shop is OFF
+    if (isShopRole && !shopActive) {
+      showToast(
+        'warning',
+        'Shop is currently OFF. Please turn the shop ON first.'
+      );
+      return;
+    }
+
     if (!formData.name) {
       showToast('warning', 'Please fill in Menu Name.');
       return;
@@ -616,6 +779,164 @@ function Restaurants() {
         </div>
       </div>
 
+      {/* ============================================================
+          ⭐ SHOP STATUS STRIP (same design as Hotels & EBikes)
+      ============================================================ */}
+      {isShopRole && (
+        <div
+          style={{
+            margin: '0 20px 12px',
+            padding: '10px 14px',
+            borderRadius: 10,
+            background: shopActive
+              ? isDarkMode
+                ? 'rgba(40,167,69,0.12)'
+                : '#e6f7ed'
+              : isDarkMode
+              ? 'rgba(220,53,69,0.12)'
+              : '#fdeaec',
+            border: `1px solid ${
+              shopActive
+                ? isDarkMode
+                  ? 'rgba(40,167,69,0.35)'
+                  : '#b7e4c7'
+                : isDarkMode
+                ? 'rgba(220,53,69,0.35)'
+                : '#f5c6cb'
+            }`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <i
+              className={`bi ${shopActive ? 'bi-shop-window' : 'bi-shop'}`}
+              style={{
+                fontSize: 20,
+                color: shopActive ? '#28a745' : '#dc3545',
+              }}
+            ></i>
+            <div>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: 13,
+                  color: isDarkMode ? '#eee' : '#333',
+                }}
+              >
+                Shop Status
+              </div>
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: shopActive
+                    ? isDarkMode
+                      ? '#b7eb8f'
+                      : '#155724'
+                    : isDarkMode
+                    ? '#ffa39e'
+                    : '#721c24',
+                }}
+              >
+                {shopActive
+                  ? 'ON — Menus are visible to customers'
+                  : 'OFF — Menus are hidden from customers'}
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleToggleShop}
+            disabled={togglingShop || loading}
+            title={shopActive ? 'Click to turn shop OFF' : 'Click to turn shop ON'}
+            style={{
+              position: 'relative',
+              width: 58,
+              height: 30,
+              borderRadius: 15,
+              border: 'none',
+              cursor: togglingShop ? 'not-allowed' : 'pointer',
+              background: shopActive
+                ? '#28a745'
+                : isDarkMode
+                ? '#555'
+                : '#ccc',
+              opacity: togglingShop ? 0.55 : 1,
+              transition: 'background 0.25s ease',
+              flexShrink: 0,
+            }}
+          >
+            <span
+              style={{
+                position: 'absolute',
+                top: 3,
+                left: shopActive ? 31 : 3,
+                width: 24,
+                height: 24,
+                borderRadius: '50%',
+                background: '#fff',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+                transition: 'left 0.25s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {togglingShop ? (
+                <i
+                  className="bi bi-arrow-repeat"
+                  style={{
+                    fontSize: 13,
+                    color: '#333',
+                    animation: 'spin 1s linear infinite',
+                  }}
+                ></i>
+              ) : (
+                <i
+                  className={`bi ${shopActive ? 'bi-check-lg' : 'bi-x-lg'}`}
+                  style={{
+                    fontSize: 12,
+                    color: shopActive ? '#28a745' : '#999',
+                  }}
+                ></i>
+              )}
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* ⭐ Shop OFF warning */}
+      {isShopRole && !shopActive && (
+        <div
+          style={{
+            margin: '0 20px 12px',
+            padding: '10px 14px',
+            borderRadius: 8,
+            background: isDarkMode
+              ? 'rgba(250,173,20,0.15)'
+              : '#fff8e6',
+            border: `1px dashed ${
+              isDarkMode ? 'rgba(250,173,20,0.5)' : '#ffd591'
+            }`,
+            color: isDarkMode ? '#ffe58f' : '#874d00',
+            fontSize: 12.5,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <i className="bi bi-info-circle"></i>
+          <span>
+            Your shop is <b>OFF</b>. Customers cannot see these menus or make
+            new orders. Turn the shop ON above to make them visible again.
+          </span>
+        </div>
+      )}
+
       {/* Two Columns */}
       <div className="hotels-two-columns">
         {/* Left Column - Add Form */}
@@ -708,8 +1029,27 @@ function Restaurants() {
                 </button>
               </div>
 
-              <button className="add-item-btn-full" onClick={handleAddMenu} disabled={loading}>
-                {loading ? 'Adding...' : 'Add Menu'}
+              {/* ⭐ Add button — disabled when shop is OFF */}
+              <button
+                className="add-item-btn-full"
+                onClick={handleAddMenu}
+                disabled={loading || (isShopRole && !shopActive)}
+                title={
+                  isShopRole && !shopActive
+                    ? 'Shop is OFF — turn it ON to add menu items'
+                    : 'Add Menu'
+                }
+                style={
+                  isShopRole && !shopActive
+                    ? { opacity: 0.55, cursor: 'not-allowed' }
+                    : undefined
+                }
+              >
+                {loading
+                  ? 'Adding...'
+                  : isShopRole && !shopActive
+                  ? 'Shop is OFF — Cannot Add'
+                  : 'Add Menu'}
               </button>
             </div>
           </div>
@@ -735,6 +1075,11 @@ function Restaurants() {
                       key={m.id}
                       className={`hotel-card-vertical ${selectedMenuId === m.id ? 'selected' : ''}`}
                       onClick={() => toggleMenuSelection(m.id)}
+                      style={
+                        isShopRole && !shopActive
+                          ? { opacity: 0.65, position: 'relative' }
+                          : undefined
+                      }
                     >
                       <div className="hotel-card-image">
                         <div className="image-slider">
@@ -747,6 +1092,32 @@ function Restaurants() {
                             }}
                           />
                         </div>
+
+                        {/* ⭐ HIDDEN badge when shop OFF */}
+                        {isShopRole && !shopActive && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: 8,
+                              left: 8,
+                              zIndex: 5,
+                              padding: '3px 10px',
+                              borderRadius: 12,
+                              background: 'rgba(220,53,69,0.92)',
+                              color: '#fff',
+                              fontSize: 10.5,
+                              fontWeight: 600,
+                              letterSpacing: 0.3,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 5,
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                            }}
+                          >
+                            <i className="bi bi-eye-slash-fill"></i> HIDDEN
+                          </div>
+                        )}
+
                         <div className="selection-check">
                           {selectedMenuId === m.id && <i className="bi bi-check-circle-fill"></i>}
                         </div>
@@ -898,6 +1269,14 @@ function Restaurants() {
           </div>
         </div>
       )}
+
+      {/* Spinner keyframes for toggle loading icon */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
