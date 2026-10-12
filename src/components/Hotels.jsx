@@ -176,6 +176,66 @@ const FacilitiesEditor = ({
 );
 
 /* ============================================================
+   Tax helpers  (NEW)
+============================================================ */
+// Normalize any tax shape → { type: 'percentage' | 'monthly' | null, value: number }
+const normalizeTax = (raw) => {
+  if (!raw) return { type: null, value: 0 };
+  if (typeof raw === 'number') {
+    return { type: 'percentage', value: raw };
+  }
+  if (typeof raw === 'string') {
+    const n = parseFloat(raw);
+    return Number.isFinite(n)
+      ? { type: 'percentage', value: n }
+      : { type: null, value: 0 };
+  }
+  if (typeof raw === 'object') {
+    const type =
+      raw.tax_type || raw.type || raw.mode || raw.kind || null;
+    const value = parseFloat(
+      raw.tax_value ?? raw.value ?? raw.amount ?? raw.rate ?? 0
+    );
+    const normalizedType =
+      typeof type === 'string'
+        ? type.toLowerCase().includes('month')
+          ? 'monthly'
+          : type.toLowerCase().includes('percent')
+          ? 'percentage'
+          : type
+        : null;
+    return {
+      type: normalizedType,
+      value: Number.isFinite(value) ? value : 0,
+    };
+  }
+  return { type: null, value: 0 };
+};
+
+// Compute total price given base + tax
+const computeTotal = (price, tax) => {
+  const base = parseFloat(price) || 0;
+  const t = normalizeTax(tax);
+  if (!t.type || !t.value) return { total: base, taxAmount: 0, tax: t };
+  if (t.type === 'percentage') {
+    const amt = (base * t.value) / 100;
+    return { total: base + amt, taxAmount: amt, tax: t };
+  }
+  if (t.type === 'monthly') {
+    return { total: base + t.value, taxAmount: t.value, tax: t };
+  }
+  return { total: base, taxAmount: 0, tax: t };
+};
+
+const formatTaxLabel = (tax) => {
+  const t = normalizeTax(tax);
+  if (!t.type || !t.value) return '';
+  if (t.type === 'percentage') return `Tax ${t.value}%`;
+  if (t.type === 'monthly') return `Tax MMK ${t.value}/month`;
+  return '';
+};
+
+/* ============================================================
    Hotels component
 ============================================================ */
 function Hotels() {
@@ -220,6 +280,10 @@ function Hotels() {
   // ===== ⭐ Shop Active States =====
   const [shopActive, setShopActive] = useState(true);
   const [togglingShop, setTogglingShop] = useState(false);
+
+  // ===== ⭐ Shop Tax State (NEW) =====
+  // { type: 'percentage' | 'monthly' | null, value: number }
+  const [shopTax, setShopTax] = useState({ type: null, value: 0 });
 
   // ===== Toast & Confirm =====
   const [toast, setToast] = useState({
@@ -429,7 +493,30 @@ function Hotels() {
           existing: path,
         });
       });
+    } else {
+      // Support flat fields: hotel_image1 / hotel_image2 / hotel_image3
+      ['hotel_image1', 'hotel_image2', 'hotel_image3'].forEach((key) => {
+        if (hotel[key]) {
+          galleryImages.push({
+            id: null,
+            preview: getImageUrl(hotel[key]),
+            existing: hotel[key],
+          });
+        }
+      });
     }
+
+    // ⭐ Tax resolution (per hotel → fallback to shop-level tax)
+    const hotelTax = normalizeTax(
+      hotel.tax ??
+        hotel.shop_tax ??
+        hotel.tax_info ?? {
+          tax_type: hotel.tax_type,
+          tax_value: hotel.tax_value,
+        }
+    );
+
+    const { total, taxAmount } = computeTotal(hotel.price || 0, hotelTax);
 
     return {
       id: hotel.id,
@@ -439,6 +526,9 @@ function Hotels() {
       shop_phone: hotel.shop_phone || '',
       name: hotel.name || '',
       price: hotel.price || 0,
+      tax: hotelTax,
+      taxAmount,
+      totalPrice: total,
       facilities: mappedFacilities,
       description: hotel.description || '',
       image: getImageUrl(mainImage),
@@ -454,6 +544,13 @@ function Hotels() {
     try {
       const response = await api.get('/list');
       const list = response.data?.data || [];
+
+      // ⭐ Pick up shop-level tax from top of response, if provided
+      const topTax = normalizeTax(
+        response.data?.tax ?? response.data?.shop_tax
+      );
+      if (topTax.type) setShopTax(topTax);
+
       setHotels(list.map(mapApiToHotel));
     } catch (err) {
       console.error('Fetch Error:', err);
@@ -467,10 +564,6 @@ function Hotels() {
 
   /* ============================================================
      ⭐ SHOP ACTIVE STATUS
-     ------------------------------------------------------------
-     • localStorage ကနေ ဖတ် (Settings.jsx က save လုပ်ထားတာ)
-     • Backend API ကိုလည်း background မှာ sync
-     • Settings မှာ toggle လုပ်လိုက်ရင် Hotels မှာ auto-reflect
   ============================================================ */
   const readShopStatusFromStorage = () => {
     const keys = [
@@ -508,7 +601,31 @@ function Hotels() {
         // ignore
       }
     }
-    return true; // default ON
+    return true;
+  };
+
+  // ⭐ Read shop tax from localStorage (Settings.jsx may store it)
+  const readShopTaxFromStorage = () => {
+    const keys = ['user', 'userData', 'userInfo', 'shop', 'shopData', 'currentUser'];
+    for (const key of keys) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        const obj = Array.isArray(parsed) ? parsed[0] : parsed;
+        if (!obj || typeof obj !== 'object') continue;
+        const tax = normalizeTax(
+          obj.tax ?? obj.shop_tax ?? {
+            tax_type: obj.tax_type,
+            tax_value: obj.tax_value,
+          }
+        );
+        if (tax.type) return tax;
+      } catch {
+        // ignore
+      }
+    }
+    return null;
   };
 
   const writeShopStatusToStorage = (isActive) => {
@@ -540,6 +657,8 @@ function Hotels() {
 
   const loadShopStatus = () => {
     setShopActive(readShopStatusFromStorage());
+    const localTax = readShopTaxFromStorage();
+    if (localTax) setShopTax(localTax);
   };
 
   // ⭐ Toggle shop (same endpoint & body as Settings.jsx)
@@ -1070,6 +1189,8 @@ function Hotels() {
   };
 
   // ===== RENDER =====
+  const shopTaxLabel = formatTaxLabel(shopTax);
+
   return (
     <div
       className={`dashboard-container ${
@@ -1314,14 +1435,7 @@ function Hotels() {
         </div>
       </div>
 
-      {/* ============================================================
-          ⭐ SHOP STATUS STRIP — same design language as Settings
-          ------------------------------------------------------------
-          Shop OFF ဖြစ်နေရင် Hotels တွေ customer တွေဆီ မပေါ်ဘူးဆိုတာ
-          ဒီနေရာမှာ ရှင်းရှင်းလင်းလင်း ပြပေးတယ်။
-          Design Flow Frame မပြောင်း — search bar ရဲ့ အောက်မှာတင်
-          banner တစ်ခုအနေနဲ့ ထည့်ထားတယ်။
-      ============================================================ */}
+      {/* ⭐ SHOP STATUS STRIP */}
       {isShopRole && (
         <div
           style={{
@@ -1387,6 +1501,34 @@ function Hotels() {
               </div>
             </div>
           </div>
+
+          {/* ⭐ Shop Tax chip (NEW) */}
+          {shopTaxLabel && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 11.5,
+                padding: '4px 10px',
+                borderRadius: 999,
+                background: isDarkMode
+                  ? 'rgba(23,162,184,0.15)'
+                  : '#e7f6f9',
+                color: isDarkMode ? '#91d5ff' : '#0c5460',
+                border: `1px solid ${
+                  isDarkMode
+                    ? 'rgba(23,162,184,0.4)'
+                    : '#bee5eb'
+                }`,
+                whiteSpace: 'nowrap',
+              }}
+              title="Shop-level tax applied to hotel prices"
+            >
+              <i className="bi bi-percent"></i>
+              {shopTaxLabel}
+            </div>
+          )}
 
           {/* Toggle Switch */}
           <button
@@ -1475,7 +1617,7 @@ function Hotels() {
         </div>
       )}
 
-      {/* ⭐ Shop OFF warning (only shows when OFF) */}
+      {/* ⭐ Shop OFF warning */}
       {isShopRole && !shopActive && (
         <div
           style={{
@@ -1667,132 +1809,198 @@ function Hotels() {
                   <p>Loading hotels...</p>
                 </div>
               ) : filteredHotels.length > 0 ? (
-                filteredHotels.map((hotel) => (
-                  <div
-                    key={hotel.id}
-                    className="hotel-card-vertical"
-                    style={
-                      isShopRole && !shopActive
-                        ? { opacity: 0.65, position: 'relative' }
-                        : undefined
-                    }
-                  >
-                    <div className="hotel-card-image">
-                      <div className="image-slider">
-                        <img
-                          src={hotel.image || '/default-hotel.jpg'}
-                          alt={hotel.name}
-                          onError={(e) => {
-                            e.target.onerror = null;
-                            e.target.src = '/default-hotel.jpg';
-                          }}
-                          style={{
-                            objectFit: 'cover',
-                            width: '100%',
-                            height: '100%',
-                          }}
-                        />
-                      </div>
+                filteredHotels.map((hotel) => {
+                  // ⭐ Resolve tax: hotel-level first, else shop-level
+                  const effectiveTax =
+                    hotel.tax && hotel.tax.type
+                      ? hotel.tax
+                      : shopTax;
+                  const { total, taxAmount } = computeTotal(
+                    hotel.price,
+                    effectiveTax
+                  );
+                  const taxLabel = formatTaxLabel(effectiveTax);
 
-                      {/* ⭐ Hidden badge when shop is OFF */}
-                      {isShopRole && !shopActive && (
-                        <div
-                          style={{
-                            position: 'absolute',
-                            top: 8,
-                            left: 8,
-                            zIndex: 5,
-                            padding: '3px 10px',
-                            borderRadius: 12,
-                            background: 'rgba(220,53,69,0.92)',
-                            color: '#fff',
-                            fontSize: 10.5,
-                            fontWeight: 600,
-                            letterSpacing: 0.3,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 5,
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
-                          }}
-                        >
-                          <i className="bi bi-eye-slash-fill"></i> HIDDEN
+                  return (
+                    <div
+                      key={hotel.id}
+                      className="hotel-card-vertical"
+                      style={
+                        isShopRole && !shopActive
+                          ? { opacity: 0.65, position: 'relative' }
+                          : undefined
+                      }
+                    >
+                      <div className="hotel-card-image">
+                        <div className="image-slider">
+                          <img
+                            src={hotel.image || '/default-hotel.jpg'}
+                            alt={hotel.name}
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = '/default-hotel.jpg';
+                            }}
+                            style={{
+                              objectFit: 'cover',
+                              width: '100%',
+                              height: '100%',
+                            }}
+                          />
                         </div>
-                      )}
 
-                      <CardActions hotelId={hotel.id} />
-                    </div>
-                    <div className="hotel-card-info">
-                      <h3 className="hotel-name">{hotel.name}</h3>
-                      {hotel.shop_name && (
-                        <p className="hotel-location">
-                          <i className="bi bi-shop"></i> {hotel.shop_name}
-                        </p>
-                      )}
-                      {hotel.shop_address && (
-                        <p className="hotel-location">
-                          <i className="bi bi-geo-alt-fill"></i>{' '}
-                          {hotel.shop_address}
-                        </p>
-                      )}
-                      <p className="hotel-price">
-                        Starting from <span>MMK {hotel.price}</span>
-                      </p>
+                        {/* ⭐ Hidden badge when shop is OFF */}
+                        {isShopRole && !shopActive && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: 8,
+                              left: 8,
+                              zIndex: 5,
+                              padding: '3px 10px',
+                              borderRadius: 12,
+                              background: 'rgba(220,53,69,0.92)',
+                              color: '#fff',
+                              fontSize: 10.5,
+                              fontWeight: 600,
+                              letterSpacing: 0.3,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 5,
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                            }}
+                          >
+                            <i className="bi bi-eye-slash-fill"></i> HIDDEN
+                          </div>
+                        )}
 
-                      {hotel.facilities?.length > 0 && (
-                        <div
-                          style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '6px',
-                            marginTop: '8px',
-                          }}
-                        >
-                          {hotel.facilities.slice(0, 4).map((f, i) => (
+                        <CardActions hotelId={hotel.id} />
+                      </div>
+                      <div className="hotel-card-info">
+                        <h3 className="hotel-name">{hotel.name}</h3>
+                        {hotel.shop_name && (
+                          <p className="hotel-location">
+                            <i className="bi bi-shop"></i> {hotel.shop_name}
+                          </p>
+                        )}
+                        {hotel.shop_address && (
+                          <p className="hotel-location">
+                            <i className="bi bi-geo-alt-fill"></i>{' '}
+                            {hotel.shop_address}
+                          </p>
+                        )}
+
+                        {/* ⭐ Price + Tax (NEW) */}
+                        <p className="hotel-price">
+                          Starting from <span>MMK {hotel.price}</span>
+                        </p>
+
+                        {taxLabel && (
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 6,
+                              fontSize: 11.5,
+                              marginTop: 4,
+                              color: isDarkMode ? '#aaa' : '#666',
+                            }}
+                          >
                             <span
-                              key={i}
-                              title={f.description || f.name}
                               style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: 4,
-                                fontSize: '11px',
-                                padding: '2px 8px 2px 4px',
-                                borderRadius: '10px',
-                                background: isDarkMode ? '#333' : '#eef',
-                                color: isDarkMode ? '#ccc' : '#335',
                               }}
                             >
-                              {f.imagePreview && (
-                                <img
-                                  src={f.imagePreview}
-                                  alt=""
-                                  style={{
-                                    width: 16,
-                                    height: 16,
-                                    borderRadius: '50%',
-                                    objectFit: 'cover',
-                                  }}
-                                />
-                              )}
-                              {f.name || f.description}
+                              <i className="bi bi-percent"></i>
+                              {taxLabel}
                             </span>
-                          ))}
-                          {hotel.facilities.length > 4 && (
                             <span
                               style={{
-                                fontSize: '11px',
-                                padding: '2px 8px',
-                                color: '#888',
+                                color: isDarkMode ? '#91d5ff' : '#0c5460',
+                                fontWeight: 600,
                               }}
+                              title="Tax amount"
                             >
-                              +{hotel.facilities.length - 4}
+                              + MMK {Math.round(taxAmount).toLocaleString()}
                             </span>
-                          )}
-                        </div>
-                      )}
+                          </div>
+                        )}
+
+                        {taxLabel && (
+                          <p
+                            className="hotel-price"
+                            style={{
+                              marginTop: 4,
+                              paddingTop: 4,
+                              borderTop: `1px dashed ${
+                                isDarkMode
+                                  ? 'rgba(255,255,255,0.15)'
+                                  : 'rgba(0,0,0,0.1)'
+                              }`,
+                            }}
+                          >
+                            Total: <span>MMK {Math.round(total).toLocaleString()}</span>
+                          </p>
+                        )}
+
+                        {hotel.facilities?.length > 0 && (
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              gap: '6px',
+                              marginTop: '8px',
+                            }}
+                          >
+                            {hotel.facilities.slice(0, 4).map((f, i) => (
+                              <span
+                                key={i}
+                                title={f.description || f.name}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  fontSize: '11px',
+                                  padding: '2px 8px 2px 4px',
+                                  borderRadius: '10px',
+                                  background: isDarkMode ? '#333' : '#eef',
+                                  color: isDarkMode ? '#ccc' : '#335',
+                                }}
+                              >
+                                {f.imagePreview && (
+                                  <img
+                                    src={f.imagePreview}
+                                    alt=""
+                                    style={{
+                                      width: 16,
+                                      height: 16,
+                                      borderRadius: '50%',
+                                      objectFit: 'cover',
+                                    }}
+                                  />
+                                )}
+                                {f.name || f.description}
+                              </span>
+                            ))}
+                            {hotel.facilities.length > 4 && (
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  padding: '2px 8px',
+                                  color: '#888',
+                                }}
+                              >
+                                +{hotel.facilities.length - 4}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div
                   style={{

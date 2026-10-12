@@ -4,76 +4,6 @@ import Header from './Header';
 
 const API_BASE = 'http://130.94.21.185:8000';
 
-// Sample data (fallback) - updated to match API structure (.txt)
-const SAMPLE_REQUESTS = [
-  {
-    id: 15,
-    user_id: 68,
-    type: 'restaurant',
-    shop_name: 'Test Restaurant New01',
-    shop_address: 'Magway',
-    location: 'New Bagan',
-    shop_phone: '095434864666',
-    nrc: '8 / ရနခ (N) 123456',
-    status: 'approved'
-  },
-  {
-    id: 12,
-    user_id: 61,
-    type: 'hotel',
-    shop_name: 'Aunglar Shop',
-    shop_address: 'Old Bagan, Nyaung U',
-    location: 'Old Bagan',
-    shop_phone: '09988888888',
-    nrc: '12/lakana(N)43434',
-    status: 'pending'
-  },
-  {
-    id: 6,
-    user_id: 43,
-    type: 'e_bike',
-    shop_name: 'Thar Sis',
-    shop_address: '163758/B',
-    location: 'Old Bagan',
-    shop_phone: '09763341727',
-    nrc: '12 / ဒဂတ (N) 099020',
-    status: 'approved'
-  },
-  {
-    id: 3,
-    user_id: 31,
-    type: 'restaurant',
-    shop_name: 'Moe Ma May 00',
-    shop_address: '157/B',
-    location: 'Old Bagan',
-    shop_phone: '09763341727',
-    nrc: '12 / ဒဂတ (N) 099020',
-    status: 'approved'
-  },
-  {
-    id: 2,
-    user_id: 15,
-    type: 'hotel',
-    shop_name: 'Bagan Hotel',
-    shop_address: 'Old Bagan, Nyaung U',
-    location: 'Old Bagan',
-    shop_phone: '09988888888',
-    nrc: '12/lakana(N)308086',
-    status: 'approved'
-  },
-  {
-    id: 1,
-    user_id: 14,
-    type: 'restaurant',
-    shop_name: 'Bagan Hotel',
-    shop_address: 'Old Bagan, Nyaung U',
-    location: 'Nyaung Oo',
-    shop_phone: '09988888888',
-    nrc: '12/lakana(N)308086',
-    status: 'approved'
-  }
-];
-
 // ===== TYPE CONFIG (single source of truth) =====
 // Normalize API variants (e_bike / ebike / e-bike) to a canonical key
 const normalizeType = (type) => {
@@ -179,24 +109,26 @@ function Shop() {
   }, []);
 
   // ===== 7. MAP API ITEM -> UI ITEM =====
-  // Mirrors exactly the fields returned by /auth/shop/list
   const mapApiItem = (item) => ({
     id: item.id,
     user_id: item.user_id,
-    type: normalizeType(item.type),                // e_bike kept as e_bike
-    type_raw: item.type,                           // keep the raw value if needed
+    type: normalizeType(item.type),
+    type_raw: item.type,
     shop_name: item.shop_name || 'N/A',
     shop_address: item.shop_address || 'N/A',
-    location: item.location || 'N/A',              // NEW field from API
+    location: item.location || 'N/A',
     shop_phone: item.shop_phone || 'N/A',
     nrc: item.nrc || 'N/A',
     status: item.status || 'pending',
-    // Extra compatibility fields (not in API)
+
+    // ===== Email & owner info =====
+    email: item.email || item.user_email || item.owner_email || 'N/A',
+    owner_name: item.owner_name || item.username || item.fullName || 'N/A',
+
+    // Extra compatibility fields
     image: item.image || null,
-    owner_name: 'N/A',
-    email: 'N/A',
     description: '',
-    created_at: null
+    created_at: item.created_at || null
   });
 
   // ===== 8. FETCH REQUESTS =====
@@ -238,11 +170,57 @@ function Shop() {
         throw new Error('Unexpected API response format');
       }
 
-      setRequests(shopData.map(mapApiItem));
+      const mapped = shopData.map(mapApiItem);
+
+      // ===== Enrich emails from users list if missing =====
+      const needEmails = mapped.some(s => !s.email || s.email === 'N/A');
+      if (needEmails) {
+        try {
+          const uRes = await fetch(`${API_BASE}/auth/user/list`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          if (uRes.ok) {
+            const uJson = await uRes.json();
+            const userArr = Array.isArray(uJson)
+              ? uJson
+              : (uJson && Array.isArray(uJson.data))
+                ? uJson.data
+                : (uJson && Array.isArray(uJson.users))
+                  ? uJson.users
+                  : [];
+
+            const emailMap = {};
+            const nameMap = {};
+            userArr.forEach(u => {
+              const uid = u.id || u.userId;
+              if (uid != null) {
+                emailMap[uid] = u.email || 'N/A';
+                nameMap[uid] = u.username || u.fullName || u.name || 'N/A';
+              }
+            });
+
+            mapped.forEach(s => {
+              if ((!s.email || s.email === 'N/A') && emailMap[s.user_id]) {
+                s.email = emailMap[s.user_id];
+              }
+              if ((!s.owner_name || s.owner_name === 'N/A') && nameMap[s.user_id]) {
+                s.owner_name = nameMap[s.user_id];
+              }
+            });
+          }
+        } catch (enrichErr) {
+          console.warn('⚠️ Could not enrich emails:', enrichErr);
+        }
+      }
+
+      setRequests(mapped);
     } catch (err) {
       console.error('❌ Fetch Error:', err);
-      showToast('error', 'Failed to fetch shop data. Using sample data.');
-      setRequests(SAMPLE_REQUESTS.map(mapApiItem));
+      showToast('error', `Failed to fetch shop data: ${err.message}`);
+      setRequests([]);
     } finally {
       setLoading(false);
     }
@@ -408,9 +386,12 @@ function Shop() {
   const filteredRequests = requests.filter(req => {
     const search = searchTerm.toLowerCase();
     const matchSearch =
+      String(req.id).includes(searchTerm) ||
+      String(req.user_id).includes(searchTerm) ||
       (req.shop_name || '').toLowerCase().includes(search) ||
       (req.shop_address || '').toLowerCase().includes(search) ||
       (req.location || '').toLowerCase().includes(search) ||
+      (req.email || '').toLowerCase().includes(search) ||
       (req.type || '').toLowerCase().includes(search) ||
       String(req.shop_phone || '').includes(searchTerm);
     const matchStatus = filterStatus === 'all' || req.status === filterStatus;
@@ -481,6 +462,24 @@ function Shop() {
     return (TYPE_CONFIG[key] && TYPE_CONFIG[key].icon) || 'bi-shop';
   };
 
+  // Shared table cell styles
+  const thStyle = {
+    textAlign: 'left',
+    padding: '12px 16px',
+    background: 'var(--header-bg)',
+    color: 'var(--text-color)',
+    fontWeight: '600',
+    fontSize: '13px',
+    borderBottom: '2px solid var(--border-color)',
+    whiteSpace: 'nowrap'
+  };
+  const tdStyle = {
+    padding: '12px 16px',
+    borderBottom: '1px solid var(--border-color)',
+    color: 'var(--text-color)',
+    fontSize: '14px'
+  };
+
   // ===== 15. NOT LOGGED IN =====
   if (!isLoggedIn) {
     return (
@@ -533,9 +532,23 @@ function Shop() {
           boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
           padding: '0',
           overflow: 'hidden',
-          backgroundColor: toast.type === 'success' ? (isDarkMode ? '#1e3a2e' : '#d4edda') : '#f8d7da',
-          color: toast.type === 'success' ? (isDarkMode ? '#b7eb8f' : '#155724') : '#721c24',
-          borderLeft: `5px solid ${toast.type === 'success' ? (isDarkMode ? '#52c41a' : '#28a745') : '#dc3545'}`
+          backgroundColor: toast.type === 'success'
+            ? (isDarkMode ? '#1e3a2e' : '#d4edda')
+            : toast.type === 'warning'
+              ? (isDarkMode ? '#3d3512' : '#fff3cd')
+              : (isDarkMode ? '#3e1f1f' : '#f8d7da'),
+          color: toast.type === 'success'
+            ? (isDarkMode ? '#b7eb8f' : '#155724')
+            : toast.type === 'warning'
+              ? (isDarkMode ? '#ffe58f' : '#856404')
+              : (isDarkMode ? '#ffa39e' : '#721c24'),
+          borderLeft: `5px solid ${
+            toast.type === 'success'
+              ? (isDarkMode ? '#52c41a' : '#28a745')
+              : toast.type === 'warning'
+                ? (isDarkMode ? '#faad14' : '#ffc107')
+                : (isDarkMode ? '#ff4d4f' : '#dc3545')
+          }`
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
             <div style={{ fontWeight: 'bold', fontSize: '16px' }}>Bagan 360</div>
@@ -544,7 +557,11 @@ function Shop() {
             </button>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', padding: '20px' }}>
-            <div style={{ fontSize: '28px' }}>{toast.type === 'success' ? <i className="bi bi-check-circle-fill"></i> : <i className="bi bi-x-circle-fill"></i>}</div>
+            <div style={{ fontSize: '28px' }}>
+              {toast.type === 'success' && <i className="bi bi-check-circle-fill"></i>}
+              {toast.type === 'error' && <i className="bi bi-x-circle-fill"></i>}
+              {toast.type === 'warning' && <i className="bi bi-exclamation-triangle-fill"></i>}
+            </div>
             <div style={{ fontSize: '15px', lineHeight: '1.5' }}>{toast.message}</div>
           </div>
         </div>
@@ -588,7 +605,14 @@ function Shop() {
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
         <div className="search-bar-wrapper" style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
           <i className="bi bi-search search-icon" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#6c757d' }}></i>
-          <input type="text" placeholder="Search by shop name, address, location, type..." className="search-input-full" style={{ width: '100%', padding: '8px 15px 8px 35px', borderRadius: '40px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: '0.9rem' }} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+          <input
+            type="text"
+            placeholder="Search by shop name, email, address, location, type..."
+            className="search-input-full"
+            style={{ width: '100%', padding: '8px 15px 8px 35px', borderRadius: '40px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: '0.9rem' }}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
         <select className="filter-select" style={{ padding: '8px 12px', borderRadius: '40px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: '0.9rem', minWidth: '130px' }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
           <option value="all">All Status</option>
@@ -611,43 +635,70 @@ function Shop() {
           <option value="newest">Newest First</option>
           <option value="oldest">Oldest First</option>
         </select>
+        <button
+          onClick={fetchRequests}
+          className="action-btn"
+          title="Refresh"
+          style={{ padding: '8px 16px', borderRadius: '40px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+          disabled={loading}
+        >
+          <i className={`bi ${loading ? 'bi-arrow-repeat' : 'bi-arrow-clockwise'}`}></i>
+          {loading ? 'Loading...' : 'Refresh'}
+        </button>
       </div>
 
       {/* TABLE */}
       <div style={{ overflowX: 'auto', background: 'var(--card-bg)', borderRadius: '16px', padding: '0', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
           <thead>
             <tr>
-              <th style={{ textAlign: 'left', padding: '12px 16px', background: 'var(--header-bg)', color: 'var(--text-color)', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid var(--border-color)' }}>#</th>
-              <th style={{ textAlign: 'left', padding: '12px 16px', background: 'var(--header-bg)', color: 'var(--text-color)', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid var(--border-color)' }}>Shop</th>
-              <th style={{ textAlign: 'left', padding: '12px 16px', background: 'var(--header-bg)', color: 'var(--text-color)', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid var(--border-color)' }}>Type</th>
-              <th style={{ textAlign: 'left', padding: '12px 16px', background: 'var(--header-bg)', color: 'var(--text-color)', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid var(--border-color)' }}>Phone</th>
-              <th style={{ textAlign: 'left', padding: '12px 16px', background: 'var(--header-bg)', color: 'var(--text-color)', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid var(--border-color)' }}>Status</th>
-              <th style={{ textAlign: 'left', padding: '12px 16px', background: 'var(--header-bg)', color: 'var(--text-color)', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid var(--border-color)' }}>Address</th>
-              <th style={{ textAlign: 'center', padding: '12px 16px', background: 'var(--header-bg)', color: 'var(--text-color)', fontWeight: '600', fontSize: '13px', borderBottom: '2px solid var(--border-color)' }}>Actions</th>
+              <th style={thStyle}>No.</th>
+              <th style={thStyle}>Shop</th>
+              <th style={thStyle}>Email</th>
+              <th style={thStyle}>Type</th>
+              <th style={thStyle}>Phone</th>
+              <th style={thStyle}>Status</th>
+              <th style={thStyle}>Address</th>
+              <th style={{ ...thStyle, textAlign: 'center' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {finalSortedRequests.length > 0 ? (
               finalSortedRequests.map((req, index) => (
                 <tr key={req.id}>
-                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-color)', fontSize: '14px' }}>{index + 1}</td>
-                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-color)', fontSize: '14px' }}>
+                  <td style={tdStyle}>{index + 1}</td>
+
+                  {/* Shop name + icon */}
+                  <td style={tdStyle}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--icon-bg)', color: 'var(--icon-color)', fontSize: '16px', flexShrink: 0 }}>
+                      <div style={{
+                        width: '36px', height: '36px', borderRadius: '50%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: 'var(--icon-bg)', color: 'var(--icon-color)',
+                        fontSize: '16px', flexShrink: 0
+                      }}>
                         <i className={getTypeIcon(req.type)}></i>
                       </div>
                       <div>
                         <div style={{ fontWeight: 600, fontSize: '14px' }}>{req.shop_name}</div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>ID: {req.id}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          User ID: {req.user_id}
+                        </div>
                       </div>
                     </div>
                   </td>
-                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-color)', fontSize: '14px' }}>{getTypeBadge(req.type)}</td>
-                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-color)', fontSize: '14px' }}>{req.shop_phone}</td>
-                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-color)', fontSize: '14px' }}>{getStatusBadge(req.status)}</td>
-                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-color)', fontSize: '14px' }}>{req.shop_address}</td>
-                  <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-color)', fontSize: '14px', textAlign: 'center' }}>
+
+                  {/* Email column */}
+                  <td style={tdStyle}>
+                    <div style={{ fontSize: '13px' }}>{req.email}</div>
+                  </td>
+
+                  <td style={tdStyle}>{getTypeBadge(req.type)}</td>
+                  <td style={tdStyle}>{req.shop_phone}</td>
+                  <td style={tdStyle}>{getStatusBadge(req.status)}</td>
+                  <td style={tdStyle}>{req.shop_address}</td>
+
+                  <td style={{ ...tdStyle, textAlign: 'center' }}>
                     <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', flexWrap: 'wrap' }}>
                       {req.status === 'pending' && userRole === 'admin' && (
                         <>
@@ -662,7 +713,7 @@ function Shop() {
                       <button className="action-btn-icon view" title="View Details" onClick={() => { setSelectedRequest(req); setShowDetailModal(true); }} style={{ width: '32px', height: '32px', border: 'none', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', fontSize: '14px', color: '#6f42c1', background: 'rgba(111, 66, 193, 0.1)' }}>
                         <i className="bi bi-eye"></i>
                       </button>
-                      {(userRole === 'admin') && (
+                      {userRole === 'admin' && (
                         <>
                           <button className="action-btn-icon edit" title="Edit" onClick={() => handleEdit(req)} style={{ width: '32px', height: '32px', border: 'none', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', fontSize: '14px', color: '#0d6efd', background: 'rgba(13, 110, 253, 0.1)' }}>
                             <i className="bi bi-pencil-square"></i>
@@ -678,7 +729,7 @@ function Shop() {
               ))
             ) : (
               <tr>
-                <td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
                   <i className="bi bi-inbox" style={{ fontSize: '32px', display: 'block', marginBottom: '8px' }}></i>
                   No shops found
                 </td>
@@ -691,7 +742,7 @@ function Shop() {
       {/* DETAIL MODAL */}
       {showDetailModal && selectedRequest && (
         <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }} onClick={() => setShowDetailModal(false)}>
-          <div className="modal-content" style={{ background: 'var(--card-bg)', borderRadius: '24px', padding: '0', maxWidth: '35%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', zIndex: 10001 }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" style={{ background: 'var(--card-bg)', borderRadius: '24px', padding: '0', maxWidth: '600px', width: '90%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', zIndex: 10001 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid var(--border-color)' }}>
               <h2 style={{ margin: 0, fontSize: '20px' }}><i className="bi bi-shop"></i> Shop Details</h2>
               <button className="close-btn" style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: 'var(--text-color)' }} onClick={() => setShowDetailModal(false)}>
@@ -699,15 +750,34 @@ function Shop() {
               </button>
             </div>
             <div className="modal-body" style={{ padding: '24px' }}>
+              {/* Header block with icon + name + email */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '20px' }}>
+                <div style={{ width: '64px', height: '64px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--icon-bg)', color: 'var(--icon-color)', fontSize: '28px', flexShrink: 0 }}>
+                  <i className={getTypeIcon(selectedRequest.type)}></i>
+                </div>
+                <div>
+                  <h3 style={{ margin: 0 }}>{selectedRequest.shop_name}</h3>
+                  <p style={{ margin: 0, color: 'var(--text-secondary)' }}>{selectedRequest.email}</p>
+                  <div style={{ marginTop: '6px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {getStatusBadge(selectedRequest.status)}
+                    {getTypeBadge(selectedRequest.type)}
+                  </div>
+                </div>
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div><strong>Shop Name:</strong> {selectedRequest.shop_name}</div>
-                <div><strong>Type:</strong> {getTypeBadge(selectedRequest.type)}</div>
-                <div><strong>Phone:</strong> {selectedRequest.shop_phone}</div>
-                <div><strong>Status:</strong> {getStatusBadge(selectedRequest.status)}</div>
-                <div style={{ gridColumn: '1 / -1' }}><strong>Address:</strong> {selectedRequest.shop_address}</div>
-                <div><strong>Location:</strong> {selectedRequest.location}</div>
-                <div><strong>NRC:</strong> {selectedRequest.nrc}</div>
                 <div><strong>User ID:</strong> {selectedRequest.user_id}</div>
+                <div><strong>Owner:</strong> {selectedRequest.owner_name}</div>
+                <div style={{ gridColumn: '1 / -1' }}><strong>Email:</strong> {selectedRequest.email}</div>
+                <div><strong>Phone:</strong> {selectedRequest.shop_phone}</div>
+                <div><strong>Location:</strong> {selectedRequest.location}</div>
+                <div style={{ gridColumn: '1 / -1' }}><strong>Address:</strong> {selectedRequest.shop_address}</div>
+                <div style={{ gridColumn: '1 / -1' }}><strong>NRC:</strong> {selectedRequest.nrc}</div>
+                {selectedRequest.created_at && (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <strong>Created:</strong> {new Date(selectedRequest.created_at).toLocaleString()}
+                  </div>
+                )}
                 {selectedRequest.image && (
                   <div style={{ gridColumn: '1 / -1' }}>
                     <strong>Image:</strong><br />
@@ -736,7 +806,7 @@ function Shop() {
       {/* EDIT MODAL */}
       {showEditModal && selectedRequestForEdit && (
         <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }} onClick={() => setShowEditModal(false)}>
-          <div className="modal-content" style={{ background: 'var(--card-bg)', borderRadius: '24px', padding: '0', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', zIndex: 10001 }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" style={{ background: 'var(--card-bg)', borderRadius: '24px', padding: '0', maxWidth: '500px', width: '90%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', zIndex: 10001 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid var(--border-color)' }}>
               <h2 style={{ margin: 0, fontSize: '20px' }}><i className="bi bi-pencil-square"></i> Edit Shop</h2>
               <button className="close-btn" style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: 'var(--text-color)' }} onClick={() => setShowEditModal(false)}>
@@ -744,6 +814,12 @@ function Shop() {
               </button>
             </div>
             <div className="modal-body" style={{ padding: '24px' }}>
+              {/* Read-only info */}
+              <div style={{ marginBottom: '15px', padding: '12px', background: 'var(--icon-bg)', borderRadius: '8px', fontSize: '13px' }}>
+                <div><strong>User ID:</strong> {selectedRequestForEdit.user_id}</div>
+                <div><strong>Email:</strong> {selectedRequestForEdit.email}</div>
+              </div>
+
               <div className="form-group mb-3" style={{ marginBottom: '15px' }}>
                 <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500' }}>Shop Name</label>
                 <input type="text" className="form-control" value={selectedRequestForEdit.shop_name} onChange={(e) => setSelectedRequestForEdit({ ...selectedRequestForEdit, shop_name: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)' }} />
