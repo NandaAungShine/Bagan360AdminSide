@@ -1263,7 +1263,7 @@ function Finance() {
                         </div>
                         <div className="fin-notif-item-note">
                           <i className="bi bi-wallet2" style={{ marginRight: 6 }}></i>
-                          အရောင်းမှရရှိသောငွေ
+                          {/* အရောင်းမှရရှိသောငွေ */}
                         </div>
                       </div>
                     </div>
@@ -1428,7 +1428,7 @@ function Finance() {
                         </div>
                         <div className="fin-hint">
                           <i className="bi bi-info-circle"></i>
-                          ဒီ % ကို အောက်က Booking Percentage မှာ အလိုအလျောက် သုံးပါမယ်
+                          {/* ဒီ % ကို အောက်က Booking Percentage မှာ အလိုအလျောက် သုံးပါမယ် */}
                         </div>
                       </div>
                     )}
@@ -1503,7 +1503,7 @@ function Finance() {
                       <i className="bi bi-graph-up-arrow"></i> Booking Percentage
                     </h3>
                     <div className="fin-created">
-                      Booking အလိုက် percentage ဖြင့် amount တွက်ချက်ပေးသော API
+                      {/* Booking အလိုက် percentage ဖြင့် amount တွက်ချက်ပေးသော API */}
                     </div>
 
                     <div className="fin-inline-form perc-form">
@@ -1630,7 +1630,7 @@ function Finance() {
                       <i className="bi bi-wallet2"></i> Shop Amount (Tax)
                     </h3>
                     <div className="fin-created">
-                      ဆိုင်မှ Admin သို့ ပေးသွင်းရမည့် Amount များ
+                      {/* ဆိုင်မှ Admin သို့ ပေးသွင်းရမည့် Amount များ */}
                     </div>
 
                     <div className="fin-inline-form">
