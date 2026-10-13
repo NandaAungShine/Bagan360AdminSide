@@ -13,102 +13,82 @@ const buildImageUrl = (img) => {
   return `${BACKEND_URL}/${img.replace(/^\/+/, '')}`;
 };
 
-// ---------------- Mock Data (fallback when API not available) ----------------
+const PAYMENT_OPTIONS = ['K Pay', 'Wave Pay', 'CB Pay', 'UAB Pay', 'AYA Pay', 'Cash'];
+
+const normalizeTax = (tax) => {
+  if (!tax) return '';
+  const t = String(tax).toLowerCase().trim().replace(/[-\s]/g, '_');
+  if (t === 'percent') return 'percentage';
+  return t;
+};
+
+const isMonthlyTax = (tax) => ['monthly', 'daily', 'weekly', 'yearly'].includes(normalizeTax(tax));
+const isPercentageTax = (tax) => normalizeTax(tax) === 'percentage';
+
+const currentBillingMonth = () => {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return `${d.getFullYear()}-${m}`;
+};
+
+const readTotalBooking = (r) =>
+  Number(
+    r?.total_booking ?? r?.totalBooking ?? r?.bookings ??
+    r?.booking_count ?? r?.bookingCount ?? 0
+  ) || 0;
+
+// period range helpers
+const fmtDate = (d) => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+const periodFromCreatedAt = (createdAt) => {
+  if (!createdAt) {
+    const now = new Date();
+    return { start: fmtDate(now), end: fmtDate(now) };
+  }
+  const d = new Date(String(createdAt).replace(' ', 'T'));
+  if (isNaN(d.getTime())) return { start: createdAt, end: createdAt };
+  return { start: fmtDate(d), end: fmtDate(d) };
+};
+
+const periodFromBillingMonth = (billing) => {
+  if (!billing) {
+    const now = new Date();
+    return { start: fmtDate(now), end: fmtDate(now) };
+  }
+  const [y, m] = String(billing).split('-').map(Number);
+  if (!y || !m) {
+    const now = new Date();
+    return { start: fmtDate(now), end: fmtDate(now) };
+  }
+  const start = new Date(y, m - 1, 1);
+  const end = new Date(y, m, 0);
+  return { start: fmtDate(start), end: fmtDate(end) };
+};
+
+// ---------------- Mock Data ----------------
 const MOCK_SHOPS = [
   {
     id: 1, shopCode: 'S001', name: 'kaung', owner: 'kaung',
     phone: '091234567', email: 'yarsu673@gmail.com', status: 'active',
+    tax: 'percentage',
     image: null, created: '01 Apr 2026, 22:37',
     platformFee: { method: 'daily', amount: 10000 },
     commissionFee: { method: 'daily', percentage: 50 },
-    platformFeeRecords: [
-      { id: 101, type: 'Daily', periodStart: '10 Sept 2026', periodEnd: '10 Sept 2026', amount: 10000, status: 'unpaid' },
-      { id: 102, type: 'Daily', periodStart: '09 Sept 2026', periodEnd: '09 Sept 2026', amount: 10000, status: 'unpaid' },
-    ],
-    commissionRecords: [
-      { id: 201, type: 'Daily', periodStart: '10 Sept 2026', periodEnd: '10 Sept 2026', sellAmount: 250000, commission: 50, commissionFee: 125000, status: 'unpaid' },
-    ],
+    platformFeeRecords: [],
+    commissionRecords: [],
     needsPayment: true,
   },
   {
     id: 2, shopCode: 'S002', name: 'PRO Burger & Coffee', owner: 'Aung',
     phone: '09960374233', email: 'kit303202@gmail.com', status: 'active',
+    tax: 'monthly',
     image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=200',
     created: '12 Mar 2026, 09:10',
     platformFee: { method: 'weekly', amount: 50000 },
     commissionFee: { method: 'weekly', percentage: 30 },
-    platformFeeRecords: [
-      { id: 103, type: 'Weekly', periodStart: '02 Sept 2026', periodEnd: '08 Sept 2026', amount: 50000, status: 'unpaid' },
-    ],
-    commissionRecords: [
-      { id: 202, type: 'Weekly', periodStart: '02 Sept 2026', periodEnd: '08 Sept 2026', sellAmount: 1200000, commission: 30, commissionFee: 360000, status: 'unpaid' },
-    ],
-    needsPayment: true,
-  },
-  {
-    id: 3, shopCode: 'S036', name: 'DIMO', owner: 'Aung Aung',
-    phone: '09763108132', email: 'ydm11372@gmail.com', status: 'active',
-    image: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=200',
-    created: '05 Feb 2026, 14:22',
-    platformFee: { method: 'monthly', amount: 200000 },
-    commissionFee: { method: 'monthly', percentage: 15 },
     platformFeeRecords: [],
     commissionRecords: [],
     needsPayment: true,
-  },
-  {
-    id: 4, shopCode: 'S037', name: 'DIMA', owner: 'Aung',
-    phone: '09960374233', email: 'ydm11372@gmail.com', status: 'active',
-    image: null, created: '20 Jan 2026, 11:45',
-    platformFee: { method: 'daily', amount: 8000 },
-    commissionFee: { method: 'daily', percentage: 20 },
-    platformFeeRecords: [],
-    commissionRecords: [],
-    needsPayment: false,
-  },
-  {
-    id: 5, shopCode: 'S038', name: 'Dreamy', owner: 'Dreamy',
-    phone: '09763108132', email: 'aunghset.bo@gmail.com', status: 'active',
-    image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=200',
-    created: '10 Dec 2025, 16:30',
-    platformFee: { method: 'daily', amount: 10000 },
-    commissionFee: { method: 'daily', percentage: 25 },
-    platformFeeRecords: [],
-    commissionRecords: [],
-    needsPayment: false,
-  },
-  {
-    id: 6, shopCode: 'S039', name: 'Su Shop', owner: 'Su Su',
-    phone: '09950595435', email: 'su@gmail.com', status: 'active',
-    image: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=200',
-    created: '08 Dec 2025, 10:15',
-    platformFee: { method: 'daily', amount: 10000 },
-    commissionFee: { method: 'daily', percentage: 20 },
-    platformFeeRecords: [],
-    commissionRecords: [],
-    needsPayment: false,
-  },
-  {
-    id: 7, shopCode: 'S040', name: 'NoeNoeShop', owner: 'MMNA',
-    phone: '09763108132', email: 'nn@gmail.com', status: 'active',
-    image: 'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=200',
-    created: '01 Dec 2025, 09:00',
-    platformFee: { method: 'daily', amount: 10000 },
-    commissionFee: { method: 'daily', percentage: 20 },
-    platformFeeRecords: [],
-    commissionRecords: [],
-    needsPayment: false,
-  },
-  {
-    id: 8, shopCode: 'S041', name: 'Little Shark', owner: 'MMNA',
-    phone: '09763108136', email: 'littlesharkshop@gmail.com', status: 'active',
-    image: 'https://images.unsplash.com/photo-1466978913421-dad2ebd01d17?w=200',
-    created: '28 Nov 2025, 13:20',
-    platformFee: { method: 'daily', amount: 10000 },
-    commissionFee: { method: 'daily', percentage: 20 },
-    platformFeeRecords: [],
-    commissionRecords: [],
-    needsPayment: false,
   },
 ];
 
@@ -128,14 +108,18 @@ function Finance() {
   }, [isDarkMode]);
 
   // ---------------- API Helpers ----------------
-  const getToken = () => localStorage.getItem('token');
+  const getToken = () =>
+    localStorage.getItem('token') || localStorage.getItem('access_token');
   const getHeaders = () => ({
     'Authorization': `Bearer ${getToken()}`,
     'Content-Type': 'application/json',
   });
 
   const SHOP_API = '/auth/shop';
+  const USER_API = '/auth/user';
   const API_BASE = '/api/admin/finance';
+  const PERCENTAGE_API = '/api/admin/percentage';
+  const TAX_API = '/api/admin/tax';
 
   // ---------------- States ----------------
   const [shops, setShops] = useState([]);
@@ -147,10 +131,28 @@ function Finance() {
   const [selectedShop, setSelectedShop] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
 
-  const [showPasscode, setShowPasscode] = useState(false);
-  const [passcode, setPasscode] = useState('');
-  const [passcodeError, setPasscodeError] = useState('');
-  const [pendingShop, setPendingShop] = useState(null);
+  const [allPercentages, setAllPercentages] = useState([]);
+  const [allTaxes, setAllTaxes] = useState([]);
+
+  const [percentageRecords, setPercentageRecords] = useState([]);
+  const [taxRecords, setTaxRecords] = useState([]);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+
+  // Percentage create form
+  const [percForm, setPercForm] = useState({ total_booking: '' });
+  const [percSubmitting, setPercSubmitting] = useState(false);
+
+  // Tax create form (Amount + Payment + Reason)
+  const [taxForm, setTaxForm] = useState({ amount: '', payment: 'Cash', reason: '' });
+  const [taxSubmitting, setTaxSubmitting] = useState(false);
+
+  // Tax inline edit
+  const [editingTaxId, setEditingTaxId] = useState(null);
+  const [editTaxForm, setEditTaxForm] = useState({ amount: '', payment: 'Cash', reason: '' });
+
+  // Percentage inline edit
+  const [editingPercId, setEditingPercId] = useState(null);
+  const [editPercForm, setEditPercForm] = useState({ total_booking: '' });
 
   const [showNotif, setShowNotif] = useState(false);
   const notifRef = useRef(null);
@@ -164,31 +166,103 @@ function Finance() {
     toastTimer.current = setTimeout(() => setToast(t => ({ ...t, visible: false })), 3000);
   };
 
-  // ---------------- Normalize shop from API ----------------
+  // ---------------- Normalize shop ----------------
   const normalizeShop = (s) => {
-    const rawId = s.id ?? s.shop_id;
+    if (!s) return null;
+
+    const user =
+      s.user || s.owner_user || s.ownerUser || s.owner_info ||
+      s.ownerInfo || s.user_info || s.account || {};
+
+    const rawId = s.id ?? s.shop_id ?? s.shopId;
+    const userId = s.user_id ?? s.userId ?? s.owner_id ?? user.id ?? null;
+
+    const ownerName =
+      s.owner_name ?? s.ownerName ?? s.owner ?? s.username ??
+      s.user_name ?? s.userName ?? s.owner_full_name ??
+      user.name ?? user.username ?? user.full_name ?? user.fullName ?? '';
+
+    const phone =
+      s.shop_phone ?? s.phone ?? s.phone_number ?? s.phoneNumber ??
+      s.mobile ?? s.mobile_number ?? s.contact ?? s.contact_number ??
+      user.phone ?? user.phone_number ?? user.phoneNumber ?? user.mobile ?? '';
+
+    const email =
+      s.email ?? s.email_address ?? s.emailAddress ??
+      user.email ?? user.email_address ?? user.emailAddress ?? '';
+
+    const tax = normalizeTax(s.tax ?? s.tax_type ?? s.taxType ?? '');
+
     return {
       id: rawId,
-      shopCode: s.shop_code ?? s.code ?? `S${String(rawId || 0).padStart(3, '0')}`,
-      name: s.name ?? s.shop_name ?? 'Shop',
-      owner: s.owner_name ?? s.owner ?? s.username ?? s.name ?? '',
-      phone: s.phone ?? s.phone_number ?? '',
-      email: s.email ?? '',
+      user_id: userId,
+      shopCode: s.shop_code ?? s.shopCode ?? s.code ?? `S${String(rawId || 0).padStart(3, '0')}`,
+      name: s.name ?? s.shop_name ?? s.shopName ?? 'Shop',
+      owner: ownerName,
+      phone,
+      email,
       status: (s.status || 'active').toLowerCase(),
-      image: buildImageUrl(s.image),
-      created: s.created_at
-        ? new Date(s.created_at).toLocaleString('en-GB', {
+      tax,
+      image: buildImageUrl(s.image ?? s.logo ?? s.photo ?? s.image_url),
+      created: s.created_at || s.createdAt
+        ? new Date(s.created_at || s.createdAt).toLocaleString('en-GB', {
             day: '2-digit', month: 'short', year: 'numeric',
             hour: '2-digit', minute: '2-digit',
           })
         : '',
-      platformFee: s.platform_fee || s.platformFee || { method: 'daily', amount: 0 },
-      commissionFee: s.commission_fee || s.commissionFee || { method: 'daily', percentage: 0 },
+      shopType: s.shop_type ?? s.shopType ?? s.type ?? '',
+      platformFee: s.platform_fee || s.platformFee || { method: 'monthly', amount: 0 },
+      commissionFee: s.commission_fee || s.commissionFee || { method: 'percentage', percentage: 0 },
       platformFeeRecords: s.platform_fee_records || s.platformFeeRecords || [],
       commissionRecords: s.commission_records || s.commissionRecords || [],
       needsPayment: s.needs_payment ?? s.needsPayment ?? false,
       raw: s,
     };
+  };
+
+  // ---------------- Enrich with user list ----------------
+  const enrichWithUsers = async (shopList) => {
+    const needUserInfo = shopList.some(s => !s.email || !s.owner || !s.phone);
+    if (!needUserInfo) return shopList;
+
+    try {
+      const res = await fetch(`${USER_API}/list`, { headers: getHeaders() });
+      if (!res.ok) return shopList;
+      const json = await res.json();
+      const arr = Array.isArray(json)
+        ? json
+        : Array.isArray(json.data)
+          ? json.data
+          : Array.isArray(json.users)
+            ? json.users
+            : [];
+
+      const map = {};
+      arr.forEach(u => {
+        const uid = u.id ?? u.user_id ?? u.userId;
+        if (uid != null) {
+          map[uid] = {
+            email: u.email || u.email_address || '',
+            name: u.name || u.username || u.full_name || u.fullName || '',
+            phone: u.phone || u.phone_number || u.mobile || '',
+          };
+        }
+      });
+
+      return shopList.map(s => {
+        const u = s.user_id != null ? map[s.user_id] : null;
+        if (!u) return s;
+        return {
+          ...s,
+          email: s.email || u.email || '',
+          owner: s.owner || u.name || '',
+          phone: s.phone || u.phone || '',
+        };
+      });
+    } catch (e) {
+      console.warn('User enrichment failed:', e.message);
+      return shopList;
+    }
   };
 
   // ---------------- Fetch Shops ----------------
@@ -206,8 +280,6 @@ function Finance() {
         }
         if (res.ok) {
           const data = await res.json();
-          console.log('✅ Shop List Response:', data);
-
           let list = [];
           if (Array.isArray(data)) list = data;
           else if (Array.isArray(data.data)) list = data.data;
@@ -215,7 +287,9 @@ function Finance() {
           else if (Array.isArray(data.list)) list = data.list;
 
           if (list.length) {
-            setShops(list.map(normalizeShop));
+            let normalized = list.map(normalizeShop).filter(Boolean);
+            normalized = await enrichWithUsers(normalized);
+            setShops(normalized);
             setLoading(false);
             return;
           }
@@ -232,7 +306,32 @@ function Finance() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchShops(); /* eslint-disable-next-line */ }, []);
+  const fetchGlobalFinanceExtras = async () => {
+    try {
+      const [pRes, tRes] = await Promise.all([
+        fetch(`${PERCENTAGE_API}/list`, { headers: getHeaders() }).catch(() => null),
+        fetch(`${TAX_API}/list`, { headers: getHeaders() }).catch(() => null),
+      ]);
+      if (pRes && pRes.ok) {
+        const d = await pRes.json();
+        const list = d.data || d.list || (Array.isArray(d) ? d : []);
+        setAllPercentages(list);
+      }
+      if (tRes && tRes.ok) {
+        const d = await tRes.json();
+        const list = d.data || d.list || (Array.isArray(d) ? d : []);
+        setAllTaxes(list);
+      }
+    } catch (e) {
+      console.warn('Finance extras fetch failed:', e.message);
+    }
+  };
+
+  useEffect(() => {
+    fetchShops();
+    fetchGlobalFinanceExtras();
+    /* eslint-disable-next-line */
+  }, []);
 
   // ---------------- Outside click ----------------
   useEffect(() => {
@@ -268,14 +367,65 @@ function Finance() {
     sum + (s.platformFeeRecords || []).filter(r => r.status === 'paid').reduce((a, r) => a + (r.amount || 0), 0), 0);
   const totalCommissionFees = shops.reduce((sum, s) =>
     sum + (s.commissionRecords || []).filter(r => r.status === 'paid').reduce((a, r) => a + (r.commissionFee || 0), 0), 0);
-  const totalFinance = totalPlatformFees + totalCommissionFees;
+  const totalPercentageAmount = allPercentages.reduce((a, r) => a + (Number(r.amount) || 0), 0);
+  const totalTaxAmount = allTaxes.reduce((a, r) => a + (Number(r.amount) || 0), 0);
+  const totalFinance = totalPlatformFees + totalCommissionFees + totalPercentageAmount + totalTaxAmount;
   const totalShops = shops.length;
   const needsPaymentShops = shops.filter(s => s.needsPayment);
 
+  // ---------------- Detail fetchers ----------------
+  const fetchPercentageForShop = async (shopId) => {
+    try {
+      const res = await fetch(`${PERCENTAGE_API}/list`, { headers: getHeaders() });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const list = data.data || data.list || (Array.isArray(data) ? data : []);
+      return list.filter(r => String(r.shop_id) === String(shopId));
+    } catch (e) {
+      console.warn('Percentage fetch failed', e.message);
+      return [];
+    }
+  };
+
+  const fetchTaxForShop = async (shopId) => {
+    try {
+      const res = await fetch(`${TAX_API}/list`, { headers: getHeaders() });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const list = data.data || data.list || (Array.isArray(data) ? data : []);
+      return list.filter(r => String(r.shop_id) === String(shopId));
+    } catch (e) {
+      console.warn('Tax fetch failed', e.message);
+      return [];
+    }
+  };
+
   // ---------------- Handlers ----------------
-  const handleViewFinance = (shop) => {
+  const handleViewFinance = async (shop) => {
     setSelectedShop(JSON.parse(JSON.stringify(shop)));
     setShowDetail(true);
+
+    setPercentageRecords([]);
+    setTaxRecords([]);
+    setEditingTaxId(null);
+    setEditingPercId(null);
+    setPercForm({ total_booking: '' });
+
+    const pfAmt = shop.platformFee?.amount;
+    setTaxForm({
+      amount: pfAmt != null && pfAmt !== '' ? String(pfAmt) : '',
+      payment: 'Cash',
+      reason: '',
+    });
+
+    setDetailsLoading(true);
+    const [perc, tax] = await Promise.all([
+      isPercentageTax(shop.tax) ? fetchPercentageForShop(shop.id) : Promise.resolve([]),
+      isMonthlyTax(shop.tax) ? fetchTaxForShop(shop.id) : Promise.resolve([]),
+    ]);
+    setPercentageRecords(perc);
+    setTaxRecords(tax);
+    setDetailsLoading(false);
   };
 
   const handleSaveChanges = async () => {
@@ -316,6 +466,271 @@ function Finance() {
     showToast('success', 'Marked as Paid.');
   };
 
+  // ---------- Percentage CRUD ----------
+  const handleCreatePercentage = async () => {
+    if (!selectedShop) return;
+
+    const commissionPct = Number(selectedShop.commissionFee?.percentage);
+    if (!commissionPct || isNaN(commissionPct)) {
+      showToast('error', 'Commission Fee percentage is missing. Set it above first.');
+      return;
+    }
+    if (percForm.total_booking === '' || isNaN(Number(percForm.total_booking))) {
+      showToast('error', 'Please enter a valid total booking.');
+      return;
+    }
+
+    const totalBooking = parseInt(percForm.total_booking, 10) || 0;
+    setPercSubmitting(true);
+    try {
+      const payload = {
+        shop_id: selectedShop.id,
+        shop_name: selectedShop.name,
+        shop_type: selectedShop.shopType || '',
+        tax: 'percentage',
+        percentage: commissionPct,
+        total_booking: totalBooking,
+        booking_count: totalBooking,
+        billing_month: currentBillingMonth(),
+      };
+      const res = await fetch(`${PERCENTAGE_API}/create`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.message || `Failed (${res.status})`);
+      }
+      showToast('success', data.message || 'Percentage created.');
+      setPercForm({ total_booking: '' });
+      const updated = await fetchPercentageForShop(selectedShop.id);
+      setPercentageRecords(updated);
+      fetchGlobalFinanceExtras();
+    } catch (e) {
+      showToast('error', e.message || 'Failed to create percentage.');
+    } finally {
+      setPercSubmitting(false);
+    }
+  };
+
+  const handleStartEditPerc = (rec) => {
+    setEditingPercId(rec.id);
+    setEditPercForm({ total_booking: readTotalBooking(rec) || '' });
+  };
+
+  const handleCancelEditPerc = () => {
+    setEditingPercId(null);
+    setEditPercForm({ total_booking: '' });
+  };
+
+  const handleUpdatePerc = async (id) => {
+    if (editPercForm.total_booking === '' || isNaN(Number(editPercForm.total_booking))) {
+      showToast('error', 'Please enter a valid total booking.');
+      return;
+    }
+    const newTB = parseInt(editPercForm.total_booking, 10) || 0;
+    try {
+      await fetch(`${PERCENTAGE_API}/update/${id}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          total_booking: newTB,
+          booking_count: newTB,
+        }),
+      }).catch(() => null);
+    } catch (_) { /* ignore */ }
+
+    setPercentageRecords(prev => prev.map(r =>
+      r.id === id
+        ? { ...r, total_booking: newTB, booking_count: newTB, amount: Math.round(newTB * (Number(r.percentage) || 0) / 100) }
+        : r
+    ));
+    showToast('success', 'Percentage updated.');
+    setEditingPercId(null);
+    setEditPercForm({ total_booking: '' });
+  };
+
+  const handleDeletePerc = async (id) => {
+    if (!window.confirm('Delete this percentage record?')) return;
+    try {
+      await fetch(`${PERCENTAGE_API}/delete/${id}`, {
+        method: 'DELETE',
+        headers: getHeaders(),
+      }).catch(() => null);
+    } catch (_) { /* ignore */ }
+    setPercentageRecords(prev => prev.filter(r => r.id !== id));
+    showToast('success', 'Percentage deleted.');
+  };
+
+  // Approve percentage → push to Commission Records as PAID
+  const handleApprovePercentage = (rec) => {
+    if (!selectedShop) return;
+    const { start, end } = periodFromBillingMonth(rec.billing_month);
+    const sellAmount = readTotalBooking(rec);
+    const newCommission = {
+      id: `cm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type: 'Monthly',
+      periodStart: start,
+      periodEnd: end,
+      sellAmount,
+      commission: Number(rec.percentage) || 0,
+      commissionFee: Number(rec.amount) || Math.round(sellAmount * (Number(rec.percentage) || 0) / 100),
+      status: 'paid',
+    };
+
+    const updatedShop = {
+      ...selectedShop,
+      commissionRecords: [...(selectedShop.commissionRecords || []), newCommission],
+    };
+    setSelectedShop(updatedShop);
+    setShops(prev => prev.map(s => s.id === updatedShop.id ? updatedShop : s));
+
+    setPercentageRecords(prev => prev.filter(r => r.id !== rec.id));
+    fetch(`${PERCENTAGE_API}/delete/${rec.id}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    }).catch(() => null);
+
+    showToast('success', 'Approved — added to Commission Records as Paid.');
+  };
+
+  // ---------- Tax CRUD ----------
+  const handleCreateTax = async () => {
+    if (!selectedShop) return;
+    if (taxForm.amount === '' || isNaN(Number(taxForm.amount))) {
+      showToast('error', 'Please enter a valid amount.');
+      return;
+    }
+    setTaxSubmitting(true);
+    try {
+      const payload = {
+        shop_id: selectedShop.id,
+        shop_name: selectedShop.name,
+        amount: Number(taxForm.amount) || 0,
+        payment: taxForm.payment,
+        reason: taxForm.reason || '',
+      };
+      const res = await fetch(`${TAX_API}/create`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.message || `Failed (${res.status})`);
+      }
+      showToast('success', data.message || 'Shop amount created.');
+      const pfAmt = selectedShop.platformFee?.amount;
+      setTaxForm({
+        amount: pfAmt != null && pfAmt !== '' ? String(pfAmt) : '',
+        payment: 'Cash',
+        reason: '',
+      });
+      const updated = await fetchTaxForShop(selectedShop.id);
+      setTaxRecords(updated);
+      fetchGlobalFinanceExtras();
+    } catch (e) {
+      showToast('error', e.message || 'Failed to create shop amount.');
+    } finally {
+      setTaxSubmitting(false);
+    }
+  };
+
+  const handleStartEditTax = (rec) => {
+    setEditingTaxId(rec.id);
+    setEditTaxForm({
+      amount: rec.amount ?? '',
+      payment: rec.payment || 'Cash',
+      reason: rec.reason || '',
+    });
+  };
+
+  const handleCancelEditTax = () => {
+    setEditingTaxId(null);
+    setEditTaxForm({ amount: '', payment: 'Cash', reason: '' });
+  };
+
+  const handleUpdateTax = async (id) => {
+    if (editTaxForm.amount === '' || isNaN(Number(editTaxForm.amount))) {
+      showToast('error', 'Please enter a valid amount.');
+      return;
+    }
+    try {
+      const payload = {
+        amount: Number(editTaxForm.amount) || 0,
+        payment: editTaxForm.payment,
+        reason: editTaxForm.reason || '',
+      };
+      const res = await fetch(`${TAX_API}/update/${id}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.message || `Failed (${res.status})`);
+      }
+      showToast('success', data.message || 'Shop amount updated.');
+      setEditingTaxId(null);
+      const updated = await fetchTaxForShop(selectedShop.id);
+      setTaxRecords(updated);
+      fetchGlobalFinanceExtras();
+    } catch (e) {
+      showToast('error', e.message || 'Failed to update.');
+    }
+  };
+
+  const handleDeleteTax = async (id) => {
+    if (!window.confirm('Delete this shop amount record?')) return;
+    try {
+      const res = await fetch(`${TAX_API}/delete/${id}`, {
+        method: 'DELETE',
+        headers: getHeaders(),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.message || `Failed (${res.status})`);
+      }
+      showToast('success', data.message || 'Shop amount deleted.');
+      const updated = await fetchTaxForShop(selectedShop.id);
+      setTaxRecords(updated);
+      fetchGlobalFinanceExtras();
+    } catch (e) {
+      showToast('error', e.message || 'Failed to delete.');
+    }
+  };
+
+  // Approve tax → push to Platform Fee Records as PAID
+  const handleApproveTax = (rec) => {
+    if (!selectedShop) return;
+    const { start, end } = periodFromCreatedAt(rec.created_at);
+    const methodLabel = (selectedShop.platformFee?.method || 'monthly');
+    const newPlatform = {
+      id: `pf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type: methodLabel.charAt(0).toUpperCase() + methodLabel.slice(1),
+      periodStart: start,
+      periodEnd: end,
+      amount: Number(rec.amount) || 0,
+      status: 'paid',
+    };
+
+    const updatedShop = {
+      ...selectedShop,
+      platformFeeRecords: [...(selectedShop.platformFeeRecords || []), newPlatform],
+    };
+    setSelectedShop(updatedShop);
+    setShops(prev => prev.map(s => s.id === updatedShop.id ? updatedShop : s));
+
+    setTaxRecords(prev => prev.filter(r => r.id !== rec.id));
+    fetch(`${TAX_API}/delete/${rec.id}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    }).catch(() => null);
+
+    showToast('success', 'Approved — added to Platform Fee Records as Paid.');
+  };
+
   // ---------------- Render Helpers ----------------
   const SummaryCard = ({ label, value, suffix, icon, iconBg }) => (
     <div className="fin-summary-card">
@@ -344,11 +759,25 @@ function Finance() {
     return <span className="fin-badge" style={{ color: info.color, background: info.bg }}>{info.label}</span>;
   };
 
-  const MethodPills = ({ value, onChange }) => {
-    const methods = ['daily', 'weekly', 'monthly'];
+  const TaxBadge = ({ tax }) => {
+    const key = normalizeTax(tax);
+    if (!key) return null;
+    const map = {
+      monthly:    { color: '#6f42c1', bg: '#e2d9f3', label: 'Monthly' },
+      percentage: { color: '#fd7e14', bg: '#ffe5d0', label: 'Percentage' },
+      daily:      { color: '#0d6efd', bg: '#cfe2ff', label: 'Daily' },
+      weekly:     { color: '#17a2b8', bg: '#cff4fc', label: 'Weekly' },
+      yearly:     { color: '#198754', bg: '#d1e7dd', label: 'Yearly' },
+    };
+    const info = map[key] || { color: '#6c757d', bg: '#e9ecef', label: tax };
+    return <span className="fin-badge" style={{ color: info.color, background: info.bg }}>{info.label}</span>;
+  };
+
+  const MethodPills = ({ value, onChange, methods }) => {
+    const list = methods || ['daily', 'weekly', 'monthly'];
     return (
       <div className="fin-toggle-group">
-        {methods.map(m => (
+        {list.map(m => (
           <button
             key={m}
             type="button"
@@ -483,11 +912,13 @@ function Finance() {
         .fin-shop-head {
           display: flex; justify-content: space-between; align-items: center;
           padding-bottom: 10px; border-bottom: 1px dashed #444444;
+          gap: 6px;
         }
         .fin-shop-name {
           font-size: 15px; font-weight: 700; color: #ffffff; margin: 0;
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70%;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%;
         }
+        .fin-shop-badges { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
         .fin-shop-body { display: flex; gap: 12px; align-items: flex-start; }
         .fin-shop-thumb {
           width: 64px; height: 64px; border-radius: 10px; flex-shrink: 0;
@@ -544,7 +975,7 @@ function Finance() {
           padding: 16px 22px; border-bottom: 1px solid #444444;
         }
         .fin-modal-title {
-          display: flex; align-items: center; gap: 10px;
+          display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
           font-size: 16px; font-weight: 700; color: #ffffff;
         }
         .fin-modal-title i { color: #0d6efd; }
@@ -569,6 +1000,9 @@ function Finance() {
 
         .fin-settings-grid {
           display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+        }
+        .fin-settings-grid.single {
+          grid-template-columns: 1fr;
         }
         .fin-setting-card {
           background: #2d2d2d; border: 1px solid #444444;
@@ -600,15 +1034,30 @@ function Finance() {
           width: 100%; padding: 10px 48px 10px 12px;
           background: #1e1e1e; border: 1px solid #555555; border-radius: 8px;
           color: #fff; font-size: 14px; outline: none;
+          box-sizing: border-box;
         }
+        .fin-input.no-suffix { padding-right: 12px; }
         .fin-input:focus { border-color: #0d6efd; }
+        .fin-input[readonly],
+        .fin-input:disabled {
+          background: #171717;
+          color: #8fb4ff;
+          font-weight: 700;
+          cursor: not-allowed;
+          opacity: 1;
+        }
         .fin-input-suffix {
           position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
           font-size: 12px; color: #9ca3af; pointer-events: none;
         }
 
+        .fin-hint {
+          font-size: 11px; color: #7dd3fc; margin-top: 6px;
+          display: inline-flex; align-items: center; gap: 4px;
+        }
+
         .fin-save-btn {
-          display: block; margin-left: auto; margin-top: 4px;
+          margin-left: auto; margin-top: 12px;
           background: #0d6efd;
           color: #fff; border: none; padding: 10px 22px; border-radius: 8px;
           font-size: 13px; font-weight: 600; cursor: pointer;
@@ -616,6 +1065,56 @@ function Finance() {
           transition: background .15s;
         }
         .fin-save-btn:hover { background: #0b5ed7; }
+        .fin-save-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+        /* ===== Inline form ===== */
+        .fin-inline-form {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1.3fr auto;
+          gap: 10px; margin-bottom: 14px; align-items: end;
+        }
+        .fin-inline-form.perc-form {
+          grid-template-columns: 1fr 1.2fr auto;
+        }
+        .fin-field { display: flex; flex-direction: column; }
+        .fin-select {
+          width: 100%; padding: 10px 12px;
+          background: #1e1e1e; border: 1px solid #555555; border-radius: 8px;
+          color: #fff; font-size: 13px; outline: none;
+          appearance: none;
+          background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%239ca3af' viewBox='0 0 16 16'><path d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/></svg>");
+          background-repeat: no-repeat;
+          background-position: right 12px center;
+          padding-right: 32px;
+        }
+        .fin-select:focus { border-color: #0d6efd; }
+        .fin-btn-primary {
+          background: #0d6efd; color: #fff; border: none;
+          padding: 10px 18px; border-radius: 8px;
+          font-size: 12.5px; font-weight: 600; cursor: pointer;
+          display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+          transition: background .15s;
+        }
+        .fin-btn-primary:hover { background: #0b5ed7; }
+        .fin-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+        .fin-btn-ghost {
+          background: transparent; color: #cbd5e1;
+          border: 1px solid #555555; border-radius: 6px;
+          padding: 5px 9px; font-size: 11.5px; cursor: pointer;
+          display: inline-flex; align-items: center; gap: 4px;
+          transition: all .15s;
+        }
+        .fin-btn-ghost:hover { border-color: #0d6efd; color: #0d6efd; }
+        .fin-btn-ghost.danger:hover { border-color: #dc3545; color: #dc3545; }
+        .fin-btn-ghost.approve {
+          background: rgba(25,135,84,0.15); color: #4ade80; border-color: rgba(25,135,84,0.5);
+        }
+        .fin-btn-ghost.approve:hover { background: #198754; color: #fff; border-color: #198754; }
+        .fin-btn-ghost.success {
+          background: #198754; color: #fff; border-color: #198754;
+        }
+        .fin-btn-ghost.success:hover { background: #157347; border-color: #157347; color: #fff; }
+        .fin-actions { display: flex; gap: 5px; flex-wrap: nowrap; }
 
         /* ===== Table ===== */
         .fin-table {
@@ -628,6 +1127,7 @@ function Finance() {
         }
         .fin-table tbody td {
           padding: 12px; color: #e5e7eb; border-bottom: 1px solid #383838;
+          vertical-align: middle;
         }
         .fin-table tbody tr:last-child td { border-bottom: none; }
         .fin-mark-paid-btn {
@@ -641,39 +1141,19 @@ function Finance() {
           text-align: center; padding: 20px; color: #9ca3af; font-size: 13px;
         }
 
+        .fin-table .mini-input,
+        .fin-table .mini-select {
+          background: #1e1e1e; border: 1px solid #555555; border-radius: 6px;
+          color: #fff; padding: 6px 8px; font-size: 12px; outline: none;
+          width: 100%; box-sizing: border-box;
+        }
+        .fin-table .mini-input:focus,
+        .fin-table .mini-select:focus { border-color: #0d6efd; }
+
         /* ===== Badge ===== */
         .fin-badge {
           display: inline-block; padding: 3px 10px; border-radius: 999px;
-          font-size: 11px; font-weight: 600;
-        }
-
-        /* ===== Passcode modal (kept for future) ===== */
-        .fin-passcode-modal {
-          background: #2d2d2d; border: 1px solid #555555;
-          border-radius: 14px; width: 360px; max-width: 100%;
-          padding: 22px; text-align: center;
-        }
-        .fin-passcode-title {
-          font-size: 15px; font-weight: 700; color: #ffffff; margin-bottom: 16px;
-        }
-        .fin-passcode-input {
-          width: 100%; padding: 11px 14px; background: #1e1e1e;
-          border: 1px solid #555555; border-radius: 8px;
-          color: #fff; font-size: 14px; outline: none; margin-bottom: 6px;
-        }
-        .fin-passcode-input:focus { border-color: #0d6efd; }
-        .fin-passcode-error { color: #ef4444; font-size: 11.5px; margin-bottom: 10px; min-height: 14px; }
-        .fin-passcode-actions {
-          display: flex; gap: 10px; margin-top: 12px;
-        }
-        .fin-passcode-cancel {
-          flex: 1; background: transparent; border: 1px solid #555555;
-          color: #e5e7eb; padding: 10px; border-radius: 8px; cursor: pointer; font-size: 13px;
-        }
-        .fin-passcode-confirm {
-          flex: 1; background: #0d6efd;
-          color: #fff; border: none; padding: 10px; border-radius: 8px;
-          cursor: pointer; font-size: 13px; font-weight: 600;
+          font-size: 11px; font-weight: 600; white-space: nowrap;
         }
 
         /* ===== Toast ===== */
@@ -699,10 +1179,14 @@ function Finance() {
         @media (max-width: 900px) {
           .fin-shops-grid { grid-template-columns: repeat(2, 1fr); }
           .fin-settings-grid { grid-template-columns: 1fr; }
+          .fin-inline-form,
+          .fin-inline-form.perc-form { grid-template-columns: 1fr 1fr; }
         }
         @media (max-width: 600px) {
           .fin-summary-grid { grid-template-columns: 1fr; }
           .fin-shops-grid { grid-template-columns: 1fr; }
+          .fin-inline-form,
+          .fin-inline-form.perc-form { grid-template-columns: 1fr; }
         }
       `}</style>
 
@@ -716,34 +1200,12 @@ function Finance() {
 
       {/* ---------- Summary Cards ---------- */}
       <div className="fin-summary-grid">
-        <SummaryCard
-          label="Total Finance"
-          value={fmt(totalFinance)}
-          suffix="Ks"
-          icon="bi bi-currency-dollar"
-          iconBg="linear-gradient(135deg, #22c55e, #16a34a)"
-        />
-        <SummaryCard
-          label="Total Platform Fees"
-          value={fmt(totalPlatformFees)}
-          suffix="Ks"
-          icon="bi bi-receipt"
-          iconBg="linear-gradient(135deg, #3b82f6, #2563eb)"
-        />
-        <SummaryCard
-          label="Total Commission Fees"
-          value={fmt(totalCommissionFees)}
-          suffix="Ks"
-          icon="bi bi-percent"
-          iconBg="linear-gradient(135deg, #f59e0b, #d97706)"
-        />
-        <SummaryCard
-          label="Total Shops"
-          value={fmt(totalShops)}
-          suffix=""
-          icon="bi bi-shop"
-          iconBg="linear-gradient(135deg, #ec4899, #db2777)"
-        />
+        <SummaryCard label="Total Finance" value={fmt(totalFinance)} suffix="Ks" icon="bi bi-currency-dollar" iconBg="linear-gradient(135deg, #22c55e, #16a34a)" />
+        <SummaryCard label="Total Platform Fees" value={fmt(totalPlatformFees)} suffix="Ks" icon="bi bi-receipt" iconBg="linear-gradient(135deg, #3b82f6, #2563eb)" />
+        <SummaryCard label="Total Commission Fees" value={fmt(totalCommissionFees)} suffix="Ks" icon="bi bi-percent" iconBg="linear-gradient(135deg, #f59e0b, #d97706)" />
+        <SummaryCard label="Total Percentage" value={fmt(totalPercentageAmount)} suffix="Ks" icon="bi bi-graph-up-arrow" iconBg="linear-gradient(135deg, #06b6d4, #0891b2)" />
+        <SummaryCard label="Total Shop Amount" value={fmt(totalTaxAmount)} suffix="Ks" icon="bi bi-wallet2" iconBg="linear-gradient(135deg, #8b5cf6, #7c3aed)" />
+        <SummaryCard label="Total Shops" value={fmt(totalShops)} suffix="" icon="bi bi-shop" iconBg="linear-gradient(135deg, #ec4899, #db2777)" />
       </div>
 
       {/* ---------- Header Row ---------- */}
@@ -756,7 +1218,7 @@ function Finance() {
             <input
               type="text"
               className="fin-search-input"
-              placeholder="Search shop, owner or phone..."
+              placeholder="Search shop, owner, phone or email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -830,7 +1292,10 @@ function Finance() {
             <div className="fin-shop-card" key={shop.id}>
               <div className="fin-shop-head">
                 <h3 className="fin-shop-name" title={shop.name}>{shop.name}</h3>
-                <StatusBadge status={shop.status} />
+                <div className="fin-shop-badges">
+                  <TaxBadge tax={shop.tax} />
+                  <StatusBadge status={shop.status} />
+                </div>
               </div>
               <div className="fin-shop-body">
                 <div className="fin-shop-thumb">
@@ -839,9 +1304,15 @@ function Finance() {
                     : <i className="bi bi-shop"></i>}
                 </div>
                 <div className="fin-shop-info">
-                  <div className="fin-shop-info-row"><i className="bi bi-person"></i> {shop.owner || 'N/A'}</div>
-                  <div className="fin-shop-info-row"><i className="bi bi-telephone"></i> {shop.phone || 'N/A'}</div>
-                  <div className="fin-shop-info-row"><i className="bi bi-envelope"></i> {shop.email || 'N/A'}</div>
+                  <div className="fin-shop-info-row" title={shop.owner}>
+                    <i className="bi bi-person"></i> {shop.owner || '—'}
+                  </div>
+                  <div className="fin-shop-info-row" title={shop.phone}>
+                    <i className="bi bi-telephone"></i> {shop.phone || '—'}
+                  </div>
+                  <div className="fin-shop-info-row" title={shop.email}>
+                    <i className="bi bi-envelope"></i> {shop.email || '—'}
+                  </div>
                 </div>
               </div>
               <button className="fin-view-btn" onClick={() => handleViewFinance(shop)}>
@@ -856,231 +1327,543 @@ function Finance() {
       <div className="fin-pagination">
         <span>Page {currentPage} of {totalPages} ({filtered.length} shops)</span>
         <div className="fin-pagination-btns">
-          <button
-            className="fin-page-btn"
-            disabled={currentPage === 1}
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-          >
+          <button className="fin-page-btn" disabled={currentPage === 1} onClick={() => setPage(p => Math.max(1, p - 1))}>
             <i className="bi bi-chevron-left"></i> Prev
           </button>
           {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-            <button
-              key={p}
-              className={`fin-page-btn ${p === currentPage ? 'active' : ''}`}
-              onClick={() => setPage(p)}
-            >
+            <button key={p} className={`fin-page-btn ${p === currentPage ? 'active' : ''}`} onClick={() => setPage(p)}>
               {p}
             </button>
           ))}
-          <button
-            className="fin-page-btn"
-            disabled={currentPage === totalPages}
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-          >
+          <button className="fin-page-btn" disabled={currentPage === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>
             Next <i className="bi bi-chevron-right"></i>
           </button>
         </div>
       </div>
 
-      {/* ============================================================ */}
-      {/* 🚫 PASSCODE MODAL — DISABLED */}
-      {/* ============================================================ */}
-      {/*
-      {showPasscode && ( ... )}
-      */}
-
       {/* ---------- Detail Modal ---------- */}
-      {showDetail && selectedShop && (
-        <div className="fin-modal-overlay" onClick={() => setShowDetail(false)}>
-          <div className="fin-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="fin-modal-head">
-              <div className="fin-modal-title">
-                <i className="bi bi-shop"></i>
-                {selectedShop.name} ({selectedShop.shopCode})
-              </div>
-              <button className="fin-modal-close" onClick={() => setShowDetail(false)}>
-                <i className="bi bi-x-lg"></i>
-              </button>
-            </div>
+      {showDetail && selectedShop && (() => {
+        const monthly = isMonthlyTax(selectedShop.tax);
+        const perc = isPercentageTax(selectedShop.tax);
+        const commissionPct = Number(selectedShop.commissionFee?.percentage) || 0;
 
-            <div className="fin-modal-body">
-              {/* --- Finance Settings --- */}
-              <div className="fin-section">
-                <h3 className="fin-section-title">
-                  <i className="bi bi-credit-card-2-front"></i> Finance Settings
-                </h3>
-                <div className="fin-created">Created : {selectedShop.created || 'N/A'}</div>
-
-                <div className="fin-settings-grid">
-                  {/* Platform Fee */}
-                  <div className="fin-setting-card">
-                    <div className="fin-setting-title">
-                      <i className="bi bi-list-check"></i> Platform Fee
-                    </div>
-                    <label className="fin-field-label">Method</label>
-                    <MethodPills
-                      value={selectedShop.platformFee.method}
-                      onChange={(m) => setSelectedShop({
-                        ...selectedShop,
-                        platformFee: { ...selectedShop.platformFee, method: m },
-                      })}
-                    />
-                    <label className="fin-field-label">Platform Fee</label>
-                    <div className="fin-input-wrap">
-                      <input
-                        type="number"
-                        className="fin-input"
-                        value={selectedShop.platformFee.amount}
-                        onChange={(e) => setSelectedShop({
-                          ...selectedShop,
-                          platformFee: { ...selectedShop.platformFee, amount: e.target.value },
-                        })}
-                      />
-                      <span className="fin-input-suffix">Ks</span>
-                    </div>
-                  </div>
-
-                  {/* Commission Fee */}
-                  <div className="fin-setting-card">
-                    <div className="fin-setting-title">
-                      <i className="bi bi-percent"></i> Commission Fee
-                    </div>
-                    <label className="fin-field-label">Method</label>
-                    <MethodPills
-                      value={selectedShop.commissionFee.method}
-                      onChange={(m) => setSelectedShop({
-                        ...selectedShop,
-                        commissionFee: { ...selectedShop.commissionFee, method: m },
-                      })}
-                    />
-                    <label className="fin-field-label">Percentage</label>
-                    <div className="fin-input-wrap">
-                      <input
-                        type="number"
-                        className="fin-input"
-                        value={selectedShop.commissionFee.percentage}
-                        onChange={(e) => setSelectedShop({
-                          ...selectedShop,
-                          commissionFee: { ...selectedShop.commissionFee, percentage: e.target.value },
-                        })}
-                      />
-                      <span className="fin-input-suffix">%</span>
-                    </div>
-                  </div>
+        return (
+          <div className="fin-modal-overlay" onClick={() => setShowDetail(false)}>
+            <div className="fin-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="fin-modal-head">
+                <div className="fin-modal-title">
+                  <i className="bi bi-shop"></i>
+                  {selectedShop.name} ({selectedShop.shopCode})
+                  {selectedShop.tax && <TaxBadge tax={selectedShop.tax} />}
                 </div>
-
-                <button className="fin-save-btn" onClick={handleSaveChanges}>
-                  <i className="bi bi-save"></i> Save Changes
+                <button className="fin-modal-close" onClick={() => setShowDetail(false)}>
+                  <i className="bi bi-x-lg"></i>
                 </button>
               </div>
 
-              {/* --- Platform Fee Records --- */}
-              <div className="fin-section">
-                <h3 className="fin-section-title">
-                  <i className="bi bi-journal-text"></i> Platform Fee Records
-                </h3>
-                <div style={{ overflowX: 'auto' }}>
-                  <table className="fin-table">
-                    <thead>
-                      <tr>
-                        <th>Type</th>
-                        <th>Period Start</th>
-                        <th>Period End</th>
-                        <th>Amount</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedShop.platformFeeRecords.length === 0 ? (
-                        <tr><td colSpan="6" className="fin-empty">No platform fee records yet.</td></tr>
-                      ) : (
-                        selectedShop.platformFeeRecords.map(r => (
-                          <tr key={r.id}>
-                            <td>{r.type}</td>
-                            <td>{r.periodStart}</td>
-                            <td>{r.periodEnd}</td>
-                            <td>{fmt(r.amount)} <span style={{ color: '#9ca3af', fontSize: 11 }}>MMK</span></td>
-                            <td><StatusBadge status={r.status} /></td>
-                            <td>
-                              {r.status === 'paid' ? (
-                                <span style={{ color: '#22c55e', fontSize: 11 }}>
-                                  <i className="bi bi-check-circle-fill"></i> Paid
-                                </span>
-                              ) : (
-                                <button
-                                  className="fin-mark-paid-btn"
-                                  onClick={() => handleMarkPaid(r.id, 'platform')}
-                                >
-                                  Mark as Paid
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <div className="fin-modal-body">
+                {/* --- Finance Settings --- */}
+                <div className="fin-section">
+                  <h3 className="fin-section-title">
+                    <i className="bi bi-credit-card-2-front"></i>
+                    Finance Settings {monthly ? '(Monthly Tax)' : perc ? '(Percentage Tax)' : ''}
+                  </h3>
+                  <div className="fin-created">Created : {selectedShop.created || 'N/A'}</div>
 
-              {/* --- Commission Records --- */}
-              <div className="fin-section" style={{ marginBottom: 0 }}>
-                <h3 className="fin-section-title">
-                  <i className="bi bi-percent"></i> Commission Records
-                </h3>
-                <div style={{ overflowX: 'auto' }}>
-                  <table className="fin-table">
-                    <thead>
-                      <tr>
-                        <th>Type</th>
-                        <th>Period Start</th>
-                        <th>Period End</th>
-                        <th>Sell Amount</th>
-                        <th>Commission</th>
-                        <th>Commission Fee</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedShop.commissionRecords.length === 0 ? (
-                        <tr><td colSpan="8" className="fin-empty">No commission records yet.</td></tr>
-                      ) : (
-                        selectedShop.commissionRecords.map(r => (
-                          <tr key={r.id}>
-                            <td>{r.type}</td>
-                            <td>{r.periodStart}</td>
-                            <td>{r.periodEnd}</td>
-                            <td>{fmt(r.sellAmount)} <span style={{ color: '#9ca3af', fontSize: 11 }}>MMK</span></td>
-                            <td>{r.commission}%</td>
-                            <td>{fmt(r.commissionFee)} <span style={{ color: '#9ca3af', fontSize: 11 }}>MMK</span></td>
-                            <td><StatusBadge status={r.status} /></td>
-                            <td>
-                              {r.status === 'paid' ? (
-                                <span style={{ color: '#22c55e', fontSize: 11 }}>
-                                  <i className="bi bi-check-circle-fill"></i> Paid
-                                </span>
-                              ) : (
-                                <button
-                                  className="fin-mark-paid-btn"
-                                  onClick={() => handleMarkPaid(r.id, 'commission')}
-                                >
-                                  Mark as Paid
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                  <div className={`fin-settings-grid ${(monthly || perc) ? 'single' : ''}`}>
+                    {monthly && (
+                      <div className="fin-setting-card">
+                        <div className="fin-setting-title">
+                          <i className="bi bi-list-check"></i> Platform Fee
+                        </div>
+                        <label className="fin-field-label">Method</label>
+                        <MethodPills
+                          value={selectedShop.platformFee.method}
+                          onChange={(m) => setSelectedShop({
+                            ...selectedShop,
+                            platformFee: { ...selectedShop.platformFee, method: m },
+                          })}
+                        />
+                        <label className="fin-field-label">Platform Fee Amount</label>
+                        <div className="fin-input-wrap">
+                          <input
+                            type="number"
+                            className="fin-input"
+                            value={selectedShop.platformFee.amount}
+                            onChange={(e) => setSelectedShop({
+                              ...selectedShop,
+                              platformFee: { ...selectedShop.platformFee, amount: e.target.value },
+                            })}
+                          />
+                          <span className="fin-input-suffix">Ks</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {perc && (
+                      <div className="fin-setting-card">
+                        <div className="fin-setting-title">
+                          <i className="bi bi-percent"></i> Commission Fee
+                        </div>
+                        <label className="fin-field-label">Method</label>
+                        <MethodPills
+                          value={selectedShop.commissionFee.method}
+                          onChange={(m) => setSelectedShop({
+                            ...selectedShop,
+                            commissionFee: { ...selectedShop.commissionFee, method: m },
+                          })}
+                        />
+                        <label className="fin-field-label">Commission Percentage</label>
+                        <div className="fin-input-wrap">
+                          <input
+                            type="number"
+                            className="fin-input"
+                            value={selectedShop.commissionFee.percentage}
+                            onChange={(e) => setSelectedShop({
+                              ...selectedShop,
+                              commissionFee: { ...selectedShop.commissionFee, percentage: e.target.value },
+                            })}
+                          />
+                          <span className="fin-input-suffix">%</span>
+                        </div>
+                        <div className="fin-hint">
+                          <i className="bi bi-info-circle"></i>
+                          ဒီ % ကို အောက်က Booking Percentage မှာ အလိုအလျောက် သုံးပါမယ်
+                        </div>
+                      </div>
+                    )}
+
+                    {!monthly && !perc && (
+                      <>
+                        <div className="fin-setting-card">
+                          <div className="fin-setting-title">
+                            <i className="bi bi-list-check"></i> Platform Fee
+                          </div>
+                          <label className="fin-field-label">Method</label>
+                          <MethodPills
+                            value={selectedShop.platformFee.method}
+                            onChange={(m) => setSelectedShop({
+                              ...selectedShop,
+                              platformFee: { ...selectedShop.platformFee, method: m },
+                            })}
+                          />
+                          <label className="fin-field-label">Platform Fee Amount</label>
+                          <div className="fin-input-wrap">
+                            <input
+                              type="number"
+                              className="fin-input"
+                              value={selectedShop.platformFee.amount}
+                              onChange={(e) => setSelectedShop({
+                                ...selectedShop,
+                                platformFee: { ...selectedShop.platformFee, amount: e.target.value },
+                              })}
+                            />
+                            <span className="fin-input-suffix">Ks</span>
+                          </div>
+                        </div>
+                        <div className="fin-setting-card">
+                          <div className="fin-setting-title">
+                            <i className="bi bi-percent"></i> Commission Fee
+                          </div>
+                          <label className="fin-field-label">Method</label>
+                          <MethodPills
+                            value={selectedShop.commissionFee.method}
+                            onChange={(m) => setSelectedShop({
+                              ...selectedShop,
+                              commissionFee: { ...selectedShop.commissionFee, method: m },
+                            })}
+                          />
+                          <label className="fin-field-label">Commission Percentage</label>
+                          <div className="fin-input-wrap">
+                            <input
+                              type="number"
+                              className="fin-input"
+                              value={selectedShop.commissionFee.percentage}
+                              onChange={(e) => setSelectedShop({
+                                ...selectedShop,
+                                commissionFee: { ...selectedShop.commissionFee, percentage: e.target.value },
+                              })}
+                            />
+                            <span className="fin-input-suffix">%</span>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <button className="fin-save-btn" onClick={handleSaveChanges}>
+                    <i className="bi bi-save"></i> Save Changes
+                  </button>
                 </div>
+
+                {/* --- Booking Percentage — percentage shops only --- */}
+                {perc && (
+                  <div className="fin-section">
+                    <h3 className="fin-section-title">
+                      <i className="bi bi-graph-up-arrow"></i> Booking Percentage
+                    </h3>
+                    <div className="fin-created">
+                      Booking အလိုက် percentage ဖြင့် amount တွက်ချက်ပေးသော API
+                    </div>
+
+                    <div className="fin-inline-form perc-form">
+                      <div className="fin-field">
+                        <label className="fin-field-label">
+                          Percentage <span style={{ color: '#7dd3fc' }}>(from Commission Fee)</span>
+                        </label>
+                        <div className="fin-input-wrap">
+                          <input
+                            type="number"
+                            className="fin-input"
+                            value={commissionPct}
+                            readOnly
+                            disabled
+                          />
+                          <span className="fin-input-suffix">%</span>
+                        </div>
+                      </div>
+                      <div className="fin-field">
+                        <label className="fin-field-label">Total Booking</label>
+                        <input
+                          type="number"
+                          className="fin-input no-suffix"
+                          placeholder="e.g. 5000"
+                          value={percForm.total_booking}
+                          onChange={(e) => setPercForm(f => ({ ...f, total_booking: e.target.value }))}
+                          min="0"
+                        />
+                      </div>
+                      <button
+                        className="fin-btn-primary"
+                        disabled={percSubmitting}
+                        onClick={handleCreatePercentage}
+                      >
+                        <i className={`bi ${percSubmitting ? 'bi-arrow-repeat' : 'bi-plus-lg'}`}></i>
+                        {percSubmitting ? 'Creating...' : 'Create'}
+                      </button>
+                    </div>
+
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="fin-table">
+                        <thead>
+                          <tr>
+                            <th>Percentage</th>
+                            <th>Total Booking</th>
+                            <th>Amount</th>
+                            <th>Billing Month</th>
+                            <th style={{ width: 200 }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detailsLoading ? (
+                            <tr><td colSpan="5" className="fin-empty">Loading...</td></tr>
+                          ) : percentageRecords.length === 0 ? (
+                            <tr><td colSpan="5" className="fin-empty">No percentage records yet.</td></tr>
+                          ) : (
+                            percentageRecords.map(r => {
+                              const isEditing = editingPercId === r.id;
+                              const tb = readTotalBooking(r);
+                              return (
+                                <tr key={r.id}>
+                                  <td>{r.percentage}%</td>
+                                  <td>
+                                    {isEditing ? (
+                                      <input
+                                        type="number"
+                                        className="mini-input"
+                                        value={editPercForm.total_booking}
+                                        onChange={(e) => setEditPercForm(f => ({ ...f, total_booking: e.target.value }))}
+                                      />
+                                    ) : (
+                                      fmt(tb)
+                                    )}
+                                  </td>
+                                  <td>
+                                    <span style={{ color: '#22c55e', fontWeight: 600 }}>
+                                      {fmt(r.amount)}
+                                    </span>{' '}
+                                    <span style={{ color: '#9ca3af', fontSize: 11 }}>MMK</span>
+                                  </td>
+                                  <td>{r.billing_month || '—'}</td>
+                                  <td>
+                                    {isEditing ? (
+                                      <div className="fin-actions">
+                                        <button className="fin-btn-ghost success" onClick={() => handleUpdatePerc(r.id)}>
+                                          <i className="bi bi-check-lg"></i> Save
+                                        </button>
+                                        <button className="fin-btn-ghost" onClick={handleCancelEditPerc}>
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="fin-actions">
+                                        <button
+                                          className="fin-btn-ghost approve"
+                                          onClick={() => handleApprovePercentage(r)}
+                                          title="Approve & push to Commission Records"
+                                        >
+                                          <i className="bi bi-check2-circle"></i> Approve
+                                        </button>
+                                        <button className="fin-btn-ghost" onClick={() => handleStartEditPerc(r)}>
+                                          <i className="bi bi-pencil"></i> Edit
+                                        </button>
+                                        <button className="fin-btn-ghost danger" onClick={() => handleDeletePerc(r.id)}>
+                                          <i className="bi bi-trash"></i> Delete
+                                        </button>
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* --- Shop Amount (Tax) — monthly shops only --- */}
+                {monthly && (
+                  <div className="fin-section">
+                    <h3 className="fin-section-title">
+                      <i className="bi bi-wallet2"></i> Shop Amount (Tax)
+                    </h3>
+                    <div className="fin-created">
+                      ဆိုင်မှ Admin သို့ ပေးသွင်းရမည့် Amount များ
+                    </div>
+
+                    <div className="fin-inline-form">
+                      <div className="fin-field">
+                        <label className="fin-field-label">
+                          Amount <span style={{ color: '#7dd3fc' }}>(default: Platform Fee)</span>
+                        </label>
+                        <div className="fin-input-wrap">
+                          <input
+                            type="number"
+                            className="fin-input"
+                            placeholder="60000"
+                            value={taxForm.amount}
+                            onChange={(e) => setTaxForm(f => ({ ...f, amount: e.target.value }))}
+                          />
+                          <span className="fin-input-suffix">Ks</span>
+                        </div>
+                      </div>
+                      <div className="fin-field">
+                        <label className="fin-field-label">Payment Method</label>
+                        <select
+                          className="fin-select"
+                          value={taxForm.payment}
+                          onChange={(e) => setTaxForm(f => ({ ...f, payment: e.target.value }))}
+                        >
+                          {PAYMENT_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                      </div>
+                      <div className="fin-field">
+                        <label className="fin-field-label">Reason</label>
+                        <input
+                          type="text"
+                          className="fin-input no-suffix"
+                          placeholder="e.g. Cash Pay"
+                          value={taxForm.reason}
+                          onChange={(e) => setTaxForm(f => ({ ...f, reason: e.target.value }))}
+                        />
+                      </div>
+                      <button
+                        className="fin-btn-primary"
+                        disabled={taxSubmitting}
+                        onClick={handleCreateTax}
+                      >
+                        <i className={`bi ${taxSubmitting ? 'bi-arrow-repeat' : 'bi-plus-lg'}`}></i>
+                        {taxSubmitting ? 'Adding...' : 'Add'}
+                      </button>
+                    </div>
+
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="fin-table">
+                        <thead>
+                          <tr>
+                            <th>Amount</th>
+                            <th>Payment</th>
+                            <th>Reason</th>
+                            <th>Created</th>
+                            <th style={{ width: 200 }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detailsLoading ? (
+                            <tr><td colSpan="5" className="fin-empty">Loading...</td></tr>
+                          ) : taxRecords.length === 0 ? (
+                            <tr><td colSpan="5" className="fin-empty">No shop amount records yet.</td></tr>
+                          ) : (
+                            taxRecords.map(r => {
+                              const isEditing = editingTaxId === r.id;
+                              return (
+                                <tr key={r.id}>
+                                  <td>
+                                    {isEditing ? (
+                                      <input
+                                        type="number"
+                                        className="mini-input"
+                                        value={editTaxForm.amount}
+                                        onChange={(e) => setEditTaxForm(f => ({ ...f, amount: e.target.value }))}
+                                      />
+                                    ) : (
+                                      <>
+                                        <span style={{ color: '#22c55e', fontWeight: 600 }}>
+                                          {fmt(r.amount)}
+                                        </span>{' '}
+                                        <span style={{ color: '#9ca3af', fontSize: 11 }}>MMK</span>
+                                      </>
+                                    )}
+                                  </td>
+                                  <td>
+                                    {isEditing ? (
+                                      <select
+                                        className="mini-select"
+                                        value={editTaxForm.payment}
+                                        onChange={(e) => setEditTaxForm(f => ({ ...f, payment: e.target.value }))}
+                                      >
+                                        {PAYMENT_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                                      </select>
+                                    ) : (
+                                      r.payment || '—'
+                                    )}
+                                  </td>
+                                  <td>
+                                    {isEditing ? (
+                                      <input
+                                        type="text"
+                                        className="mini-input"
+                                        placeholder="Optional"
+                                        value={editTaxForm.reason}
+                                        onChange={(e) => setEditTaxForm(f => ({ ...f, reason: e.target.value }))}
+                                      />
+                                    ) : (
+                                      r.reason || '—'
+                                    )}
+                                  </td>
+                                  <td style={{ fontSize: 11.5, color: '#9ca3af' }}>{r.created_at || '—'}</td>
+                                  <td>
+                                    {isEditing ? (
+                                      <div className="fin-actions">
+                                        <button className="fin-btn-ghost success" onClick={() => handleUpdateTax(r.id)}>
+                                          <i className="bi bi-check-lg"></i> Save
+                                        </button>
+                                        <button className="fin-btn-ghost" onClick={handleCancelEditTax}>
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="fin-actions">
+                                        <button
+                                          className="fin-btn-ghost approve"
+                                          onClick={() => handleApproveTax(r)}
+                                          title="Approve & push to Platform Fee Records"
+                                        >
+                                          <i className="bi bi-check2-circle"></i> Approve
+                                        </button>
+                                        <button className="fin-btn-ghost" onClick={() => handleStartEditTax(r)}>
+                                          <i className="bi bi-pencil"></i> Edit
+                                        </button>
+                                        <button className="fin-btn-ghost danger" onClick={() => handleDeleteTax(r.id)}>
+                                          <i className="bi bi-trash"></i> Delete
+                                        </button>
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* --- Platform Fee Records — monthly shops only --- */}
+                {monthly && (
+                  <div className="fin-section">
+                    <h3 className="fin-section-title">
+                      <i className="bi bi-journal-text"></i> Platform Fee Records
+                    </h3>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="fin-table">
+                        <thead>
+                          <tr>
+                            <th>Type</th>
+                            <th>Period Start</th>
+                            <th>Period End</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedShop.platformFeeRecords.length === 0 ? (
+                            <tr><td colSpan="5" className="fin-empty">No platform fee records yet.</td></tr>
+                          ) : (
+                            selectedShop.platformFeeRecords.map(r => (
+                              <tr key={r.id}>
+                                <td>{r.type}</td>
+                                <td>{r.periodStart}</td>
+                                <td>{r.periodEnd}</td>
+                                <td>{fmt(r.amount)} <span style={{ color: '#9ca3af', fontSize: 11 }}>MMK</span></td>
+                                <td><StatusBadge status={r.status} /></td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* --- Commission Records — percentage shops only --- */}
+                {perc && (
+                  <div className="fin-section" style={{ marginBottom: 0 }}>
+                    <h3 className="fin-section-title">
+                      <i className="bi bi-percent"></i> Commission Records
+                    </h3>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="fin-table">
+                        <thead>
+                          <tr>
+                            <th>Type</th>
+                            <th>Period Start</th>
+                            <th>Period End</th>
+                            <th>Sell Amount</th>
+                            <th>Commission</th>
+                            <th>Commission Fee</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedShop.commissionRecords.length === 0 ? (
+                            <tr><td colSpan="7" className="fin-empty">No commission records yet.</td></tr>
+                          ) : (
+                            selectedShop.commissionRecords.map(r => (
+                              <tr key={r.id}>
+                                <td>{r.type}</td>
+                                <td>{r.periodStart}</td>
+                                <td>{r.periodEnd}</td>
+                                <td>{fmt(r.sellAmount)} <span style={{ color: '#9ca3af', fontSize: 11 }}>MMK</span></td>
+                                <td>{r.commission}%</td>
+                                <td>{fmt(r.commissionFee)} <span style={{ color: '#9ca3af', fontSize: 11 }}>MMK</span></td>
+                                <td><StatusBadge status={r.status} /></td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

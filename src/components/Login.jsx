@@ -6,34 +6,10 @@ function Login() {
   // ---------- Login State ----------
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loginType, setLoginType] = useState('admin'); // 🌟 Admin သို့မဟုတ် Shop ရွေးရန် state အသစ်
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-
-  // ===== SIGNUP STATE (COMMENTED OUT) =====
-  /*
-  const [activeTab, setActiveTab] = useState('login');
-  const [signupData, setSignupData] = useState({
-    username: '',
-    shop_name: '',
-    email: '',
-    password: '',
-    address: '',
-    township: '',
-    region: '',
-    shop_address: '',
-    shop_phone: '',
-    nrc: '',
-    type: 'hotel',
-  });
-  const [signupError, setSignupError] = useState('');
-  const [signupLoading, setSignupLoading] = useState(false);
-  const [otp, setOtp] = useState('');
-  const [otpToken, setOtpToken] = useState('');
-  const [otpError, setOtpError] = useState('');
-  const [otpLoading, setOtpLoading] = useState(false);
-  const [signupSuccess, setSignupSuccess] = useState(false);
-  */
 
   const navigate = useNavigate();
 
@@ -60,21 +36,16 @@ function Login() {
     if (!userObject || typeof userObject !== 'object') return;
 
     try {
-      // Main 'user' key
       localStorage.setItem('user', JSON.stringify(userObject));
-
-      // Backup keys (Settings.jsx fallback အတွက်)
       localStorage.setItem('userData', JSON.stringify(userObject));
       localStorage.setItem('userInfo', JSON.stringify(userObject));
       localStorage.setItem('currentUser', JSON.stringify(userObject));
       localStorage.setItem('profile', JSON.stringify(userObject));
 
-      // Role
       if (userObject.role) {
         localStorage.setItem('role', userObject.role);
       }
 
-      // Shop-specific
       if (userObject.role === 'shop' || userObject.shop_id) {
         localStorage.setItem('shop', JSON.stringify({
           shop_id: userObject.shop_id,
@@ -109,9 +80,11 @@ function Login() {
     }
 
     try {
+      // 🌟 login_type ကို payload ထဲ ထည့်လိုက်ပါပြီ
       const response = await api.post('/auth/login', {
         email: email.trim(),
         password: password,
+        login_type: loginType, 
       });
 
       console.log('✅ Login Response:', response.data);
@@ -122,20 +95,16 @@ function Login() {
         const token = response.data.token;
         localStorage.setItem('token', token);
 
-        // ============ User Object ကို စုစည်းခြင်း ============
-        // Backend က response.data.user ဒါမှမဟုတ် response.data.data ဒါမှမဟုတ် response.data ကိုယ်တိုင် ဖြစ်နိုင်တယ်
         const userRaw =
           response.data.user ||
           response.data.data ||
           response.data.shop ||
           response.data;
 
-        // user က Array ဖြစ်နိုင်တယ်
         const user = Array.isArray(userRaw) ? (userRaw[0] || {}) : (userRaw || {});
 
         console.log('👤 User Object:', user);
 
-        // User ကို localStorage ထဲ သိမ်း
         saveUserToStorage(user);
 
         // ============ Shop-specific data ============
@@ -160,7 +129,6 @@ function Login() {
           if (shopType) {
             localStorage.setItem('shopType', shopType);
           } else {
-            // Try to fetch from /auth/me
             try {
               const meRes = await api.get('/auth/me', {
                 headers: { Authorization: `Bearer ${token}` },
@@ -189,7 +157,6 @@ function Login() {
                 localStorage.setItem('shopType', meType);
               }
 
-              // /auth/me က data ပြန်ပေးရင် user object ကိုလည်း merge လုပ်
               if (meShop && typeof meShop === 'object') {
                 const merged = { ...user, ...meShop };
                 saveUserToStorage(merged);
@@ -225,23 +192,36 @@ function Login() {
     }
   };
 
-  // ===== SIGNUP HANDLER (COMMENTED OUT) =====
-  /*
-  const handleSignup = async (e) => {
-    // ... full signup code ...
-  };
-  */
-
-  // ===== OTP VERIFICATION (COMMENTED OUT) =====
-  /*
-  const handleVerifyOtp = async (e) => {
-    // ... full OTP code ...
-  };
-  */
-
   // ===== RENDER HELPERS =====
   const renderLogin = () => (
     <form onSubmit={handleLogin} className="login-form" noValidate>
+      
+      {/* 🌟 Login Type ရွေးချယ်ရန် Dropdown အသစ် */}
+      <div className="login-form-group">
+        <label htmlFor="loginType">Login Type</label>
+        <div className="login-input-wrapper">
+          <i className="bi bi-person-badge-fill"></i>
+          <select
+            id="loginType"
+            value={loginType}
+            onChange={(e) => setLoginType(e.target.value)}
+            disabled={loading}
+            style={{
+              width: '100%',
+              padding: '10px 10px 10px 40px', // သင့် CSS ပေါ်မူတည်ပြီး ပြင်နိုင်ပါတယ်
+              border: '1px solid #ccc',
+              borderRadius: '5px',
+              outline: 'none',
+              backgroundColor: 'white'
+            }}
+          >
+            <option value="admin">Admin</option>
+            <option value="shop">Shop</option>
+            {/* သင့် Backend မှာ အခြား type တွေရှိရင် ဒီမှာ ထပ်ထည့်နိုင်ပါတယ် (ဥပမာ - hotel, restaurant) */}
+          </select>
+        </div>
+      </div>
+
       <div className="login-form-group">
         <label htmlFor="email">Email Address</label>
         <div className="login-input-wrapper">
@@ -301,20 +281,6 @@ function Login() {
       </button>
     </form>
   );
-
-  // ===== SIGNUP RENDER (COMMENTED OUT) =====
-  /*
-  const renderSignup = () => (
-    // ... full signup form JSX ...
-  );
-  */
-
-  // ===== OTP RENDER (COMMENTED OUT) =====
-  /*
-  const renderOtp = () => (
-    // ... full OTP form JSX ...
-  );
-  */
 
   // ===== MAIN RENDER =====
   return (

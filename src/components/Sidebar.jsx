@@ -185,6 +185,8 @@ function Sidebar() {
       </li>
       {/* ======================================================= */}
 
+      {/* ================= REVIEWS TAB (COMMENTED OUT) ================= */}
+      {/*
       <li className={`nav-item ${isActive('/reviews') ? 'active' : ''}`}>
         <Link to="/reviews" className="nav-link">
           <div className="flex-items">
@@ -193,6 +195,9 @@ function Sidebar() {
           </div>
         </Link>
       </li>
+      */}
+      {/* =============================================================== */}
+
       <li className={`nav-item ${isActive('/reports') ? 'active' : ''}`}>
         <Link to="/reports" className="nav-link">
           <div className="flex-items">

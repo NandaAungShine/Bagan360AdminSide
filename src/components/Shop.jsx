@@ -24,6 +24,22 @@ const TYPE_CONFIG = {
   horsecart:  { label: 'Horse Cart', color: '#6f42c1', bg: '#e2d9f3', icon: 'bi-truck' },
 };
 
+// ===== TAX CONFIG =====
+const TAX_CONFIG = {
+  monthly:    { label: 'Monthly',    color: '#6f42c1', bg: '#e2d9f3', icon: 'bi-calendar-month' },
+  percentage: { label: 'Percentage', color: '#fd7e14', bg: '#ffe5d0', icon: 'bi-percent' },
+  daily:      { label: 'Daily',      color: '#0d6efd', bg: '#cfe2ff', icon: 'bi-calendar-day' },
+  weekly:     { label: 'Weekly',     color: '#17a2b8', bg: '#cff4fc', icon: 'bi-calendar-week' },
+  yearly:     { label: 'Yearly',     color: '#198754', bg: '#d1e7dd', icon: 'bi-calendar' },
+};
+
+const normalizeTax = (tax) => {
+  if (!tax) return '';
+  const t = String(tax).toLowerCase().trim().replace(/[-\s]/g, '_');
+  if (t === 'percent') return 'percentage';
+  return t;
+};
+
 function Shop() {
   // ===== 1. THEME =====
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -36,6 +52,7 @@ function Shop() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
+  const [filterTax, setFilterTax] = useState('all');
   const [sortById, setSortById] = useState('newest');
   const [requests, setRequests] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -120,6 +137,13 @@ function Shop() {
     shop_phone: item.shop_phone || 'N/A',
     nrc: item.nrc || 'N/A',
     status: item.status || 'pending',
+
+    // ===== Tax field (NEW) =====
+    tax: normalizeTax(item.tax) || 'N/A',
+    tax_raw: item.tax || null,
+
+    // ===== Active flag =====
+    is_active: item.is_active ?? null,
 
     // ===== Email & owner info =====
     email: item.email || item.user_email || item.owner_email || 'N/A',
@@ -344,7 +368,8 @@ function Shop() {
           location: selectedRequestForEdit.location,
           shop_phone: selectedRequestForEdit.shop_phone,
           nrc: selectedRequestForEdit.nrc,
-          type: selectedRequestForEdit.type
+          type: selectedRequestForEdit.type,
+          tax: selectedRequestForEdit.tax
         })
       });
 
@@ -393,10 +418,12 @@ function Shop() {
       (req.location || '').toLowerCase().includes(search) ||
       (req.email || '').toLowerCase().includes(search) ||
       (req.type || '').toLowerCase().includes(search) ||
+      (req.tax || '').toLowerCase().includes(search) ||
       String(req.shop_phone || '').includes(searchTerm);
     const matchStatus = filterStatus === 'all' || req.status === filterStatus;
     const matchType = filterType === 'all' || req.type === filterType;
-    return matchSearch && matchStatus && matchType;
+    const matchTax = filterTax === 'all' || req.tax === filterTax;
+    return matchSearch && matchStatus && matchType && matchTax;
   });
 
   const finalSortedRequests = getSortedRequests(filteredRequests);
@@ -451,6 +478,32 @@ function Shop() {
         border: `1px solid ${s.color}`,
         minWidth: '70px',
         textAlign: 'center'
+      }}>
+        {s.label}
+      </span>
+    );
+  };
+
+  // ===== TAX BADGE (NEW) =====
+  const getTaxBadge = (tax) => {
+    const key = normalizeTax(tax);
+    if (!key || key === 'n/a') {
+      return <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>—</span>;
+    }
+    const s = TAX_CONFIG[key] || { label: tax, color: '#6c757d', bg: '#e9ecef' };
+    return (
+      <span style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '4px',
+        padding: '4px 12px',
+        borderRadius: '20px',
+        fontSize: '12px',
+        fontWeight: '600',
+        color: s.color,
+        backgroundColor: s.bg,
+        border: `1px solid ${s.color}`,
+        whiteSpace: 'nowrap'
       }}>
         {s.label}
       </span>
@@ -607,7 +660,7 @@ function Shop() {
           <i className="bi bi-search search-icon" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#6c757d' }}></i>
           <input
             type="text"
-            placeholder="Search by shop name, email, address, location, type..."
+            placeholder="Search by shop name, email, address, location, type, tax..."
             className="search-input-full"
             style={{ width: '100%', padding: '8px 15px 8px 35px', borderRadius: '40px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: '0.9rem' }}
             value={searchTerm}
@@ -631,6 +684,17 @@ function Shop() {
           <option value="balloon">Balloon</option>
           <option value="horsecart">Horse Cart</option>
         </select>
+
+        {/* NEW: Tax filter */}
+        <select className="filter-select" style={{ padding: '8px 12px', borderRadius: '40px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: '0.9rem', minWidth: '130px' }} value={filterTax} onChange={(e) => setFilterTax(e.target.value)}>
+          <option value="all">All Tax</option>
+          <option value="monthly">Monthly</option>
+          <option value="percentage">Percentage</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="yearly">Yearly</option>
+        </select>
+
         <select className="filter-select" style={{ padding: '8px 12px', borderRadius: '40px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)', fontSize: '0.9rem', minWidth: '130px' }} value={sortById} onChange={(e) => setSortById(e.target.value)}>
           <option value="newest">Newest First</option>
           <option value="oldest">Oldest First</option>
@@ -649,13 +713,14 @@ function Shop() {
 
       {/* TABLE */}
       <div style={{ overflowX: 'auto', background: 'var(--card-bg)', borderRadius: '16px', padding: '0', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1020px' }}>
           <thead>
             <tr>
               <th style={thStyle}>No.</th>
               <th style={thStyle}>Shop</th>
               <th style={thStyle}>Email</th>
               <th style={thStyle}>Type</th>
+              <th style={thStyle}>Tax</th>
               <th style={thStyle}>Phone</th>
               <th style={thStyle}>Status</th>
               <th style={thStyle}>Address</th>
@@ -694,6 +759,10 @@ function Shop() {
                   </td>
 
                   <td style={tdStyle}>{getTypeBadge(req.type)}</td>
+
+                  {/* NEW: Tax column */}
+                  <td style={tdStyle}>{getTaxBadge(req.tax)}</td>
+
                   <td style={tdStyle}>{req.shop_phone}</td>
                   <td style={tdStyle}>{getStatusBadge(req.status)}</td>
                   <td style={tdStyle}>{req.shop_address}</td>
@@ -729,7 +798,7 @@ function Shop() {
               ))
             ) : (
               <tr>
-                <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                <td colSpan="9" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
                   <i className="bi bi-inbox" style={{ fontSize: '32px', display: 'block', marginBottom: '8px' }}></i>
                   No shops found
                 </td>
@@ -761,6 +830,7 @@ function Shop() {
                   <div style={{ marginTop: '6px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                     {getStatusBadge(selectedRequest.status)}
                     {getTypeBadge(selectedRequest.type)}
+                    {getTaxBadge(selectedRequest.tax)}
                   </div>
                 </div>
               </div>
@@ -773,6 +843,11 @@ function Shop() {
                 <div><strong>Location:</strong> {selectedRequest.location}</div>
                 <div style={{ gridColumn: '1 / -1' }}><strong>Address:</strong> {selectedRequest.shop_address}</div>
                 <div style={{ gridColumn: '1 / -1' }}><strong>NRC:</strong> {selectedRequest.nrc}</div>
+
+                {/* NEW: Tax + Active in detail */}
+                <div><strong>Tax:</strong> {selectedRequest.tax && selectedRequest.tax !== 'N/A' ? selectedRequest.tax.charAt(0).toUpperCase() + selectedRequest.tax.slice(1) : '—'}</div>
+                <div><strong>Active:</strong> {selectedRequest.is_active === 1 ? 'Yes' : selectedRequest.is_active === 0 ? 'No' : '—'}</div>
+
                 {selectedRequest.created_at && (
                   <div style={{ gridColumn: '1 / -1' }}>
                     <strong>Created:</strong> {new Date(selectedRequest.created_at).toLocaleString()}
@@ -836,6 +911,20 @@ function Shop() {
                   <option value="horsecart">Horse Cart</option>
                 </select>
               </div>
+
+              {/* NEW: Tax select in edit modal */}
+              <div className="form-group mb-3" style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500' }}>Tax</label>
+                <select className="form-control" value={selectedRequestForEdit.tax || ''} onChange={(e) => setSelectedRequestForEdit({ ...selectedRequestForEdit, tax: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)' }}>
+                  <option value="">— Select Tax —</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="percentage">Percentage</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </div>
+
               <div className="form-group mb-3" style={{ marginBottom: '15px' }}>
                 <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500' }}>Phone</label>
                 <input type="text" className="form-control" value={selectedRequestForEdit.shop_phone} onChange={(e) => setSelectedRequestForEdit({ ...selectedRequestForEdit, shop_phone: e.target.value })} style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-color)' }} />
