@@ -64,6 +64,189 @@ const normalizeItem = (raw, backendUrl) => {
   };
 };
 
+// ============================================================
+//  CUSTOM DIALOG VARIANTS
+// ============================================================
+const DIALOG_VARIANTS = {
+  warning:  { color: '#f0ad4e', icon: 'bi-exclamation-triangle-fill', bg: '#fff6e3' },
+  danger:   { color: '#dc3545', icon: 'bi-x-octagon-fill',            bg: '#fdecec' },
+  info:     { color: '#0d6efd', icon: 'bi-info-circle-fill',          bg: '#e7f1ff' },
+  success:  { color: '#198754', icon: 'bi-check-circle-fill',         bg: '#e7f7ee' },
+  question: { color: '#6f42c1', icon: 'bi-question-circle-fill',      bg: '#f1ebff' },
+  error:    { color: '#dc3545', icon: 'bi-exclamation-octagon-fill',  bg: '#fdecec' },
+};
+
+const DialogShell = ({ children, onBackdropClick }) => (
+  <div
+    onMouseDown={(e) => { if (e.target === e.currentTarget && onBackdropClick) onBackdropClick(); }}
+    style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(15, 23, 42, 0.55)',
+      backdropFilter: 'blur(3px)',
+      WebkitBackdropFilter: 'blur(3px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 99999,
+      padding: '20px',
+      animation: 'restDialogFade 0.18s ease-out',
+    }}
+  >
+    {children}
+  </div>
+);
+
+const ConfirmDialog = ({
+  open, title, message,
+  confirmText = 'Confirm', cancelText = 'Cancel',
+  variant = 'warning', onConfirm, onCancel,
+}) => {
+  if (!open) return null;
+  const v = DIALOG_VARIANTS[variant] || DIALOG_VARIANTS.warning;
+
+  return (
+    <DialogShell onBackdropClick={onCancel}>
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          background: '#ffffff',
+          borderRadius: '16px',
+          maxWidth: '440px',
+          width: '100%',
+          boxShadow: '0 24px 70px rgba(0,0,0,0.35)',
+          overflow: 'hidden',
+          animation: 'restDialogPop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          fontFamily: 'inherit',
+        }}
+      >
+        <div style={{ padding: '26px 26px 6px', display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+          <div
+            style={{
+              width: '48px', height: '48px', borderRadius: '50%',
+              background: v.bg, color: v.color,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '22px', flexShrink: 0,
+            }}
+          >
+            <i className={`bi ${v.icon}`}></i>
+          </div>
+          <div style={{ flex: 1, paddingTop: '2px' }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: '17px', fontWeight: 700, color: '#1f2937' }}>
+              {title}
+            </h3>
+            <div style={{ color: '#4b5563', fontSize: '14px', lineHeight: 1.6 }}>
+              {message}
+            </div>
+          </div>
+        </div>
+        <div style={{ padding: '18px 26px 22px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              padding: '10px 22px', borderRadius: '10px',
+              border: '1px solid #d1d5db', background: '#ffffff',
+              color: '#374151', fontSize: '14px', fontWeight: 600,
+              cursor: 'pointer', transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = '#f3f4f6'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; }}
+          >
+            {cancelText}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            style={{
+              padding: '10px 22px', borderRadius: '10px',
+              border: 'none', background: v.color, color: '#ffffff',
+              fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+              boxShadow: `0 4px 12px ${v.color}55`, transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = `0 6px 16px ${v.color}77`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = `0 4px 12px ${v.color}55`;
+            }}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </DialogShell>
+  );
+};
+
+const AlertDialog = ({
+  open, title, message,
+  variant = 'info', buttonText = 'OK', onClose,
+}) => {
+  if (!open) return null;
+  const v = DIALOG_VARIANTS[variant] || DIALOG_VARIANTS.info;
+
+  return (
+    <DialogShell onBackdropClick={onClose}>
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          background: '#ffffff',
+          borderRadius: '16px',
+          maxWidth: '440px',
+          width: '100%',
+          boxShadow: '0 24px 70px rgba(0,0,0,0.35)',
+          overflow: 'hidden',
+          animation: 'restDialogPop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        }}
+      >
+        <div style={{ padding: '28px 26px 8px', textAlign: 'center' }}>
+          <div
+            style={{
+              width: '64px', height: '64px', borderRadius: '50%',
+              background: v.bg, color: v.color,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '30px', margin: '0 auto 14px',
+            }}
+          >
+            <i className={`bi ${v.icon}`}></i>
+          </div>
+          <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700, color: '#1f2937' }}>
+            {title}
+          </h3>
+          <div style={{ color: '#4b5563', fontSize: '14px', lineHeight: 1.6, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+            {message}
+          </div>
+        </div>
+        <div style={{ padding: '18px 26px 24px', display: 'flex', justifyContent: 'center' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: '10px 36px', borderRadius: '10px', border: 'none',
+              background: v.color, color: '#ffffff', fontSize: '14px',
+              fontWeight: 600, cursor: 'pointer',
+              boxShadow: `0 4px 12px ${v.color}55`, transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = `0 6px 16px ${v.color}77`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = `0 4px 12px ${v.color}55`;
+            }}
+          >
+            {buttonText}
+          </button>
+        </div>
+      </div>
+    </DialogShell>
+  );
+};
+
 function RestaurantsOrder() {
   const user = (() => {
     try { return JSON.parse(localStorage.getItem('user')); }
@@ -102,6 +285,31 @@ function RestaurantsOrder() {
     }, 3000);
   };
 
+  // ===== 3b. CUSTOM DIALOG STATES =====
+  const [confirmDialog, setConfirmDialog] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+    variant: 'warning',
+    onConfirm: null,
+  });
+
+  const [alertDialog, setAlertDialog] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    variant: 'info',
+    buttonText: 'OK',
+  });
+
+  const showAlert = (variant, title, message, buttonText = 'OK') => {
+    setAlertDialog({ visible: true, title, message, variant, buttonText });
+  };
+  const closeAlert = () => setAlertDialog(prev => ({ ...prev, visible: false }));
+  const closeConfirm = () => setConfirmDialog(prev => ({ ...prev, visible: false, onConfirm: null }));
+
   // ===== 4. API HELPERS =====
   const BACKEND_URL = 'http://130.94.21.185:8000';
   const getToken = () => localStorage.getItem('token');
@@ -112,8 +320,12 @@ function RestaurantsOrder() {
 
   const handle401Error = () => {
     localStorage.removeItem('token');
-    showToast('error', 'Session expired. Please login again.');
-    setTimeout(() => window.location.href = '/login', 1500);
+    showAlert(
+      'warning',
+      'Session Expired',
+      'Your session has expired. Please login again.'
+    );
+    setTimeout(() => window.location.href = '/login', 1800);
   };
 
   const API_BASE_BOOKING = '/api/admin/restaurant/booking';
@@ -265,16 +477,10 @@ function RestaurantsOrder() {
         const shopId = item.shop_id ?? item.restaurant_id ?? item.shopId;
         const shopName = (item.shop_name || item.restaurant_name || 'Shop').trim();
 
-        // Normalize items
         const items = Array.isArray(item.items)
           ? item.items.map((raw) => normalizeItem(raw, BACKEND_URL)).filter(Boolean)
           : [];
 
-        // Card image priority:
-        //  1) booking's own shop/restaurant image
-        //  2) shop image matched by id
-        //  3) shop image matched by name
-        //  4) first menu item's image
         let img = resolveImageUrl(item);
         if (!img && shopId != null) img = idMap[String(shopId)] || null;
         if (!img && shopName) img = nameMap[shopName.toLowerCase()] || null;
@@ -318,7 +524,7 @@ function RestaurantsOrder() {
       const token = getToken();
       if (!token) {
         setError('Please login first');
-        showToast('error', 'Please login first');
+        showAlert('warning', 'Login Required', 'Please login first to view restaurant bookings.');
         return;
       }
       await fetchShopImageMaps();
@@ -341,9 +547,8 @@ function RestaurantsOrder() {
     }
   }, [isDarkMode]);
 
-  // ===== 7. UPDATE STATUS =====
-  const updateOrderStatus = async (orderId, action) => {
-    if (!window.confirm(`Are you sure you want to ${action} this booking?`)) return;
+  // ===== 7. UPDATE STATUS (Custom ConfirmDialog) =====
+  const performUpdateStatus = async (orderId, action) => {
     setLoading(true);
     try {
       const endpoint = action === 'approved' ? 'approved' : 'cancelled';
@@ -360,10 +565,32 @@ function RestaurantsOrder() {
       showToast('success', `Booking ${action} successfully!`);
     } catch (err) {
       console.error(`❌ ${action} Error:`, err);
-      showToast('error', `Failed to ${action} booking.`);
+      showAlert(
+        'error',
+        action === 'approved' ? 'Approval Failed' : 'Cancellation Failed',
+        `Failed to ${action} booking. ${err.message || ''}`
+      );
     } finally {
       setLoading(false);
     }
+  };
+
+  const updateOrderStatus = (orderId, action) => {
+    const isCancel = action === 'cancelled';
+    setConfirmDialog({
+      visible: true,
+      title: isCancel ? 'Cancel This Booking?' : 'Approve This Booking?',
+      message: isCancel
+        ? `Booking #${orderId} will be marked as cancelled. This action cannot be undone.`
+        : `Booking #${orderId} will be approved and confirmed. Do you want to continue?`,
+      confirmText: isCancel ? 'Yes, Cancel' : 'Yes, Approve',
+      cancelText: 'No, Keep',
+      variant: isCancel ? 'danger' : 'question',
+      onConfirm: () => {
+        closeConfirm();
+        performUpdateStatus(orderId, action);
+      },
+    });
   };
 
   // ===== 8. FILTER LOGIC =====
@@ -551,7 +778,7 @@ function RestaurantsOrder() {
               </div>
             </div>
 
-            {/* ====== ITEMS (NIce UI) ====== */}
+            {/* ====== ITEMS ====== */}
             {order.items && order.items.length > 0 && (
               <div style={{ marginTop: '20px' }}>
                 <div style={{
@@ -577,7 +804,6 @@ function RestaurantsOrder() {
                         border: `1px solid ${isDarkMode ? '#3a3a3a' : '#e8eaf0'}`,
                       }}
                     >
-                      {/* Thumbnail */}
                       <div style={{
                         width: '64px', height: '64px', borderRadius: '10px',
                         overflow: 'hidden', flexShrink: 0,
@@ -600,7 +826,6 @@ function RestaurantsOrder() {
                         )}
                       </div>
 
-                      {/* Menu info */}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{
                           fontWeight: 600, fontSize: '14px',
@@ -630,7 +855,6 @@ function RestaurantsOrder() {
                         </div>
                       </div>
 
-                      {/* Subtotal */}
                       <div style={{
                         fontWeight: 700, fontSize: '14px',
                         color: isDarkMode ? '#6fcf97' : '#198754',
@@ -642,7 +866,6 @@ function RestaurantsOrder() {
                   ))}
                 </div>
 
-                {/* Total */}
                 <div style={{
                   marginTop: '12px',
                   paddingTop: '12px',
@@ -758,17 +981,25 @@ function RestaurantsOrder() {
     );
   }
 
-  if (error) {
+  if (error && orders.length === 0) {
     return (
       <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
         <Header title="Restaurant Bookings" onThemeChange={handleThemeChange} />
         <div style={{ textAlign: 'center', padding: '50px', color: '#dc3545' }}>
           <i className="bi bi-exclamation-triangle" style={{ fontSize: '48px' }}></i>
-          <p>Error: {error}</p>
+          <p style={{ marginTop: '12px' }}>{error}</p>
           <button className="btn btn-primary" onClick={() => { setError(null); fetchOrders(); }}>
             Retry
           </button>
         </div>
+        <AlertDialog
+          open={alertDialog.visible}
+          title={alertDialog.title}
+          message={alertDialog.message}
+          variant={alertDialog.variant}
+          buttonText={alertDialog.buttonText}
+          onClose={closeAlert}
+        />
       </div>
     );
   }
@@ -776,6 +1007,18 @@ function RestaurantsOrder() {
   // ===== 15. MAIN RENDER =====
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
+      {/* Dialog animations */}
+      <style>{`
+        @keyframes restDialogFade {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes restDialogPop {
+          from { transform: scale(0.9) translateY(10px); opacity: 0; }
+          to   { transform: scale(1) translateY(0);       opacity: 1; }
+        }
+      `}</style>
+
       <Header title="Restaurant Bookings" onThemeChange={handleThemeChange} />
 
       {toast.visible && (
@@ -887,6 +1130,28 @@ function RestaurantsOrder() {
           setShowDetailModal(false); setSelectedOrder(null);
         }} />
       )}
+
+      {/* ===== CUSTOM CONFIRM DIALOG ===== */}
+      <ConfirmDialog
+        open={confirmDialog.visible}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText={confirmDialog.confirmText}
+        cancelText={confirmDialog.cancelText}
+        variant={confirmDialog.variant}
+        onConfirm={() => { if (confirmDialog.onConfirm) confirmDialog.onConfirm(); }}
+        onCancel={closeConfirm}
+      />
+
+      {/* ===== CUSTOM ALERT DIALOG ===== */}
+      <AlertDialog
+        open={alertDialog.visible}
+        title={alertDialog.title}
+        message={alertDialog.message}
+        variant={alertDialog.variant}
+        buttonText={alertDialog.buttonText}
+        onClose={closeAlert}
+      />
     </div>
   );
 }

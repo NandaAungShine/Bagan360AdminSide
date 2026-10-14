@@ -2,6 +2,189 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Header from './Header';
 
+// ============================================================
+//  CUSTOM DIALOG VARIANTS
+// ============================================================
+const DIALOG_VARIANTS = {
+  warning:  { color: '#f0ad4e', icon: 'bi-exclamation-triangle-fill', bg: '#fff6e3' },
+  danger:   { color: '#dc3545', icon: 'bi-x-octagon-fill',            bg: '#fdecec' },
+  info:     { color: '#0d6efd', icon: 'bi-info-circle-fill',          bg: '#e7f1ff' },
+  success:  { color: '#198754', icon: 'bi-check-circle-fill',         bg: '#e7f7ee' },
+  question: { color: '#6f42c1', icon: 'bi-question-circle-fill',      bg: '#f1ebff' },
+  error:    { color: '#dc3545', icon: 'bi-exclamation-octagon-fill',  bg: '#fdecec' },
+};
+
+const DialogShell = ({ children, onBackdropClick }) => (
+  <div
+    onMouseDown={(e) => { if (e.target === e.currentTarget && onBackdropClick) onBackdropClick(); }}
+    style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(15, 23, 42, 0.55)',
+      backdropFilter: 'blur(3px)',
+      WebkitBackdropFilter: 'blur(3px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 99999,
+      padding: '20px',
+      animation: 'pkgDialogFade 0.18s ease-out',
+    }}
+  >
+    {children}
+  </div>
+);
+
+const ConfirmDialog = ({
+  open, title, message,
+  confirmText = 'Confirm', cancelText = 'Cancel',
+  variant = 'warning', onConfirm, onCancel,
+}) => {
+  if (!open) return null;
+  const v = DIALOG_VARIANTS[variant] || DIALOG_VARIANTS.warning;
+
+  return (
+    <DialogShell onBackdropClick={onCancel}>
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          background: '#ffffff',
+          borderRadius: '16px',
+          maxWidth: '440px',
+          width: '100%',
+          boxShadow: '0 24px 70px rgba(0,0,0,0.35)',
+          overflow: 'hidden',
+          animation: 'pkgDialogPop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          fontFamily: 'inherit',
+        }}
+      >
+        <div style={{ padding: '26px 26px 6px', display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+          <div
+            style={{
+              width: '48px', height: '48px', borderRadius: '50%',
+              background: v.bg, color: v.color,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '22px', flexShrink: 0,
+            }}
+          >
+            <i className={`bi ${v.icon}`}></i>
+          </div>
+          <div style={{ flex: 1, paddingTop: '2px' }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: '17px', fontWeight: 700, color: '#1f2937' }}>
+              {title}
+            </h3>
+            <div style={{ color: '#4b5563', fontSize: '14px', lineHeight: 1.6 }}>
+              {message}
+            </div>
+          </div>
+        </div>
+        <div style={{ padding: '18px 26px 22px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              padding: '10px 22px', borderRadius: '10px',
+              border: '1px solid #d1d5db', background: '#ffffff',
+              color: '#374151', fontSize: '14px', fontWeight: 600,
+              cursor: 'pointer', transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = '#f3f4f6'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; }}
+          >
+            {cancelText}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            style={{
+              padding: '10px 22px', borderRadius: '10px',
+              border: 'none', background: v.color, color: '#ffffff',
+              fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+              boxShadow: `0 4px 12px ${v.color}55`, transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = `0 6px 16px ${v.color}77`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = `0 4px 12px ${v.color}55`;
+            }}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </DialogShell>
+  );
+};
+
+const AlertDialog = ({
+  open, title, message,
+  variant = 'info', buttonText = 'OK', onClose,
+}) => {
+  if (!open) return null;
+  const v = DIALOG_VARIANTS[variant] || DIALOG_VARIANTS.info;
+
+  return (
+    <DialogShell onBackdropClick={onClose}>
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          background: '#ffffff',
+          borderRadius: '16px',
+          maxWidth: '440px',
+          width: '100%',
+          boxShadow: '0 24px 70px rgba(0,0,0,0.35)',
+          overflow: 'hidden',
+          animation: 'pkgDialogPop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        }}
+      >
+        <div style={{ padding: '28px 26px 8px', textAlign: 'center' }}>
+          <div
+            style={{
+              width: '64px', height: '64px', borderRadius: '50%',
+              background: v.bg, color: v.color,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '30px', margin: '0 auto 14px',
+            }}
+          >
+            <i className={`bi ${v.icon}`}></i>
+          </div>
+          <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700, color: '#1f2937' }}>
+            {title}
+          </h3>
+          <div style={{ color: '#4b5563', fontSize: '14px', lineHeight: 1.6, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+            {message}
+          </div>
+        </div>
+        <div style={{ padding: '18px 26px 24px', display: 'flex', justifyContent: 'center' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: '10px 36px', borderRadius: '10px', border: 'none',
+              background: v.color, color: '#ffffff', fontSize: '14px',
+              fontWeight: 600, cursor: 'pointer',
+              boxShadow: `0 4px 12px ${v.color}55`, transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = `0 6px 16px ${v.color}77`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = `0 4px 12px ${v.color}55`;
+            }}
+          >
+            {buttonText}
+          </button>
+        </div>
+      </div>
+    </DialogShell>
+  );
+};
+
 function PackagePlansOrder() {
   // ===== 1. THEME =====
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -29,11 +212,32 @@ function PackagePlansOrder() {
   // ===== 4. TOAST & CONFIRM =====
   const [toast, setToast] = useState({ visible: false, type: 'success', message: '' });
   const toastTimeoutRef = useRef(null);
+
+  // ===== 4b. CUSTOM CONFIRM DIALOG STATE =====
   const [confirmDialog, setConfirmDialog] = useState({
     visible: false,
+    title: 'Confirm Action',
     message: '',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+    variant: 'warning',
     onConfirm: null,
   });
+
+  // ===== 4c. CUSTOM ALERT DIALOG STATE =====
+  const [alertDialog, setAlertDialog] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    variant: 'info',
+    buttonText: 'OK',
+  });
+
+  const showAlert = (variant, title, message, buttonText = 'OK') => {
+    setAlertDialog({ visible: true, title, message, variant, buttonText });
+  };
+  const closeAlert = () => setAlertDialog(prev => ({ ...prev, visible: false }));
+  const closeConfirm = () => setConfirmDialog(prev => ({ ...prev, visible: false, onConfirm: null }));
 
   const showToast = (type, message) => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
@@ -70,14 +274,8 @@ function PackagePlansOrder() {
     return null;
   };
 
-  // Try to pull an image path out of any shape:
-  //  - direct string key
-  //  - nested object (e.g. { url, path, src, filename })
-  //  - array of strings or array of objects
   const extractImage = (value) => {
     if (!value) return null;
-
-    // array → first usable entry
     if (Array.isArray(value)) {
       for (const v of value) {
         const got = extractImage(v);
@@ -85,14 +283,10 @@ function PackagePlansOrder() {
       }
       return null;
     }
-
-    // plain string
     if (typeof value === 'string') {
       const s = value.trim();
       return s || null;
     }
-
-    // object
     if (typeof value === 'object') {
       const got = pickString(value, [
         'url', 'path', 'src', 'image', 'image_url',
@@ -100,16 +294,13 @@ function PackagePlansOrder() {
       ]);
       return got || null;
     }
-
     return null;
   };
 
   // ===== 7. IMAGE URL RESOLVER (ROBUST) =====
-  // Checks every common shape / nesting level used by package-booking APIs.
   const resolveImageUrl = (item) => {
     if (!item || typeof item !== 'object') return null;
 
-    // Containers where the image might live
     const containers = [
       item,
       item.package,
@@ -165,12 +356,9 @@ function PackagePlansOrder() {
     const cleaned = String(raw).trim();
     if (!cleaned) return null;
 
-    // Already absolute
     if (/^https?:\/\//i.test(cleaned)) return cleaned;
-    // Data URI
     if (cleaned.startsWith('data:')) return cleaned;
 
-    // Relative path → prefix with backend
     return `${BACKEND_URL}/${cleaned.replace(/^\/+/, '')}`;
   };
 
@@ -214,7 +402,6 @@ function PackagePlansOrder() {
       else if (Array.isArray(result)) bookingList = result;
 
       if (bookingList) {
-        // 🔎 DEBUG: log the first item so you can see which key holds the image
         if (bookingList[0]) {
           console.log('🔎 First booking item keys:', Object.keys(bookingList[0]));
           console.log('🔎 First booking item (full):', bookingList[0]);
@@ -236,7 +423,6 @@ function PackagePlansOrder() {
           hotels: Array.isArray(item.hotels) ? item.hotels : [],
           restaurants: Array.isArray(item.restaurants) ? item.restaurants : [],
           transports: Array.isArray(item.transports) ? item.transports : [],
-          // ✅ FIX: robust image resolution
           image: resolveImageUrl(item),
           passenger: item.passenger || 1,
           selected_price: item.selected_price || 0,
@@ -306,13 +492,23 @@ function PackagePlansOrder() {
     }
   };
 
-  // ===== 10. CONFIRM DIALOG TRIGGER =====
+  // ===== 10. CONFIRM DIALOG TRIGGER (Custom Dialog) =====
   const handleStatusChange = (bookingId, newStatus) => {
-    const actionText = newStatus === 'approved' ? 'approve' : 'cancel';
+    const isCancel = newStatus === 'cancelled';
+
     setConfirmDialog({
       visible: true,
-      message: `Are you sure you want to ${actionText} this booking?`,
-      onConfirm: () => updateBookingStatus(bookingId, newStatus),
+      title: isCancel ? 'Cancel This Booking?' : 'Approve This Booking?',
+      message: isCancel
+        ? `Booking #${bookingId} will be marked as cancelled. This action cannot be undone.`
+        : `Booking #${bookingId} will be approved and confirmed. Do you want to continue?`,
+      confirmText: isCancel ? 'Yes, Cancel' : 'Yes, Approve',
+      cancelText: 'No, Keep',
+      variant: isCancel ? 'danger' : 'question',
+      onConfirm: () => {
+        closeConfirm();
+        updateBookingStatus(bookingId, newStatus);
+      },
     });
   };
 
@@ -733,6 +929,18 @@ function PackagePlansOrder() {
   // ===== 18. MAIN RENDER =====
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
+      {/* Dialog animations */}
+      <style>{`
+        @keyframes pkgDialogFade {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes pkgDialogPop {
+          from { transform: scale(0.9) translateY(10px); opacity: 0; }
+          to   { transform: scale(1) translateY(0);       opacity: 1; }
+        }
+      `}</style>
+
       <Header title="Package Plan Bookings" onThemeChange={handleThemeChange} />
 
       {toast.visible && (
@@ -807,67 +1015,6 @@ function PackagePlansOrder() {
               )}
             </div>
             <div style={{ fontSize: '15px', lineHeight: '1.5' }}>{toast.message}</div>
-          </div>
-        </div>
-      )}
-
-      {confirmDialog.visible && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.5)',
-            zIndex: 999999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <div
-            style={{
-              background: isDarkMode ? '#2d2d2d' : '#fff',
-              padding: '24px',
-              borderRadius: '12px',
-              maxWidth: '400px',
-              width: '90%',
-              boxShadow: '0 15px 40px rgba(0,0,0,0.2)',
-            }}
-          >
-            <h3 style={{ color: isDarkMode ? '#eee' : '#333', marginBottom: '12px' }}>
-              Confirm Action
-            </h3>
-            <p style={{ color: isDarkMode ? '#ccc' : '#555' }}>{confirmDialog.message}</p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-              <button
-                onClick={() => setConfirmDialog({ ...confirmDialog, visible: false })}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: '6px',
-                  border: '1px solid #ddd',
-                  background: 'transparent',
-                  cursor: 'pointer',
-                  color: isDarkMode ? '#ccc' : '#333',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  if (confirmDialog.onConfirm) confirmDialog.onConfirm();
-                  setConfirmDialog({ ...confirmDialog, visible: false });
-                }}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: '#0d6efd',
-                  color: '#fff',
-                  cursor: 'pointer',
-                }}
-              >
-                Confirm
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -1072,6 +1219,28 @@ function PackagePlansOrder() {
           }}
         />
       )}
+
+      {/* ===== CUSTOM CONFIRM DIALOG ===== */}
+      <ConfirmDialog
+        open={confirmDialog.visible}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText={confirmDialog.confirmText}
+        cancelText={confirmDialog.cancelText}
+        variant={confirmDialog.variant}
+        onConfirm={() => { if (confirmDialog.onConfirm) confirmDialog.onConfirm(); }}
+        onCancel={closeConfirm}
+      />
+
+      {/* ===== CUSTOM ALERT DIALOG ===== */}
+      <AlertDialog
+        open={alertDialog.visible}
+        title={alertDialog.title}
+        message={alertDialog.message}
+        variant={alertDialog.variant}
+        buttonText={alertDialog.buttonText}
+        onClose={closeAlert}
+      />
     </div>
   );
 }

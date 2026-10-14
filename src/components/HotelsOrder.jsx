@@ -8,6 +8,189 @@ import Header from './Header';
 const BACKEND_URL = 'http://130.94.21.185:8000';
 const API_BASE = `${BACKEND_URL}/api`;
 
+// ============================================================
+//  CUSTOM DIALOG VARIANTS
+// ============================================================
+const DIALOG_VARIANTS = {
+  warning:  { color: '#f0ad4e', icon: 'bi-exclamation-triangle-fill', bg: '#fff6e3' },
+  danger:   { color: '#dc3545', icon: 'bi-x-octagon-fill',            bg: '#fdecec' },
+  info:     { color: '#0d6efd', icon: 'bi-info-circle-fill',          bg: '#e7f1ff' },
+  success:  { color: '#198754', icon: 'bi-check-circle-fill',         bg: '#e7f7ee' },
+  question: { color: '#6f42c1', icon: 'bi-question-circle-fill',      bg: '#f1ebff' },
+  error:    { color: '#dc3545', icon: 'bi-exclamation-octagon-fill',  bg: '#fdecec' },
+};
+
+const DialogShell = ({ children, onBackdropClick }) => (
+  <div
+    onMouseDown={(e) => { if (e.target === e.currentTarget && onBackdropClick) onBackdropClick(); }}
+    style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(15, 23, 42, 0.55)',
+      backdropFilter: 'blur(3px)',
+      WebkitBackdropFilter: 'blur(3px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 99999,
+      padding: '20px',
+      animation: 'hotelDialogFade 0.18s ease-out',
+    }}
+  >
+    {children}
+  </div>
+);
+
+const ConfirmDialog = ({
+  open, title, message,
+  confirmText = 'Confirm', cancelText = 'Cancel',
+  variant = 'warning', onConfirm, onCancel,
+}) => {
+  if (!open) return null;
+  const v = DIALOG_VARIANTS[variant] || DIALOG_VARIANTS.warning;
+
+  return (
+    <DialogShell onBackdropClick={onCancel}>
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          background: '#ffffff',
+          borderRadius: '16px',
+          maxWidth: '440px',
+          width: '100%',
+          boxShadow: '0 24px 70px rgba(0,0,0,0.35)',
+          overflow: 'hidden',
+          animation: 'hotelDialogPop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          fontFamily: 'inherit',
+        }}
+      >
+        <div style={{ padding: '26px 26px 6px', display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+          <div
+            style={{
+              width: '48px', height: '48px', borderRadius: '50%',
+              background: v.bg, color: v.color,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '22px', flexShrink: 0,
+            }}
+          >
+            <i className={`bi ${v.icon}`}></i>
+          </div>
+          <div style={{ flex: 1, paddingTop: '2px' }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: '17px', fontWeight: 700, color: '#1f2937' }}>
+              {title}
+            </h3>
+            <div style={{ color: '#4b5563', fontSize: '14px', lineHeight: 1.6 }}>
+              {message}
+            </div>
+          </div>
+        </div>
+        <div style={{ padding: '18px 26px 22px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              padding: '10px 22px', borderRadius: '10px',
+              border: '1px solid #d1d5db', background: '#ffffff',
+              color: '#374151', fontSize: '14px', fontWeight: 600,
+              cursor: 'pointer', transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = '#f3f4f6'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; }}
+          >
+            {cancelText}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            style={{
+              padding: '10px 22px', borderRadius: '10px',
+              border: 'none', background: v.color, color: '#ffffff',
+              fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+              boxShadow: `0 4px 12px ${v.color}55`, transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = `0 6px 16px ${v.color}77`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = `0 4px 12px ${v.color}55`;
+            }}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </DialogShell>
+  );
+};
+
+const AlertDialog = ({
+  open, title, message,
+  variant = 'info', buttonText = 'OK', onClose,
+}) => {
+  if (!open) return null;
+  const v = DIALOG_VARIANTS[variant] || DIALOG_VARIANTS.info;
+
+  return (
+    <DialogShell onBackdropClick={onClose}>
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          background: '#ffffff',
+          borderRadius: '16px',
+          maxWidth: '440px',
+          width: '100%',
+          boxShadow: '0 24px 70px rgba(0,0,0,0.35)',
+          overflow: 'hidden',
+          animation: 'hotelDialogPop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        }}
+      >
+        <div style={{ padding: '28px 26px 8px', textAlign: 'center' }}>
+          <div
+            style={{
+              width: '64px', height: '64px', borderRadius: '50%',
+              background: v.bg, color: v.color,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '30px', margin: '0 auto 14px',
+            }}
+          >
+            <i className={`bi ${v.icon}`}></i>
+          </div>
+          <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700, color: '#1f2937' }}>
+            {title}
+          </h3>
+          <div style={{ color: '#4b5563', fontSize: '14px', lineHeight: 1.6, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+            {message}
+          </div>
+        </div>
+        <div style={{ padding: '18px 26px 24px', display: 'flex', justifyContent: 'center' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: '10px 36px', borderRadius: '10px', border: 'none',
+              background: v.color, color: '#ffffff', fontSize: '14px',
+              fontWeight: 600, cursor: 'pointer',
+              boxShadow: `0 4px 12px ${v.color}55`, transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = `0 6px 16px ${v.color}77`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = `0 4px 12px ${v.color}55`;
+            }}
+          >
+            {buttonText}
+          </button>
+        </div>
+      </div>
+    </DialogShell>
+  );
+};
+
 function HotelsOrder() {
   // ===== User Role =====
   const user = (() => {
@@ -33,6 +216,31 @@ function HotelsOrder() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [myHotelIds, setMyHotelIds] = useState([]);
 
+  // ===== CUSTOM DIALOG STATES =====
+  const [confirmDialog, setConfirmDialog] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+    variant: 'warning',
+    onConfirm: null,
+  });
+
+  const [alertDialog, setAlertDialog] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    variant: 'info',
+    buttonText: 'OK',
+  });
+
+  const showAlert = (variant, title, message, buttonText = 'OK') => {
+    setAlertDialog({ visible: true, title, message, variant, buttonText });
+  };
+  const closeAlert = () => setAlertDialog(prev => ({ ...prev, visible: false }));
+  const closeConfirm = () => setConfirmDialog(prev => ({ ...prev, visible: false, onConfirm: null }));
+
   // ===== API Helpers =====
   const getToken = () =>
     localStorage.getItem('token') ||
@@ -50,8 +258,12 @@ function HotelsOrder() {
 
   const handle401Error = () => {
     localStorage.removeItem('token');
-    alert('Session expired. Please login again.');
-    setTimeout(() => (window.location.href = '/login'), 1500);
+    showAlert(
+      'warning',
+      'Session Expired',
+      'Your session has expired. Please login again.'
+    );
+    setTimeout(() => (window.location.href = '/login'), 1800);
   };
 
   // ===== Image URL helper =====
@@ -64,11 +276,7 @@ function HotelsOrder() {
   };
 
   // ============================================================
-  //  FETCH HOTELS (for ownership filter)
-  //  → GET /api/admin/hotel/list
-  //  Response: { success, count, data: [ { id, shop_id, shop_name,
-  //              shop_address, shop_phone, name, price, facilities,
-  //              description, image } ] }
+  //  FETCH HOTELS
   // ============================================================
   const fetchHotels = async () => {
     try {
@@ -91,10 +299,8 @@ function HotelsOrder() {
         : [];
 
       if (admin) {
-        // admin — all hotel ids
         setMyHotelIds(list.map((h) => h.id));
       } else {
-        // shop — only my shop_id's hotels
         const myIds = list
           .filter(
             (h) =>
@@ -112,7 +318,6 @@ function HotelsOrder() {
 
   // ============================================================
   //  FETCH ORDERS
-  //  → GET /api/admin/hotel/booking/list
   // ============================================================
   const fetchOrders = async () => {
     await fetchHotels();
@@ -134,9 +339,6 @@ function HotelsOrder() {
 
       const result = await res.json();
 
-      // Response could be: { success, booking: [...] }
-      //   or             : { success, data: [...] }
-      //   or             : [ ... ]
       let raw = [];
       if (Array.isArray(result)) raw = result;
       else if (Array.isArray(result.booking)) raw = result.booking;
@@ -144,7 +346,6 @@ function HotelsOrder() {
       else if (Array.isArray(result.orders)) raw = result.orders;
 
       const mapped = raw.map((item) => {
-        // Booking items usually carry hotel info + customer info
         const hotelImg =
           item.image ||
           item.hotel_image ||
@@ -241,7 +442,7 @@ function HotelsOrder() {
       setOrders(mapped);
     } catch (err) {
       console.error('❌ Fetch Orders Error:', err);
-      alert('Failed to load orders.');
+      showAlert('error', 'Unable to Load Orders', 'Failed to load orders. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -250,7 +451,7 @@ function HotelsOrder() {
   useEffect(() => {
     const token = getToken();
     if (!token) {
-      alert('Please login first');
+      showAlert('warning', 'Login Required', 'Please login first to view Hotel orders.');
       return;
     }
     fetchOrders();
@@ -274,50 +475,24 @@ function HotelsOrder() {
   }, [isDarkMode]);
 
   // ============================================================
-  //  UPDATE ORDER STATUS
-  //  → PUT /api/mobile/hotel/booking/approvd/{id}    (Approve)
-  //  → PUT /api/mobile/hotel/booking/cancelled/{id}  (Cancel)
+  //  UPDATE ORDER STATUS (Custom Confirm + Alert — no window.confirm)
   // ============================================================
-  const updateOrderStatus = async (orderId, newStatus) => {
-    if (!orderId) {
-      alert('Invalid order ID.');
-      return;
-    }
-
+  const performUpdateStatus = async (orderId, newStatus) => {
     let endpoint = '';
     if (newStatus === 'confirmed') {
       endpoint = `${API_BASE}/mobile/hotel/booking/approvd/${orderId}`;
     } else if (newStatus === 'cancelled') {
       endpoint = `${API_BASE}/mobile/hotel/booking/cancelled/${orderId}`;
-    } else if (newStatus === 'completed') {
-      // No API endpoint – update locally only
-      if (!window.confirm('Mark this order as completed (local only)?')) return;
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.id === orderId ? { ...o, status: 'completed' } : o
-        )
-      );
-      alert('Order marked as completed (local only).');
-      return;
     } else {
-      alert(`Unsupported status: ${newStatus}`);
+      showAlert('error', 'Unsupported Action', `Unsupported status: ${newStatus}`);
       return;
     }
-
-    if (
-      !window.confirm(
-        `Change status to "${newStatus === 'confirmed' ? 'Approved' : 'Cancelled'}"?`
-      )
-    )
-      return;
 
     setLoading(true);
     try {
       const res = await fetch(endpoint, {
         method: 'PUT',
         headers: getHeaders(true),
-        // If backend requires a JSON body, uncomment:
-        // body: JSON.stringify({ status: newStatus }),
       });
 
       if (res.status === 401) {
@@ -333,12 +508,12 @@ function HotelsOrder() {
       }
 
       if (!res.ok || data.success === false) {
-        throw new Error(
-          data.message || `Server error ${res.status}`
-        );
+        throw new Error(data.message || `Server error ${res.status}`);
       }
 
-      alert(
+      showAlert(
+        'success',
+        'Status Updated',
         data.message ||
           `Order status updated to ${
             newStatus === 'confirmed' ? 'Approved' : 'Cancelled'
@@ -347,10 +522,62 @@ function HotelsOrder() {
       await fetchOrders();
     } catch (err) {
       console.error('❌ Update Status Error:', err);
-      alert(`Failed to update status: ${err.message}`);
+      showAlert(
+        'error',
+        'Update Failed',
+        `Failed to update status: ${err.message}`
+      );
     } finally {
       setLoading(false);
     }
+  };
+
+  const updateOrderStatus = (orderId, newStatus) => {
+    if (!orderId) {
+      showAlert('error', 'Invalid Order', 'Invalid order ID.');
+      return;
+    }
+
+    // Handle completed locally
+    if (newStatus === 'completed') {
+      setConfirmDialog({
+        visible: true,
+        title: 'Mark as Completed?',
+        message: 'This will mark the order as completed (local only — no server change).',
+        confirmText: 'Yes, Complete',
+        cancelText: 'Cancel',
+        variant: 'success',
+        onConfirm: () => {
+          closeConfirm();
+          setOrders((prev) =>
+            prev.map((o) =>
+              o.id === orderId ? { ...o, status: 'completed' } : o
+            )
+          );
+          showAlert(
+            'success',
+            'Order Completed',
+            'Order marked as completed (local only).'
+          );
+        },
+      });
+      return;
+    }
+
+    // Handle confirmed / cancelled with API
+    const isCancel = newStatus === 'cancelled';
+    setConfirmDialog({
+      visible: true,
+      title: isCancel ? 'Cancel This Order?' : 'Approve This Order?',
+      message: `Change status to "${isCancel ? 'Cancelled' : 'Approved'}"?`,
+      confirmText: isCancel ? 'Yes, Cancel' : 'Yes, Approve',
+      cancelText: 'No, Keep',
+      variant: isCancel ? 'danger' : 'question',
+      onConfirm: () => {
+        closeConfirm();
+        performUpdateStatus(orderId, newStatus);
+      },
+    });
   };
 
   // ===== FILTER =====
@@ -707,6 +934,18 @@ function HotelsOrder() {
         isDarkMode ? 'dark-theme' : 'light-theme'
       }`}
     >
+      {/* Dialog animations */}
+      <style>{`
+        @keyframes hotelDialogFade {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes hotelDialogPop {
+          from { transform: scale(0.9) translateY(10px); opacity: 0; }
+          to   { transform: scale(1) translateY(0);       opacity: 1; }
+        }
+      `}</style>
+
       <Header title="Hotel Orders" onThemeChange={handleThemeChange} />
 
       {/* Summary Boxes */}
@@ -860,6 +1099,28 @@ function HotelsOrder() {
           }}
         />
       )}
+
+      {/* ===== CUSTOM CONFIRM DIALOG ===== */}
+      <ConfirmDialog
+        open={confirmDialog.visible}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText={confirmDialog.confirmText}
+        cancelText={confirmDialog.cancelText}
+        variant={confirmDialog.variant}
+        onConfirm={() => { if (confirmDialog.onConfirm) confirmDialog.onConfirm(); }}
+        onCancel={closeConfirm}
+      />
+
+      {/* ===== CUSTOM ALERT DIALOG ===== */}
+      <AlertDialog
+        open={alertDialog.visible}
+        title={alertDialog.title}
+        message={alertDialog.message}
+        variant={alertDialog.variant}
+        buttonText={alertDialog.buttonText}
+        onClose={closeAlert}
+      />
     </div>
   );
 }

@@ -18,6 +18,191 @@ const parseDate = (dateStr) => {
   return null;
 };
 
+// ===== CUSTOM DIALOG STYLES =====
+const DIALOG_VARIANTS = {
+  warning:  { color: '#f0ad4e', icon: 'bi-exclamation-triangle-fill', bg: '#fff6e3' },
+  danger:   { color: '#dc3545', icon: 'bi-x-octagon-fill',            bg: '#fdecec' },
+  info:     { color: '#0d6efd', icon: 'bi-info-circle-fill',          bg: '#e7f1ff' },
+  success:  { color: '#198754', icon: 'bi-check-circle-fill',         bg: '#e7f7ee' },
+  question: { color: '#6f42c1', icon: 'bi-question-circle-fill',      bg: '#f1ebff' },
+  error:    { color: '#dc3545', icon: 'bi-exclamation-octagon-fill',  bg: '#fdecec' },
+};
+
+// ===== DIALOG SHELL =====
+const DialogShell = ({ children, onBackdropClick }) => (
+  <div
+    onMouseDown={(e) => { if (e.target === e.currentTarget && onBackdropClick) onBackdropClick(); }}
+    style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(15, 23, 42, 0.55)',
+      backdropFilter: 'blur(3px)',
+      WebkitBackdropFilter: 'blur(3px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 99999,
+      padding: '20px',
+      animation: 'ebikeDialogFade 0.18s ease-out',
+    }}
+  >
+    {children}
+  </div>
+);
+
+// ===== CONFIRM DIALOG =====
+const ConfirmDialog = ({
+  open, title, message,
+  confirmText = 'Confirm', cancelText = 'Cancel',
+  variant = 'warning', onConfirm, onCancel,
+}) => {
+  if (!open) return null;
+  const v = DIALOG_VARIANTS[variant] || DIALOG_VARIANTS.warning;
+
+  return (
+    <DialogShell onBackdropClick={onCancel}>
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          background: '#ffffff',
+          borderRadius: '16px',
+          maxWidth: '440px',
+          width: '100%',
+          boxShadow: '0 24px 70px rgba(0,0,0,0.35)',
+          overflow: 'hidden',
+          animation: 'ebikeDialogPop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          fontFamily: 'inherit',
+        }}
+      >
+        <div style={{ padding: '26px 26px 6px', display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+          <div
+            style={{
+              width: '48px', height: '48px', borderRadius: '50%',
+              background: v.bg, color: v.color,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '22px', flexShrink: 0,
+            }}
+          >
+            <i className={`bi ${v.icon}`}></i>
+          </div>
+          <div style={{ flex: 1, paddingTop: '2px' }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: '17px', fontWeight: 700, color: '#1f2937' }}>
+              {title}
+            </h3>
+            <div style={{ color: '#4b5563', fontSize: '14px', lineHeight: 1.6 }}>
+              {message}
+            </div>
+          </div>
+        </div>
+        <div style={{ padding: '18px 26px 22px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              padding: '10px 22px', borderRadius: '10px',
+              border: '1px solid #d1d5db', background: '#ffffff',
+              color: '#374151', fontSize: '14px', fontWeight: 600,
+              cursor: 'pointer', transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = '#f3f4f6'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; }}
+          >
+            {cancelText}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            style={{
+              padding: '10px 22px', borderRadius: '10px',
+              border: 'none', background: v.color, color: '#ffffff',
+              fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+              boxShadow: `0 4px 12px ${v.color}55`, transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = `0 6px 16px ${v.color}77`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = `0 4px 12px ${v.color}55`;
+            }}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </DialogShell>
+  );
+};
+
+// ===== ALERT DIALOG =====
+const AlertDialog = ({
+  open, title, message,
+  variant = 'info', buttonText = 'OK', onClose,
+}) => {
+  if (!open) return null;
+  const v = DIALOG_VARIANTS[variant] || DIALOG_VARIANTS.info;
+
+  return (
+    <DialogShell onBackdropClick={onClose}>
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          background: '#ffffff',
+          borderRadius: '16px',
+          maxWidth: '440px',
+          width: '100%',
+          boxShadow: '0 24px 70px rgba(0,0,0,0.35)',
+          overflow: 'hidden',
+          animation: 'ebikeDialogPop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        }}
+      >
+        <div style={{ padding: '28px 26px 8px', textAlign: 'center' }}>
+          <div
+            style={{
+              width: '64px', height: '64px', borderRadius: '50%',
+              background: v.bg, color: v.color,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '30px', margin: '0 auto 14px',
+            }}
+          >
+            <i className={`bi ${v.icon}`}></i>
+          </div>
+          <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700, color: '#1f2937' }}>
+            {title}
+          </h3>
+          <div style={{ color: '#4b5563', fontSize: '14px', lineHeight: 1.6, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+            {message}
+          </div>
+        </div>
+        <div style={{ padding: '18px 26px 24px', display: 'flex', justifyContent: 'center' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: '10px 36px', borderRadius: '10px', border: 'none',
+              background: v.color, color: '#ffffff', fontSize: '14px',
+              fontWeight: 600, cursor: 'pointer',
+              boxShadow: `0 4px 12px ${v.color}55`, transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = `0 6px 16px ${v.color}77`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = `0 4px 12px ${v.color}55`;
+            }}
+          >
+            {buttonText}
+          </button>
+        </div>
+      </div>
+    </DialogShell>
+  );
+};
+
+// ===== MAIN COMPONENT =====
 function EBikesOrder() {
   // ===== User & Shop =====
   const user = (() => {
@@ -67,6 +252,31 @@ function EBikesOrder() {
     }, 3000);
   };
 
+  // ===== 4b. CUSTOM DIALOG STATE =====
+  const [confirmDialog, setConfirmDialog] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+    variant: 'warning',
+    onConfirm: null,
+  });
+
+  const [alertDialog, setAlertDialog] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    variant: 'info',
+    buttonText: 'OK',
+  });
+
+  const showAlert = (variant, title, message, buttonText = 'OK') => {
+    setAlertDialog({ visible: true, title, message, variant, buttonText });
+  };
+  const closeAlert = () => setAlertDialog(prev => ({ ...prev, visible: false }));
+  const closeConfirm = () => setConfirmDialog(prev => ({ ...prev, visible: false, onConfirm: null }));
+
   // ===== 5. API HELPERS =====
   const BACKEND_URL = 'http://130.94.21.185:8000';
   const getToken = () => localStorage.getItem('token');
@@ -77,7 +287,7 @@ function EBikesOrder() {
 
   const handle401Error = () => {
     localStorage.removeItem('token');
-    showToast('error', 'Session expired. Please login again.');
+    showAlert('warning', 'Session Expired', 'Your session has expired. Please login again.');
     setTimeout(() => window.location.href = '/login', 1500);
   };
 
@@ -230,7 +440,15 @@ function EBikesOrder() {
       if (response.status === 401) return handle401Error();
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
+        // Try to parse JSON error body for cleaner message
+        let cleanMsg = `Server error ${response.status}`;
+        try {
+          const parsed = JSON.parse(text);
+          cleanMsg = parsed.message || parsed.error || cleanMsg;
+        } catch {
+          cleanMsg = text.substring(0, 200) || cleanMsg;
+        }
+        throw new Error(cleanMsg);
       }
 
       const result = await response.json();
@@ -331,7 +549,24 @@ function EBikesOrder() {
     } catch (err) {
       setError(err.message);
       console.error('❌ Fetch Orders Error:', err);
-      showToast('error', 'Failed to load orders.');
+
+      // Show custom alert dialog with helpful message
+      const msg = err.message || 'Failed to load orders.';
+      const isSqlBug =
+        msg.toLowerCase().includes('unknown column') ||
+        msg.toLowerCase().includes('field list');
+
+      if (isSqlBug) {
+        showAlert(
+          'error',
+          'Backend SQL Error',
+          `ဒီ error က Frontend မဟုတ်ပါ။\n\n` +
+          `Backend Server ရဲ့ SQL Query မှာ column မရှိတာ ဖြစ်ပါတယ်:\n${msg}\n\n` +
+          `Backend Developer ကို ပြင်ခိုင်းပါ — booking list query ထဲက 'h.price' column ကို ဖျက်ပါ။`
+        );
+      } else {
+        showAlert('error', 'Unable to Load Orders', msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -341,7 +576,7 @@ function EBikesOrder() {
     const token = getToken();
     if (!token) {
       setError('Please login first');
-      showToast('error', 'Please login first');
+      showAlert('warning', 'Login Required', 'Please login first to view E-Bike orders.');
       return;
     }
     fetchOrders();
@@ -363,30 +598,55 @@ function EBikesOrder() {
     }
   }, [isDarkMode]);
 
-  // ===== 9. UPDATE STATUS =====
-  const updateOrderStatus = async (orderId, newStatus, endpoint) => {
-    if (!window.confirm(`Are you sure you want to ${newStatus} this order?`)) return;
-    setUpdatingId(orderId);
-    try {
-      const response = await fetch(`${API_BASE}/booking/${endpoint}/${orderId}`, {
-        method: 'PUT',
-        headers: getHeaders(),
-      });
+  // ===== 9. UPDATE STATUS (Custom ConfirmDialog — no window.confirm) =====
+  const updateOrderStatus = (orderId, newStatus, endpoint) => {
+    const isCancel = newStatus === 'cancelled';
 
-      if (response.status === 401) return handle401Error();
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
-      }
+    setConfirmDialog({
+      visible: true,
+      title: isCancel ? 'Cancel This Order?' : 'Approve This Order?',
+      message: isCancel
+        ? `Order #${orderId} will be marked as cancelled. This action cannot be undone.`
+        : `Order #${orderId} will be approved and confirmed. Do you want to continue?`,
+      confirmText: isCancel ? 'Yes, Cancel' : 'Yes, Approve',
+      cancelText: 'No, Keep',
+      variant: isCancel ? 'danger' : 'question',
+      onConfirm: async () => {
+        closeConfirm();
+        setUpdatingId(orderId);
+        try {
+          const response = await fetch(`${API_BASE}/booking/${endpoint}/${orderId}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+          });
 
-      await fetchOrders();
-      showToast('success', `Order #${orderId} ${newStatus} successfully!`);
-    } catch (err) {
-      console.error(`❌ ${newStatus} Error:`, err);
-      showToast('error', `Failed to ${newStatus} order.`);
-    } finally {
-      setUpdatingId(null);
-    }
+          if (response.status === 401) return handle401Error();
+          if (!response.ok) {
+            const text = await response.text();
+            let cleanMsg = `Server error ${response.status}`;
+            try {
+              const parsed = JSON.parse(text);
+              cleanMsg = parsed.message || parsed.error || cleanMsg;
+            } catch {
+              cleanMsg = text.substring(0, 200) || cleanMsg;
+            }
+            throw new Error(cleanMsg);
+          }
+
+          await fetchOrders();
+          showToast('success', `Order #${orderId} ${newStatus} successfully!`);
+        } catch (err) {
+          console.error(`❌ ${newStatus} Error:`, err);
+          showAlert(
+            'error',
+            isCancel ? 'Cancel Failed' : 'Approval Failed',
+            err.message || `Failed to ${newStatus} order #${orderId}.`
+          );
+        } finally {
+          setUpdatingId(null);
+        }
+      },
+    });
   };
 
   // ===== 10. FILTER LOGIC =====
@@ -682,15 +942,23 @@ function EBikesOrder() {
     );
   }
 
-  if (error) {
+  if (error && orders.length === 0) {
     return (
       <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
         <Header title="E-Bike Orders" onThemeChange={handleThemeChange} />
         <div style={{ textAlign: 'center', padding: '50px', color: '#dc3545' }}>
           <i className="bi bi-exclamation-triangle" style={{ fontSize: '48px' }}></i>
-          <p>Error: {error}</p>
+          <p style={{ marginTop: '12px' }}>{error}</p>
           <button className="btn btn-primary" onClick={() => { setError(null); fetchOrders(); }}>Retry</button>
         </div>
+        <AlertDialog
+          open={alertDialog.visible}
+          title={alertDialog.title}
+          message={alertDialog.message}
+          variant={alertDialog.variant}
+          buttonText={alertDialog.buttonText}
+          onClose={closeAlert}
+        />
       </div>
     );
   }
@@ -707,6 +975,18 @@ function EBikesOrder() {
   // ===== 17. MAIN RENDER =====
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
+      {/* Dialog animations keyframes */}
+      <style>{`
+        @keyframes ebikeDialogFade {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes ebikeDialogPop {
+          from { transform: scale(0.9) translateY(10px); opacity: 0; }
+          to   { transform: scale(1) translateY(0);       opacity: 1; }
+        }
+      `}</style>
+
       <Header title="E-Bike Orders" onThemeChange={handleThemeChange} />
 
       {toast.visible && (
@@ -881,6 +1161,28 @@ function EBikesOrder() {
           }}
         />
       )}
+
+      {/* ===== CUSTOM CONFIRM DIALOG (replaces window.confirm) ===== */}
+      <ConfirmDialog
+        open={confirmDialog.visible}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText={confirmDialog.confirmText}
+        cancelText={confirmDialog.cancelText}
+        variant={confirmDialog.variant}
+        onConfirm={() => { if (confirmDialog.onConfirm) confirmDialog.onConfirm(); }}
+        onCancel={closeConfirm}
+      />
+
+      {/* ===== CUSTOM ALERT DIALOG (replaces window.alert) ===== */}
+      <AlertDialog
+        open={alertDialog.visible}
+        title={alertDialog.title}
+        message={alertDialog.message}
+        variant={alertDialog.variant}
+        buttonText={alertDialog.buttonText}
+        onClose={closeAlert}
+      />
     </div>
   );
 }
