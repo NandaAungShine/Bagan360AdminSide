@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 function Sidebar() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isOrderOpen, setIsOrderOpen] = useState(false);
-  const [showLogoutAlert, setShowLogoutAlert] = useState(false); // 👈 Alert ပြရန်/ဖျောက်ရန်
+  const [showLogoutAlert, setShowLogoutAlert] = useState(false);
+
+  const addDropdownRef = useRef(null);
+  const orderDropdownRef = useRef(null);
+
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -17,44 +21,68 @@ function Sidebar() {
   console.log('📦 User role:', role);
   console.log('🏪 Shop type from localStorage:', shopType);
 
+  // ---------- Close dropdown when clicking outside ----------
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (addDropdownRef.current && !addDropdownRef.current.contains(event.target)) {
+        setIsAddOpen(false);
+      }
+      if (orderDropdownRef.current && !orderDropdownRef.current.contains(event.target)) {
+        setIsOrderOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // ---------- Menu definitions ----------
+  // Add Dropdown: Enabled items on top, Disabled items at bottom
   const addMenuItems = [
-    // { name: 'Travel To Do', icon: 'bi-list', path: '/traveltodos' }, // 👈 ပိတ်ထားသည်
-    { name: 'History Of Pagodas', icon: 'bi-building', path: '/historyofpagodas' },
+    // ✅ Enabled (top)
     { name: 'Hotels', icon: 'bi-building', path: '/hotels' },
-    { name: 'Destinations', icon: 'bi-geo-alt', path: '/destinations' },
-    { name: 'Package Plans', icon: 'bi-pin-map', path: '/PackagePlan' },
     { name: 'Restaurants', icon: 'bi-egg-fried', path: '/restaurants' },
-    { name: 'Cars', icon: 'bi-car-front', path: '/cars' },
     { name: 'E-Bikes', icon: 'bi-bicycle', path: '/ebikes' },
-    { name: 'Hot Air Balloons', icon: 'bi-balloon', path: '/hotairballoons' },
     { name: 'Tricycles', icon: 'bi-truck', path: '/tricycles' },
-    { name: 'Horse Carts', icon: 'bi-truck', path: '/horsecarts' },
     { name: 'Banner', icon: 'bi-image', path: '/banner' },
+    // 🚫 Disabled (bottom)
+    { name: 'Destinations', icon: 'bi-geo-alt', path: '/destinations', disabled: true },
+    { name: 'Cars', icon: 'bi-car-front', path: '/cars', disabled: true },
+    { name: 'Hot Air Balloons', icon: 'bi-balloon', path: '/hotairballoons', disabled: true },
+    { name: 'Horse Carts', icon: 'bi-truck', path: '/horsecarts', disabled: true },
   ];
 
+  // Order Dropdown: Enabled items on top, Disabled items at bottom
   const orderMenuItems = [
+    // ✅ Enabled (top)
     { name: 'Hotels Order', icon: 'bi-building', path: '/hotelsorder' },
-    { name: 'Destinations Order', icon: 'bi-geo-alt', path: '/destinationsorder' },
-    { name: 'Package Plans Order', icon: 'bi-pin-map', path: '/packageplansorder' },
     { name: 'Restaurants Order', icon: 'bi-egg-fried', path: '/restaurantsorder' },
-    { name: 'Cars Order', icon: 'bi-car-front', path: '/carsorder' },
     { name: 'E-Bikes Order', icon: 'bi-bicycle', path: '/ebikesorder' },
-    { name: 'Hot Air Balloons Order', icon: 'bi-balloon', path: '/hotairballoonsorder' },
     { name: 'Tricycles Order', icon: 'bi-truck', path: '/tricyclesorder' },
-    { name: 'Horse Carts Order', icon: 'bi-truck', path: '/horsecartsorder' },
-    { name: 'Banner Order', icon: 'bi-image', path: '/bannerorder' },
+    // 🚫 Disabled (bottom)
+    { name: 'Destinations Order', icon: 'bi-geo-alt', path: '/destinationsorder', disabled: true },
+    { name: 'Cars Order', icon: 'bi-car-front', path: '/carsorder', disabled: true },
+    { name: 'Hot Air Balloons Order', icon: 'bi-balloon', path: '/hotairballoonsorder', disabled: true },
+    { name: 'Horse Carts Order', icon: 'bi-truck', path: '/horsecartsorder', disabled: true },
+    // ❌ Banner Order — turned off
+    // { name: 'Banner Order', icon: 'bi-image', path: '/bannerorder' },
+  ];
+
+  // Standalone items (taken out of the Add / Order dropdowns)
+  const standaloneMenuItems = [
+    { name: 'History Of Pagodas', icon: 'bi-building', path: '/historyofpagodas' },
+    { name: 'Package Plans', icon: 'bi-pin-map', path: '/PackagePlan' },
+    { name: 'Package Plans Order', icon: 'bi-pin-map', path: '/packageplansorder' },
   ];
 
   // ---------- Helpers ----------
   const findMenuItem = (items, name) =>
-    items.find(item => item.name.toLowerCase() === name.toLowerCase());
+      items.find(item => item.name.toLowerCase() === name.toLowerCase());
 
   const isActive = (path) => location.pathname === path;
 
   // ---------- Logout Handlers ----------
   const handleLogout = () => {
-    setShowLogoutAlert(true); // 👈 Alert ပေါ်လာစေရန်
+    setShowLogoutAlert(true);
   };
 
   const confirmLogout = () => {
@@ -70,7 +98,7 @@ function Sidebar() {
     setShowLogoutAlert(false);
   };
 
-  // ---------- Mapping: E-Bike အပါအဝင် အကုန်ထည့်ထားပါ ----------
+  // ---------- Mapping ----------
   const shopTypeMap = {
     hotels: { main: 'Hotels', order: 'Hotels Order' },
     hotel: { main: 'Hotels', order: 'Hotels Order' },
@@ -102,131 +130,30 @@ function Sidebar() {
     return { main: 'Hotels', order: 'Hotels Order' };
   };
 
+  // ---------- Sub menu item renderer (handles disabled state) ----------
+  const renderSubMenuItem = (item, index) => {
+    if (item.disabled) {
+      return (
+          <li key={index} className="submenu-item submenu-item-disabled">
+          <span className="submenu-link submenu-link-disabled">
+            <i className={`${item.icon} submenu-icon`}></i>
+            <span>{item.name}</span>
+          </span>
+          </li>
+      );
+    }
+    return (
+        <li key={index} className={`submenu-item ${isActive(item.path) ? 'active' : ''}`}>
+          <Link to={item.path} className="submenu-link">
+            <i className={`${item.icon} submenu-icon`}></i>
+            <span>{item.name}</span>
+          </Link>
+        </li>
+    );
+  };
+
   // ---------- Admin Menu ----------
   const renderAdminMenu = () => (
-    <>
-      <li className={`nav-item ${isActive('/') ? 'active' : ''}`}>
-        <Link to="/" className="nav-link">
-          <div className="flex-items">
-            <i className="bi bi-grid-1x2-fill icon"></i>
-            <span>Dashboard</span>
-          </div>
-        </Link>
-      </li>
-      <li className={`nav-item ${isActive('/users') ? 'active' : ''}`}>
-        <Link to="/users" className="nav-link">
-          <div className="flex-items">
-            <i className="bi bi-person-badge-fill icon"></i>
-            <span>Users</span>
-          </div>
-        </Link>
-      </li>
-      <li className={`nav-item ${isActive('/shop') ? 'active' : ''}`}>
-        <Link to="/shop" className="nav-link">
-          <div className="flex-items">
-            <i className="bi bi-shop icon"></i>
-            <span>Shop</span>
-          </div>
-        </Link>
-      </li>
-      <li className="nav-item" style={{ overflow: 'visible' }}>
-        <div className="nav-link justify-between" onClick={() => setIsAddOpen(!isAddOpen)}>
-          <div className="flex-items">
-            <i className="bi bi-plus-square-fill icon"></i>
-            <span>Add</span>
-          </div>
-          <i className={`bi bi-chevron-down arrow-icon ${isAddOpen ? 'rotate-180' : ''}`}></i>
-        </div>
-        <ul
-          className={`submenu ${isAddOpen ? 'submenu-open' : 'submenu-closed'}`}
-          style={{ overflow: 'visible', maxHeight: isAddOpen ? '2000px' : '0', transition: 'max-height 0.3s ease-in-out' }}
-        >
-          {addMenuItems.map((item, index) => (
-            <li key={index} className={`submenu-item ${isActive(item.path) ? 'active' : ''}`}>
-              <Link to={item.path} className="submenu-link">
-                <i className={`${item.icon} submenu-icon`}></i>
-                <span>{item.name}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </li>
-      <li className="nav-item" style={{ overflow: 'visible' }}>
-        <div className="nav-link justify-between" onClick={() => setIsOrderOpen(!isOrderOpen)}>
-          <div className="flex-items">
-            <i className="bi bi-box-seam icon"></i>
-            <span>Order</span>
-          </div>
-          <i className={`bi bi-chevron-down arrow-icon ${isOrderOpen ? 'rotate-180' : ''}`}></i>
-        </div>
-        <ul
-          className={`submenu ${isOrderOpen ? 'submenu-open' : 'submenu-closed'}`}
-          style={{ overflow: 'visible', maxHeight: isOrderOpen ? '2000px' : '0', transition: 'max-height 0.3s ease-in-out' }}
-        >
-          {orderMenuItems.map((item, index) => (
-            <li key={index} className={`submenu-item ${isActive(item.path) ? 'active' : ''}`}>
-              <Link to={item.path} className="submenu-link">
-                <i className={`${item.icon} submenu-icon`}></i>
-                <span>{item.name}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </li>
-
-      {/* ================= FINANCE TAB (added) ================= */}
-      <li className={`nav-item ${isActive('/finance') ? 'active' : ''}`}>
-        <Link to="/finance" className="nav-link">
-          <div className="flex-items">
-            <i className="bi bi-cash-coin icon"></i>
-            <span>Finances</span>
-          </div>
-        </Link>
-      </li>
-      {/* ======================================================= */}
-
-      {/* ================= REVIEWS TAB (COMMENTED OUT) ================= */}
-      {/*
-      <li className={`nav-item ${isActive('/reviews') ? 'active' : ''}`}>
-        <Link to="/reviews" className="nav-link">
-          <div className="flex-items">
-            <i className="bi bi-chat-left-text-fill icon"></i>
-            <span>Reviews</span>
-          </div>
-        </Link>
-      </li>
-      */}
-      {/* =============================================================== */}
-
-      <li className={`nav-item ${isActive('/reports') ? 'active' : ''}`}>
-        <Link to="/reports" className="nav-link">
-          <div className="flex-items">
-            <i className="bi bi-file-earmark-bar-graph-fill icon"></i>
-            <span>Reports</span>
-          </div>
-        </Link>
-      </li>
-      <li className={`nav-item ${isActive('/settings') ? 'active' : ''}`}>
-        <Link to="/settings" className="nav-link">
-          <div className="flex-items">
-            <i className="bi bi-gear-fill icon"></i>
-            <span>Settings</span>
-          </div>
-        </Link>
-      </li>
-    </>
-  );
-
-  // ---------- Shop Menu ----------
-  const renderShopMenu = () => {
-    const mapped = getMappedNames(shopType);
-    const mainItem = findMenuItem(addMenuItems, mapped.main);
-    const orderItem = findMenuItem(orderMenuItems, mapped.order);
-
-    const main = mainItem || addMenuItems[2];
-    const order = orderItem || orderMenuItems[0];
-
-    return (
       <>
         <li className={`nav-item ${isActive('/') ? 'active' : ''}`}>
           <Link to="/" className="nav-link">
@@ -236,19 +163,110 @@ function Sidebar() {
             </div>
           </Link>
         </li>
-        <li className={`nav-item ${isActive(main.path) ? 'active' : ''}`}>
-          <Link to={main.path} className="nav-link">
+        <li className={`nav-item ${isActive('/users') ? 'active' : ''}`}>
+          <Link to="/users" className="nav-link">
             <div className="flex-items">
-              <i className={`${main.icon} icon`}></i>
-              <span>{main.name}</span>
+              <i className="bi bi-person-badge-fill icon"></i>
+              <span>Users</span>
             </div>
           </Link>
         </li>
-        <li className={`nav-item ${isActive(order.path) ? 'active' : ''}`}>
-          <Link to={order.path} className="nav-link">
+        <li className={`nav-item ${isActive('/shop') ? 'active' : ''}`}>
+          <Link to="/shop" className="nav-link">
             <div className="flex-items">
-              <i className={`${order.icon} icon`}></i>
-              <span>{order.name}</span>
+              <i className="bi bi-shop icon"></i>
+              <span>Shop</span>
+            </div>
+          </Link>
+        </li>
+
+        {/* ================= STANDALONE TABS ================= */}
+        {standaloneMenuItems.map((item, index) => (
+            <li
+                key={`standalone-${index}`}
+                className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
+            >
+              <Link to={item.path} className="nav-link">
+                <div className="flex-items">
+                  <i className={`${item.icon} icon`}></i>
+                  <span>{item.name}</span>
+                </div>
+              </Link>
+            </li>
+        ))}
+        {/* ================================================== */}
+
+        {/* ================= ADD DROPDOWN ================= */}
+        <li className="nav-item" style={{ overflow: 'visible' }} ref={addDropdownRef}>
+          <div className="nav-link justify-between" onClick={() => setIsAddOpen(!isAddOpen)}>
+            <div className="flex-items">
+              <i className="bi bi-plus-square-fill icon"></i>
+              <span>Add</span>
+            </div>
+            <i className={`bi bi-chevron-down arrow-icon ${isAddOpen ? 'rotate-180' : ''}`}></i>
+          </div>
+          <ul
+              className={`submenu ${isAddOpen ? 'submenu-open' : 'submenu-closed'}`}
+              style={{
+                overflow: 'visible',
+                maxHeight: isAddOpen ? '2000px' : '0',
+                transition: 'max-height 0.3s ease-in-out',
+              }}
+          >
+            {addMenuItems.map((item, index) => renderSubMenuItem(item, index))}
+          </ul>
+        </li>
+        {/* =============================================== */}
+
+        {/* ================= ORDER DROPDOWN ================= */}
+        <li className="nav-item" style={{ overflow: 'visible' }} ref={orderDropdownRef}>
+          <div className="nav-link justify-between" onClick={() => setIsOrderOpen(!isOrderOpen)}>
+            <div className="flex-items">
+              <i className="bi bi-box-seam icon"></i>
+              <span>Order</span>
+            </div>
+            <i className={`bi bi-chevron-down arrow-icon ${isOrderOpen ? 'rotate-180' : ''}`}></i>
+          </div>
+          <ul
+              className={`submenu ${isOrderOpen ? 'submenu-open' : 'submenu-closed'}`}
+              style={{
+                overflow: 'visible',
+                maxHeight: isOrderOpen ? '2000px' : '0',
+                transition: 'max-height 0.3s ease-in-out',
+              }}
+          >
+            {orderMenuItems.map((item, index) => renderSubMenuItem(item, index))}
+          </ul>
+        </li>
+        {/* ================================================ */}
+
+        {/* ================= FINANCE TAB ================= */}
+        <li className={`nav-item ${isActive('/finance') ? 'active' : ''}`}>
+          <Link to="/finance" className="nav-link">
+            <div className="flex-items">
+              <i className="bi bi-cash-coin icon"></i>
+              <span>Finances</span>
+            </div>
+          </Link>
+        </li>
+        {/* ============================================== */}
+
+        {/* ================= REVIEWS TAB (COMMENTED OUT) =================
+      <li className={`nav-item ${isActive('/reviews') ? 'active' : ''}`}>
+        <Link to="/reviews" className="nav-link">
+          <div className="flex-items">
+            <i className="bi bi-chat-left-text-fill icon"></i>
+            <span>Reviews</span>
+          </div>
+        </Link>
+      </li>
+      =============================================================== */}
+
+        <li className={`nav-item ${isActive('/reports') ? 'active' : ''}`}>
+          <Link to="/reports" className="nav-link">
+            <div className="flex-items">
+              <i className="bi bi-file-earmark-bar-graph-fill icon"></i>
+              <span>Reports</span>
             </div>
           </Link>
         </li>
@@ -261,6 +279,52 @@ function Sidebar() {
           </Link>
         </li>
       </>
+  );
+
+  // ---------- Shop Menu ----------
+  const renderShopMenu = () => {
+    const mapped = getMappedNames(shopType);
+    const mainItem = findMenuItem(addMenuItems, mapped.main);
+    const orderItem = findMenuItem(orderMenuItems, mapped.order);
+
+    const main = mainItem || { name: 'Hotels', icon: 'bi-building', path: '/hotels' };
+    const order = orderItem || { name: 'Hotels Order', icon: 'bi-building', path: '/hotelsorder' };
+
+    return (
+        <>
+          <li className={`nav-item ${isActive('/') ? 'active' : ''}`}>
+            <Link to="/" className="nav-link">
+              <div className="flex-items">
+                <i className="bi bi-grid-1x2-fill icon"></i>
+                <span>Dashboard</span>
+              </div>
+            </Link>
+          </li>
+          <li className={`nav-item ${isActive(main.path) ? 'active' : ''}`}>
+            <Link to={main.path} className="nav-link">
+              <div className="flex-items">
+                <i className={`${main.icon} icon`}></i>
+                <span>{main.name}</span>
+              </div>
+            </Link>
+          </li>
+          <li className={`nav-item ${isActive(order.path) ? 'active' : ''}`}>
+            <Link to={order.path} className="nav-link">
+              <div className="flex-items">
+                <i className={`${order.icon} icon`}></i>
+                <span>{order.name}</span>
+              </div>
+            </Link>
+          </li>
+          <li className={`nav-item ${isActive('/settings') ? 'active' : ''}`}>
+            <Link to="/settings" className="nav-link">
+              <div className="flex-items">
+                <i className="bi bi-gear-fill icon"></i>
+                <span>Settings</span>
+              </div>
+            </Link>
+          </li>
+        </>
     );
   };
 
@@ -272,75 +336,71 @@ function Sidebar() {
       return renderShopMenu();
     } else {
       return (
-        <li className="nav-item">
+          <li className="nav-item">
           <span className="nav-link" style={{ color: '#999' }}>
             No menu available
           </span>
-        </li>
+          </li>
       );
     }
   };
 
   // ---------- Render ----------
   return (
-    <div className="sidebar-container">
-      <div className="logo-section">
-        <Link to="/" className="logo-link">
-          <img
-            src="/images/1.jpg"
-            alt="Bagan Logo"
-            className="logo-image"
-            onError={(e) => {
-              e.target.onerror = null;
-              e.target.style.display = 'none';
-              e.target.nextSibling.style.display = 'block';
-            }}
-          />
-          <span className="logo-text-fallback" style={{ display: 'none' }}>BAGAN</span>
-        </Link>
-      </div>
-
-      <nav className="nav-menu">
-        <ul className="nav-list">
-          {renderMenu()}
-        </ul>
-      </nav>
-
-      <div className="logout-section">
-        <button className="logout-btn" onClick={handleLogout}>
-          <i className="bi bi-box-arrow-right"></i>
-          <span>Log Out</span>
-        </button>
-      </div>
-
-      {/* ============================================================ */}
-      {/* 👇 CUSTOM ALERT - ဒီနေရာမှာပဲ ထည့်ထားတယ်၊ ဘာဖိုင်မှမဆောက်ဘူး */}
-      {/* ============================================================ */}
-      {showLogoutAlert && (
-        <div className="custom-alert-overlay">
-          <div className="custom-alert-box">
-            <div className="custom-alert-icon">
-              <i className="bi bi-exclamation-triangle-fill"></i>
-            </div>
-            <h3 className="custom-alert-title">Are you sure you want to log out?</h3>
-            <p className="custom-alert-message">Log Out Now</p>
-            <div className="custom-alert-actions">
-              <button className="alert-btn alert-btn-cancel" onClick={cancelLogout}>
-                Cancel
-              </button>
-              <button className="alert-btn alert-btn-confirm" onClick={confirmLogout}>
-                Ok
-              </button>
-            </div>
-          </div>
+      <div className="sidebar-container">
+        <div className="logo-section">
+          <Link to="/" className="logo-link">
+            <img
+                src="/images/1.jpg"
+                alt="Bagan Logo"
+                className="logo-image"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'block';
+                }}
+            />
+            <span className="logo-text-fallback" style={{ display: 'none' }}>BAGAN</span>
+          </Link>
         </div>
-      )}
-      {/* ============================================================ */}
 
-      {/* ============================================================ */}
-      {/* 👇 CUSTOM ALERT STYLES - ဒီမှာပဲ CSS ထည့်ထားတယ် */}
-      {/* ============================================================ */}
-      <style>{`
+        <nav className="nav-menu">
+          <ul className="nav-list">
+            {renderMenu()}
+          </ul>
+        </nav>
+
+        <div className="logout-section">
+          <button className="logout-btn" onClick={handleLogout}>
+            <i className="bi bi-box-arrow-right"></i>
+            <span>Log Out</span>
+          </button>
+        </div>
+
+        {/* ================= CUSTOM LOGOUT ALERT ================= */}
+        {showLogoutAlert && (
+            <div className="custom-alert-overlay">
+              <div className="custom-alert-box">
+                <div className="custom-alert-icon">
+                  <i className="bi bi-exclamation-triangle-fill"></i>
+                </div>
+                <h3 className="custom-alert-title">Are you sure you want to log out?</h3>
+                <p className="custom-alert-message">Log Out Now</p>
+                <div className="custom-alert-actions">
+                  <button className="alert-btn alert-btn-cancel" onClick={cancelLogout}>
+                    Cancel
+                  </button>
+                  <button className="alert-btn alert-btn-confirm" onClick={confirmLogout}>
+                    Ok
+                  </button>
+                </div>
+              </div>
+            </div>
+        )}
+        {/* ====================================================== */}
+
+        {/* ================= STYLES ================= */}
+        <style>{`
         /* Overlay */
         .custom-alert-overlay {
           position: fixed;
@@ -433,6 +493,20 @@ function Sidebar() {
           box-shadow: 0 8px 20px rgba(229, 62, 62, 0.3);
         }
 
+        /* ===== Disabled submenu item ===== */
+        .submenu-item-disabled {
+          pointer-events: none;
+        }
+        .submenu-link-disabled {
+          opacity: 0.4;
+          cursor: not-allowed !important;
+          filter: grayscale(0.6);
+        }
+        .submenu-link-disabled:hover {
+          background: transparent !important;
+          color: inherit !important;
+        }
+
         /* Animations */
         @keyframes customFadeIn {
           from { opacity: 0; }
@@ -466,9 +540,8 @@ function Sidebar() {
           }
         }
       `}</style>
-      {/* ============================================================ */}
-
-    </div>
+        {/* ========================================== */}
+      </div>
   );
 }
 
