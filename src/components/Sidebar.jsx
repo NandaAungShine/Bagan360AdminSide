@@ -2,11 +2,13 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 function Sidebar() {
-  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isHomeOpen, setIsHomeOpen] = useState(false);
+  const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [isOrderOpen, setIsOrderOpen] = useState(false);
   const [showLogoutAlert, setShowLogoutAlert] = useState(false);
 
-  const addDropdownRef = useRef(null);
+  const homeDropdownRef = useRef(null);
+  const bookingDropdownRef = useRef(null);
   const orderDropdownRef = useRef(null);
 
   const location = useLocation();
@@ -24,8 +26,11 @@ function Sidebar() {
   // ---------- Close dropdown when clicking outside ----------
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (addDropdownRef.current && !addDropdownRef.current.contains(event.target)) {
-        setIsAddOpen(false);
+      if (homeDropdownRef.current && !homeDropdownRef.current.contains(event.target)) {
+        setIsHomeOpen(false);
+      }
+      if (bookingDropdownRef.current && !bookingDropdownRef.current.contains(event.target)) {
+        setIsBookingOpen(false);
       }
       if (orderDropdownRef.current && !orderDropdownRef.current.contains(event.target)) {
         setIsOrderOpen(false);
@@ -36,14 +41,21 @@ function Sidebar() {
   }, []);
 
   // ---------- Menu definitions ----------
-  // Add Dropdown: Enabled items on top, Disabled items at bottom
-  const addMenuItems = [
+  // Home Dropdown items
+  const homeMenuItems = [
+    { name: 'History Of Pagodas', icon: 'bi-building', path: '/historyofpagodas' },
+    { name: 'Package Plans', icon: 'bi-pin-map', path: '/PackagePlan' },
+    { name: 'Package Plans Order', icon: 'bi-pin-map', path: '/packageplansorder' },
+    { name: 'Banner', icon: 'bi-image', path: '/banner' },
+  ];
+
+  // Booking Dropdown: Enabled items on top, Disabled items at bottom
+  const bookingMenuItems = [
     // ✅ Enabled (top)
     { name: 'Hotels', icon: 'bi-building', path: '/hotels' },
     { name: 'Restaurants', icon: 'bi-egg-fried', path: '/restaurants' },
     { name: 'E-Bikes', icon: 'bi-bicycle', path: '/ebikes' },
     { name: 'Tricycles', icon: 'bi-truck', path: '/tricycles' },
-    { name: 'Banner', icon: 'bi-image', path: '/banner' },
     // 🚫 Disabled (bottom)
     { name: 'Destinations', icon: 'bi-geo-alt', path: '/destinations', disabled: true },
     { name: 'Cars', icon: 'bi-car-front', path: '/cars', disabled: true },
@@ -65,13 +77,6 @@ function Sidebar() {
     { name: 'Horse Carts Order', icon: 'bi-truck', path: '/horsecartsorder', disabled: true },
     // ❌ Banner Order — turned off
     // { name: 'Banner Order', icon: 'bi-image', path: '/bannerorder' },
-  ];
-
-  // Standalone items (taken out of the Add / Order dropdowns)
-  const standaloneMenuItems = [
-    { name: 'History Of Pagodas', icon: 'bi-building', path: '/historyofpagodas' },
-    { name: 'Package Plans', icon: 'bi-pin-map', path: '/PackagePlan' },
-    { name: 'Package Plans Order', icon: 'bi-pin-map', path: '/packageplansorder' },
   ];
 
   // ---------- Helpers ----------
@@ -180,40 +185,46 @@ function Sidebar() {
           </Link>
         </li>
 
-        {/* ================= STANDALONE TABS ================= */}
-        {standaloneMenuItems.map((item, index) => (
-            <li
-                key={`standalone-${index}`}
-                className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
-            >
-              <Link to={item.path} className="nav-link">
-                <div className="flex-items">
-                  <i className={`${item.icon} icon`}></i>
-                  <span>{item.name}</span>
-                </div>
-              </Link>
-            </li>
-        ))}
-        {/* ================================================== */}
-
-        {/* ================= ADD DROPDOWN ================= */}
-        <li className="nav-item" style={{ overflow: 'visible' }} ref={addDropdownRef}>
-          <div className="nav-link justify-between" onClick={() => setIsAddOpen(!isAddOpen)}>
+        {/* ================= HOME DROPDOWN ================= */}
+        <li className="nav-item" style={{ overflow: 'visible' }} ref={homeDropdownRef}>
+          <div className="nav-link justify-between" onClick={() => setIsHomeOpen(!isHomeOpen)}>
             <div className="flex-items">
-              <i className="bi bi-plus-square-fill icon"></i>
-              <span>Add</span>
+              <i className="bi bi-house-door-fill icon"></i>
+              <span>Home</span>
             </div>
-            <i className={`bi bi-chevron-down arrow-icon ${isAddOpen ? 'rotate-180' : ''}`}></i>
+            <i className={`bi bi-chevron-down arrow-icon ${isHomeOpen ? 'rotate-180' : ''}`}></i>
           </div>
           <ul
-              className={`submenu ${isAddOpen ? 'submenu-open' : 'submenu-closed'}`}
+              className={`submenu ${isHomeOpen ? 'submenu-open' : 'submenu-closed'}`}
               style={{
                 overflow: 'visible',
-                maxHeight: isAddOpen ? '2000px' : '0',
+                maxHeight: isHomeOpen ? '2000px' : '0',
                 transition: 'max-height 0.3s ease-in-out',
               }}
           >
-            {addMenuItems.map((item, index) => renderSubMenuItem(item, index))}
+            {homeMenuItems.map((item, index) => renderSubMenuItem(item, index))}
+          </ul>
+        </li>
+        {/* ================================================ */}
+
+        {/* ================= BOOKING DROPDOWN ================= */}
+        <li className="nav-item" style={{ overflow: 'visible' }} ref={bookingDropdownRef}>
+          <div className="nav-link justify-between" onClick={() => setIsBookingOpen(!isBookingOpen)}>
+            <div className="flex-items">
+              <i className="bi bi-plus-square-fill icon"></i>
+              <span>Booking</span>
+            </div>
+            <i className={`bi bi-chevron-down arrow-icon ${isBookingOpen ? 'rotate-180' : ''}`}></i>
+          </div>
+          <ul
+              className={`submenu ${isBookingOpen ? 'submenu-open' : 'submenu-closed'}`}
+              style={{
+                overflow: 'visible',
+                maxHeight: isBookingOpen ? '2000px' : '0',
+                transition: 'max-height 0.3s ease-in-out',
+              }}
+          >
+            {bookingMenuItems.map((item, index) => renderSubMenuItem(item, index))}
           </ul>
         </li>
         {/* =============================================== */}
@@ -284,7 +295,7 @@ function Sidebar() {
   // ---------- Shop Menu ----------
   const renderShopMenu = () => {
     const mapped = getMappedNames(shopType);
-    const mainItem = findMenuItem(addMenuItems, mapped.main);
+    const mainItem = findMenuItem(bookingMenuItems, mapped.main);
     const orderItem = findMenuItem(orderMenuItems, mapped.order);
 
     const main = mainItem || { name: 'Hotels', icon: 'bi-building', path: '/hotels' };
