@@ -206,14 +206,16 @@ const AlertDialog = ({
   );
 };
 
+// ===== MAIN COMPONENT =====
 function TricycleOrder() {
-  // ===== 0. USER ROLE CHECK =====
+  // ===== 0. USER ROLE =====
   const user = (() => {
     try { return JSON.parse(localStorage.getItem('user')); }
     catch { return null; }
   })();
   const admin = user?.role === 'admin';
   const userId = user?.id;
+  const shopId = localStorage.getItem('shopId');
 
   // ===== 1. THEME =====
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -223,6 +225,7 @@ function TricycleOrder() {
 
   // ===== 2. UI STATES =====
   const [loading, setLoading] = useState(false);
+  const [updatingId, setUpdatingId] = useState(null); // ⭐ NEW: track updating booking
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [timeFilter, setTimeFilter] = useState('all');
@@ -231,13 +234,11 @@ function TricycleOrder() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [error, setError] = useState(null);
 
-  // ===== 2a. USER TRICYCLE IDs =====
+  // ===== 3. USER TRICYCLE IDS + IMAGE MAP =====
   const [userTricycleIds, setUserTricycleIds] = useState([]);
-
-  // Image map: tricycleId → url
   const tricycleImageMapRef = useRef({});
 
-  // ===== 3. TOAST =====
+  // ===== 4. TOAST =====
   const [toast, setToast] = useState({
     visible: false,
     type: 'success',
@@ -254,7 +255,7 @@ function TricycleOrder() {
     }, 3000);
   };
 
-  // ===== 3b. CUSTOM DIALOG STATES =====
+  // ===== 5. CUSTOM DIALOG STATES =====
   const [confirmDialog, setConfirmDialog] = useState({
     visible: false,
     title: '',
@@ -279,7 +280,7 @@ function TricycleOrder() {
   const closeAlert = () => setAlertDialog(prev => ({ ...prev, visible: false }));
   const closeConfirm = () => setConfirmDialog(prev => ({ ...prev, visible: false, onConfirm: null }));
 
-  // ===== 4. API HELPERS =====
+  // ===== 6. API HELPERS =====
   const BACKEND_URL = 'http://130.94.21.185:8000';
   const getToken = () => localStorage.getItem('token');
   const getHeaders = () => ({
@@ -297,7 +298,7 @@ function TricycleOrder() {
     setTimeout(() => window.location.href = '/login', 1800);
   };
 
-  // ===== 4b. IMAGE HELPERS =====
+  // ===== 7. IMAGE HELPERS =====
   const pickString = (obj, keys) => {
     if (!obj || typeof obj !== 'object') return null;
     for (const k of keys) {
@@ -353,26 +354,11 @@ function TricycleOrder() {
     ].filter(Boolean);
 
     const imageKeys = [
-      'image',
-      'image_url',
-      'imageUrl',
-      'img',
-      'photo',
-      'thumbnail',
-      'thumbnail_url',
-      'cover',
-      'cover_image',
-      'coverImage',
-      'tricycle_image',
-      'tricycleImage',
-      'tricycle_image_url',
-      'thonebane_image',
-      'thonebaneImage',
-      'thonebane_image_url',
-      'banner',
-      'banner_image',
-      'images',
-      'photos',
+      'image', 'image_url', 'imageUrl', 'img', 'photo',
+      'thumbnail', 'thumbnail_url', 'cover', 'cover_image', 'coverImage',
+      'tricycle_image', 'tricycleImage', 'tricycle_image_url',
+      'thonebane_image', 'thonebaneImage', 'thonebane_image_url',
+      'banner', 'banner_image', 'images', 'photos',
     ];
 
     for (const c of containers) {
@@ -386,14 +372,13 @@ function TricycleOrder() {
     return null;
   };
 
-  // ===== 5. API BASE =====
+  // ===== 8. API BASE =====
   const API_BASE = '/api/admin/thonebane';
-  const TRICYCLE_API = '/api/admin/thonebane';
 
-  // ===== 6. FETCH USER'S TRICYCLES (also builds image map) =====
+  // ===== 9. FETCH USER'S TRICYCLES (builds image map) =====
   const fetchUserTricycles = async () => {
     try {
-      const response = await fetch(`${TRICYCLE_API}/list`, {
+      const response = await fetch(`${API_BASE}/list`, {
         method: 'GET',
         headers: getHeaders(),
       });
@@ -412,11 +397,9 @@ function TricycleOrder() {
         tricycles = result;
       } else if (Array.isArray(result.tricycles)) {
         tricycles = result.tricycles;
-      } else {
-        tricycles = [];
       }
 
-      // Build image map: id → image url
+      // Build image map
       const imgMap = {};
       tricycles.forEach((t) => {
         const id = t.id ?? t.thonebane_id;
@@ -431,17 +414,10 @@ function TricycleOrder() {
         return;
       }
 
-      const shopId = localStorage.getItem('shopId');
-      console.log('🏪 Shop ID from localStorage:', shopId);
-
       const ids = tricycles
         .filter(t => {
-          if (shopId && t.shop_id) {
-            return String(t.shop_id) === String(shopId);
-          }
-          if (t.createdBy) {
-            return t.createdBy === userId;
-          }
+          if (shopId && t.shop_id) return String(t.shop_id) === String(shopId);
+          if (t.createdBy) return t.createdBy === userId;
           return false;
         })
         .map(t => t.id);
@@ -454,8 +430,10 @@ function TricycleOrder() {
     }
   };
 
-  // ===== 7. FETCH BOOKINGS =====
+  // ===== 10. FETCH BOOKINGS (with SQL error detection, like EBikesOrder) =====
   const fetchBookings = async () => {
+    await fetchUserTricycles();
+
     setLoading(true);
     setError(null);
     try {
@@ -466,7 +444,15 @@ function TricycleOrder() {
       if (response.status === 401) return handle401Error();
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
+        // Try to parse JSON error body for cleaner message
+        let cleanMsg = `Server error ${response.status}`;
+        try {
+          const parsed = JSON.parse(text);
+          cleanMsg = parsed.message || parsed.error || cleanMsg;
+        } catch {
+          cleanMsg = text.substring(0, 200) || cleanMsg;
+        }
+        throw new Error(cleanMsg);
       }
       const result = await response.json();
       console.log('✅ Bookings response:', result);
@@ -490,6 +476,7 @@ function TricycleOrder() {
 
       console.log('📦 Raw Bookings Count:', rawBookings.length);
       if (rawBookings[0]) {
+        console.log('🔎 First booking keys:', Object.keys(rawBookings[0]));
         console.log('🔎 First booking (full):', rawBookings[0]);
       }
 
@@ -500,7 +487,7 @@ function TricycleOrder() {
 
         // Image priority:
         //  1) booking's own / nested image
-        //  2) tricycle image matched by id
+        //  2) tricycle image from list (matched by id)
         let img = resolveImageUrl(item);
         if (!img && tricycleId != null && imgMap[String(tricycleId)]) {
           img = imgMap[String(tricycleId)];
@@ -510,22 +497,38 @@ function TricycleOrder() {
           id: item.booking_id || item.id,
           customerName: item.customer_name || 'Guest',
           customerPhone: item.customer_phone || '',
-          customerEmail: '',
+          customerEmail: item.customer_email || '',
+
           tricycleName: item.thonebane_name || 'Tricycle',
           tricycleId,
           tricycle: {
             id: tricycleId,
             name: item.thonebane_name || 'Tricycle',
+            category: item.category_name || item.type || '',
+            capacity: item.capacity || '',
+            price: item.price || item.total_price || 0,
+            price_per_day: item.price_per_day || 0,
+            features: item.features || '',
+            phone: item.phone || '',
+            location: item.location || '',
+            shop_name: item.shop_name || '',
           },
+
           status: mapStatus(item.status),
           startDate: parseDate(item.booking_date || item.start_date),
           endDate: item.end_date ? parseDate(item.end_date) : null,
-          totalPrice: item.price || 0,
-          notes: item.note || '',
+          totalPrice: item.price || item.total_price || 0,
+          notes: item.note || item.special_requests || '',
           shopName: item.shop_name || '',
           location: item.location || '',
           image: img,
           passengerCount: item.passenger_count || 0,
+
+          shop: {
+            id: item.shop_id,
+            name: item.shop_name || '',
+          },
+
           _raw: item,
         };
       });
@@ -535,13 +538,30 @@ function TricycleOrder() {
     } catch (err) {
       setError(err.message);
       console.error('❌ Fetch Bookings Error:', err);
-      showToast('error', 'Failed to load bookings.');
+
+      // ⭐ SQL bug detection (same pattern as EBikesOrder)
+      const msg = err.message || 'Failed to load bookings.';
+      const isSqlBug =
+        msg.toLowerCase().includes('unknown column') ||
+        msg.toLowerCase().includes('field list');
+
+      if (isSqlBug) {
+        showAlert(
+          'error',
+          'Backend SQL Error',
+          `ဒီ error က Frontend မဟုတ်ပါ။\n\n` +
+          `Backend Server ရဲ့ SQL Query မှာ column မရှိတာ ဖြစ်ပါတယ်:\n${msg}\n\n` +
+          `Backend Developer ကို ပြင်ခိုင်းပါ — booking list query ထဲက 'h.price' column ကို ဖျက်ပါ။`
+        );
+      } else {
+        showAlert('error', 'Unable to Load Bookings', msg);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // ===== 8. INITIAL DATA LOAD =====
+  // ===== 11. INITIAL LOAD =====
   useEffect(() => {
     const token = getToken();
     if (!token) {
@@ -549,15 +569,11 @@ function TricycleOrder() {
       showAlert('warning', 'Login Required', 'Please login first to view tricycle bookings.');
       return;
     }
-    const loadData = async () => {
-      await fetchUserTricycles();
-      await fetchBookings();
-    };
-    loadData();
+    fetchBookings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ===== 9. THEME HANDLER =====
+  // ===== 12. THEME =====
   const handleThemeChange = (isDark) => {
     setIsDarkMode(isDark);
   };
@@ -572,9 +588,9 @@ function TricycleOrder() {
     }
   }, [isDarkMode]);
 
-  // ===== 10. UPDATE STATUS (Custom ConfirmDialog) =====
+  // ===== 13. UPDATE STATUS (uses updatingId spinner + ConfirmDialog) =====
   const performUpdateStatus = async (bookingId, action) => {
-    setLoading(true);
+    setUpdatingId(bookingId);
     try {
       const endpoint = action === 'approved' ? 'approved' : 'cancelled';
       const response = await fetch(`${API_BASE}/booking/${endpoint}/${bookingId}`, {
@@ -584,19 +600,29 @@ function TricycleOrder() {
       if (response.status === 401) return handle401Error();
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
+        let cleanMsg = `Server error ${response.status}`;
+        try {
+          const parsed = JSON.parse(text);
+          cleanMsg = parsed.message || parsed.error || cleanMsg;
+        } catch {
+          cleanMsg = text.substring(0, 200) || cleanMsg;
+        }
+        throw new Error(cleanMsg);
       }
       await fetchBookings();
-      showToast('success', `Booking ${action} successfully!`);
+      showToast(
+        'success',
+        `Booking #${bookingId} ${action === 'approved' ? 'approved' : 'cancelled'} successfully!`
+      );
     } catch (err) {
       console.error(`❌ ${action} Error:`, err);
       showAlert(
         'error',
         action === 'approved' ? 'Approval Failed' : 'Cancellation Failed',
-        `Failed to ${action} booking. ${err.message || ''}`
+        `Failed to ${action} booking #${bookingId}. ${err.message || ''}`
       );
     } finally {
-      setLoading(false);
+      setUpdatingId(null);
     }
   };
 
@@ -618,13 +644,12 @@ function TricycleOrder() {
     });
   };
 
-  // ===== 11. FILTER LOGIC =====
+  // ===== 14. FILTER LOGIC =====
   const roleFilteredBookings = admin
     ? bookings
     : bookings.filter(booking => {
         const tricycleId = String(booking.tricycleId || '');
-        const isAllowed = userTricycleIds.some(id => String(id) === tricycleId);
-        return isAllowed;
+        return userTricycleIds.some(id => String(id) === tricycleId);
       });
 
   const filteredBookings = roleFilteredBookings.filter((booking) => {
@@ -677,28 +702,40 @@ function TricycleOrder() {
     return matchesSearch && matchesStatus && matchesTime;
   });
 
-  // ===== 12. SUMMARY DATA =====
-  const totalBookings = filteredBookings.length;
-  const pendingCount = filteredBookings.filter(b =>
-    (b.status || '').toLowerCase() === 'pending' || (b.status || '').toLowerCase() === 'available'
-  ).length;
-  const approvedCount = filteredBookings.filter(b =>
-    ['approved', 'confirmed', 'completed'].includes((b.status || '').toLowerCase())
-  ).length;
-  const cancelledCount = filteredBookings.filter(b =>
-    (b.status || '').toLowerCase() === 'cancelled'
-  ).length;
-  const tricycleCount = new Set(filteredBookings.map(b => b.tricycle?.id || b.tricycleId)).size;
-
+  // ===== 15. SUMMARY =====
   const summaryData = [
-    { label: 'Total Bookings', count: totalBookings, icon: 'bi-box-seam', color: '#0d6efd' },
-    { label: 'Pending', count: pendingCount, icon: 'bi-clock-history', color: '#ffc107' },
-    { label: 'Approved', count: approvedCount, icon: 'bi-check-circle', color: '#198754' },
-    { label: 'Cancelled', count: cancelledCount, icon: 'bi-x-circle', color: '#dc3545' },
-    { label: 'Tricycles', count: tricycleCount, icon: 'bi-bicycle', color: '#6f42c1' },
+    { label: 'Total Bookings', count: filteredBookings.length, icon: 'bi-box-seam', color: '#0d6efd' },
+    {
+      label: 'Pending',
+      count: filteredBookings.filter(b =>
+        ['pending', 'available'].includes((b.status || '').toLowerCase())
+      ).length,
+      icon: 'bi-clock-history',
+      color: '#ffc107',
+    },
+    {
+      label: 'Approved',
+      count: filteredBookings.filter(b =>
+        ['approved', 'confirmed', 'completed'].includes((b.status || '').toLowerCase())
+      ).length,
+      icon: 'bi-check-circle',
+      color: '#198754',
+    },
+    {
+      label: 'Cancelled',
+      count: filteredBookings.filter(b => (b.status || '').toLowerCase() === 'cancelled').length,
+      icon: 'bi-x-circle',
+      color: '#dc3545',
+    },
+    {
+      label: 'Tricycles',
+      count: new Set(filteredBookings.map(b => b.tricycle?.id || b.tricycleId)).size,
+      icon: 'bi-bicycle',
+      color: '#6f42c1',
+    },
   ];
 
-  // ===== 13. STATUS BADGE =====
+  // ===== 16. STATUS BADGE =====
   const getStatusBadge = (status) => {
     const statusMap = {
       pending: { label: 'Pending', color: '#ffc107', bg: '#fff3cd' },
@@ -726,7 +763,7 @@ function TricycleOrder() {
     );
   };
 
-  // ===== 14. CARD ACTIONS =====
+  // ===== 17. CARD ACTIONS (same pattern as EBikesOrder) =====
   const CardActions = ({ booking }) => {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -764,30 +801,38 @@ function TricycleOrder() {
       return () => document.removeEventListener('click', handleClickOutside);
     }, [isOpen]);
 
+    const isUpdating = updatingId === booking.id;
     const isApproved = ['approved', 'confirmed', 'completed'].includes(booking.status?.toLowerCase());
     const isCancelled = booking.status?.toLowerCase() === 'cancelled';
+    const isPending = ['pending', 'available'].includes(booking.status?.toLowerCase());
 
     return (
       <div className="card-actions-wrapper">
-        <button className="card-actions-btn" onClick={handleToggle}>
-          <i className="bi bi-three-dots-vertical"></i>
+        <button className="card-actions-btn" onClick={handleToggle} disabled={isUpdating}>
+          {isUpdating
+            ? <i className="bi bi-arrow-repeat spin"></i>
+            : <i className="bi bi-three-dots-vertical"></i>}
         </button>
         <div className={`card-actions-dropdown ${isOpen ? 'show' : ''}`}>
           <button className="edit-btn" onClick={handleViewDetails}>
             <i className="bi bi-eye"></i> View Details
           </button>
-          <button className="edit-btn" onClick={handleApprove} disabled={isApproved || isCancelled}>
-            <i className="bi bi-check-circle"></i> Approve
-          </button>
-          <button className="delete-btn" onClick={handleCancel} disabled={isApproved || isCancelled}>
-            <i className="bi bi-x-circle"></i> Cancel
-          </button>
+          {isPending && (
+            <button className="edit-btn" onClick={handleApprove}>
+              <i className="bi bi-check-circle"></i> Approve
+            </button>
+          )}
+          {!isApproved && !isCancelled && (
+            <button className="delete-btn" onClick={handleCancel}>
+              <i className="bi bi-x-circle"></i> Cancel
+            </button>
+          )}
         </div>
       </div>
     );
   };
 
-  // ===== 15. DETAIL MODAL =====
+  // ===== 18. DETAIL MODAL (richer grid, like EBikesOrder) =====
   const DetailModal = ({ booking, onClose }) => {
     if (!booking) return null;
 
@@ -818,17 +863,26 @@ function TricycleOrder() {
               </div>
             )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div><strong>Customer:</strong> {booking.customerName || 'N/A'}</div>
-              <div><strong>Phone:</strong> {booking.customerPhone || 'N/A'}</div>
-              <div><strong>Tricycle:</strong> {booking.tricycleName || 'N/A'}</div>
-              <div><strong>Status:</strong> {getStatusBadge(booking.status)}</div>
-              <div><strong>Start Date:</strong> {formatDate(booking.startDate)}</div>
+              <div><strong>Tricycle:</strong> {booking.tricycle?.name || booking.tricycleName || 'N/A'}</div>
+              <div><strong>Category:</strong> {booking.tricycle?.category || 'N/A'}</div>
+              <div><strong>Capacity:</strong> {booking.tricycle?.capacity || 'N/A'}</div>
+              <div><strong>Location:</strong> {booking.tricycle?.location || booking.location || 'N/A'}</div>
+              <div><strong>Phone:</strong> {booking.tricycle?.phone || 'N/A'}</div>
+              <div><strong>Passengers:</strong> {booking.passengerCount || 0}</div>
+              <div><strong>Customer:</strong> {booking.customerName || 'Guest'}</div>
+              <div><strong>Customer Phone:</strong> {booking.customerPhone || 'N/A'}</div>
+              <div><strong>Booking Date:</strong> {formatDate(booking.startDate)}</div>
               <div><strong>End Date:</strong> {booking.endDate ? formatDate(booking.endDate) : 'N/A'}</div>
+              <div><strong>Shop:</strong> {booking.shop?.name || booking.shopName || 'N/A'}</div>
+              <div><strong>Status:</strong> {getStatusBadge(booking.status)}</div>
+              <div><strong>Price:</strong> MMK {booking.tricycle?.price || 0}</div>
+              <div><strong>Price / Day:</strong> MMK {booking.tricycle?.price_per_day || 0}</div>
               <div><strong>Total Price:</strong> MMK {booking.totalPrice || 0}</div>
-              <div><strong>Passengers:</strong> {booking.passengerCount || 1}</div>
               <div style={{ gridColumn: '1 / -1' }}>
-                <strong>Special Requests / Notes:</strong><br />
-                <span style={{ fontSize: '14px' }}>{booking.notes || 'None'}</span>
+                <strong>Features:</strong> {booking.tricycle?.features || 'None'}
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <strong>Note / Special Requests:</strong> {booking.notes || 'None'}
               </div>
             </div>
           </div>
@@ -840,11 +894,11 @@ function TricycleOrder() {
     );
   };
 
-  // ===== 16. BOOKING CARD =====
+  // ===== 19. BOOKING CARD (enriched, like EBikesOrder) =====
   const BookingCard = ({ booking }) => {
+    const [imgFailed, setImgFailed] = useState(false);
     const tricycleName = booking.tricycleName || 'Tricycle';
     const customerName = booking.customerName || 'Guest';
-    const [imgFailed, setImgFailed] = useState(false);
 
     const formatDateDisplay = (date) => {
       if (!date) return 'N/A';
@@ -886,6 +940,16 @@ function TricycleOrder() {
           <p className="hotel-location">
             <i className="bi bi-bicycle"></i> {tricycleName}
           </p>
+          <div style={{ fontSize: '13px', color: '#666', marginBottom: '4px' }}>
+            <span>
+              <i className="bi bi-tag"></i> {booking.tricycle?.category || 'N/A'}
+            </span>
+            {booking.tricycle?.capacity && (
+              <span style={{ marginLeft: '8px' }}>
+                <i className="bi bi-people"></i> {booking.tricycle.capacity}
+              </span>
+            )}
+          </div>
           <p className="hotel-price">
             Total: <span>MMK {booking.totalPrice || 0}</span>
           </p>
@@ -895,9 +959,9 @@ function TricycleOrder() {
               <i className="bi bi-calendar3"></i> {formatDateDisplay(booking.startDate)}
             </span>
           </div>
-          {booking.endDate && (
+          {booking.location && (
             <p style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
-              <i className="bi bi-clock"></i> {formatDateDisplay(booking.endDate)}
+              <i className="bi bi-geo-alt"></i> {booking.location}
             </p>
           )}
         </div>
@@ -905,7 +969,7 @@ function TricycleOrder() {
     );
   };
 
-  // ===== 17. LOADING / ERROR =====
+  // ===== 20. LOADING / ERROR =====
   if (loading && bookings.length === 0) {
     return (
       <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
@@ -927,7 +991,12 @@ function TricycleOrder() {
         <div style={{ textAlign: 'center', padding: '50px', color: '#dc3545' }}>
           <i className="bi bi-exclamation-triangle" style={{ fontSize: '48px' }}></i>
           <p style={{ marginTop: '12px' }}>{error}</p>
-          <button className="btn btn-primary" onClick={() => { setError(null); fetchBookings(); }}>Retry</button>
+          <button
+            className="btn btn-primary"
+            onClick={() => { setError(null); fetchBookings(); }}
+          >
+            Retry
+          </button>
         </div>
         <AlertDialog
           open={alertDialog.visible}
@@ -941,10 +1010,10 @@ function TricycleOrder() {
     );
   }
 
-  // ===== 18. MAIN RENDER =====
+  // ===== 21. MAIN RENDER =====
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
-      {/* Dialog animations */}
+      {/* Dialog animations + spinner keyframes */}
       <style>{`
         @keyframes triDialogFade {
           from { opacity: 0; }
@@ -953,6 +1022,14 @@ function TricycleOrder() {
         @keyframes triDialogPop {
           from { transform: scale(0.9) translateY(10px); opacity: 0; }
           to   { transform: scale(1) translateY(0);       opacity: 1; }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        .spin {
+          animation: spin 1s linear infinite;
+          display: inline-block;
         }
       `}</style>
 
@@ -975,7 +1052,10 @@ function TricycleOrder() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <i className={`bi ${toast.type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill'}`}></i>
             <span>{toast.message}</span>
-            <button onClick={() => setToast({ ...toast, visible: false })} style={{ background: 'transparent', border: 'none', cursor: 'pointer', marginLeft: 'auto' }}>
+            <button
+              onClick={() => setToast({ ...toast, visible: false })}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', marginLeft: 'auto' }}
+            >
               <i className="bi bi-x-lg"></i>
             </button>
           </div>
@@ -1045,6 +1125,7 @@ function TricycleOrder() {
             <option value="">All</option>
             <option value="pending">Pending</option>
             <option value="approved">Approved</option>
+            <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>
         </div>
@@ -1076,18 +1157,28 @@ function TricycleOrder() {
       <div className="hotels-two-columns">
         <div className="hotels-cards-column" style={{ gridColumn: '1 / -1' }}>
           <div className="hotels-scroll-area">
-            <div className="hotels-grid-3cols" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
+            <div
+              className="hotels-grid-3cols"
+              style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}
+            >
               {filteredBookings.length > 0 ? (
                 filteredBookings.map((booking) => (
                   <BookingCard key={booking.id} booking={booking} />
                 ))
               ) : (
-                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '50px', color: '#999' }}>
-                  <i className="bi bi-inbox" style={{ fontSize: '48px', display: 'block', marginBottom: '10px' }}></i>
+                <div
+                  style={{
+                    gridColumn: '1 / -1',
+                    textAlign: 'center',
+                    padding: '50px',
+                    color: '#999',
+                  }}
+                >
+                  <i
+                    className="bi bi-inbox"
+                    style={{ fontSize: '48px', display: 'block', marginBottom: '10px' }}
+                  ></i>
                   <p>No bookings match the current filters.</p>
-                  <p style={{ fontSize: '12px', color: '#666' }}>
-                    Total Bookings: {bookings.length} | Your Tricycle IDs: {JSON.stringify(userTricycleIds)}
-                  </p>
                 </div>
               )}
             </div>
@@ -1105,7 +1196,7 @@ function TricycleOrder() {
         />
       )}
 
-      {/* ===== CUSTOM CONFIRM DIALOG ===== */}
+      {/* CUSTOM CONFIRM DIALOG */}
       <ConfirmDialog
         open={confirmDialog.visible}
         title={confirmDialog.title}
@@ -1117,7 +1208,7 @@ function TricycleOrder() {
         onCancel={closeConfirm}
       />
 
-      {/* ===== CUSTOM ALERT DIALOG ===== */}
+      {/* CUSTOM ALERT DIALOG */}
       <AlertDialog
         open={alertDialog.visible}
         title={alertDialog.title}

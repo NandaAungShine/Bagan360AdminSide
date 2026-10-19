@@ -41,6 +41,20 @@ function Tricycles() {
   const [error, setError] = useState(null);
   const [categoryFormData, setCategoryFormData] = useState({ name: '', description: '' });
 
+  // ===== ⭐ PRICE STATES (NEW — like EBikes) =====
+  const [allPrices, setAllPrices] = useState([]);
+  const [pricesByTricycle, setPricesByTricycle] = useState({});
+  const [showPriceModal, setShowPriceModal] = useState(false);
+  const [priceModalMode, setPriceModalMode] = useState('add');
+  const [currentPriceId, setCurrentPriceId] = useState(null);
+  const [currentTricycleIdForPrice, setCurrentTricycleIdForPrice] = useState(null);
+  const [priceFormData, setPriceFormData] = useState({
+    price_type: 'full_day',
+    start_time: '07:00',
+    end_time: '14:00',
+    price: '',
+  });
+
   // ===== ⭐ Shop Active States =====
   const [shopActive, setShopActive] = useState(true);
   const [togglingShop, setTogglingShop] = useState(false);
@@ -361,6 +375,43 @@ function Tricycles() {
     }
   };
 
+  // ========== ⭐ FETCH ALL PRICES (NEW — like EBikes) ==========
+  const fetchAllPrices = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/price/list`, {
+        method: 'GET',
+        headers: getHeaders(),
+      });
+      if (response.status === 401) return handle401Error();
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
+      }
+      const data = await response.json();
+      console.log('✅ Prices loaded:', data);
+
+      const list = data.data || data.prices || data || [];
+      setAllPrices(list);
+
+      // Group by tricycle FK (thonebane_id / tricycle_id / e_bike_id)
+      const grouped = {};
+      list.forEach((price) => {
+        const id =
+          price.thonebane_id ??
+          price.tricycle_id ??
+          price.e_bike_id ??
+          price.vehicle_id;
+        if (id == null) return;
+        if (!grouped[id]) grouped[id] = [];
+        grouped[id].push(price);
+      });
+      setPricesByTricycle(grouped);
+      console.log('🖼️ Prices grouped by tricycle:', grouped);
+    } catch (error) {
+      console.error('❌ Error fetching prices:', error);
+    }
+  };
+
   // Initial data load
   useEffect(() => {
     const token = getToken();
@@ -372,6 +423,7 @@ function Tricycles() {
     loadShopStatus();
     fetchCategories();
     fetchTricycles();
+    fetchAllPrices(); // ⭐ NEW
   }, []);
 
   // ========== THEME ==========
@@ -400,7 +452,9 @@ function Tricycles() {
   };
 
   const removeImage = () => {
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    if (imagePreview && imagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(imagePreview);
+    }
     setImagePreview(null);
     setImageFile(null);
   };
@@ -502,6 +556,7 @@ function Tricycles() {
       }
 
       await fetchTricycles();
+      await fetchAllPrices(); // ⭐ Refresh prices too
       resetForm();
       showToast('success', 'Tricycle added successfully!');
     } catch (err) {
@@ -535,6 +590,7 @@ function Tricycles() {
       }
 
       await fetchTricycles();
+      await fetchAllPrices(); // ⭐ Refresh prices too
       setSelectedId(null);
       showToast('success', 'Tricycle deleted successfully!');
     } catch (err) {
@@ -577,6 +633,7 @@ function Tricycles() {
       }
 
       await fetchTricycles();
+      await fetchAllPrices(); // ⭐ Refresh prices too
       showToast('success', 'Tricycle deleted successfully!');
     } catch (err) {
       showToast('error', 'Error: ' + err.message);
@@ -704,6 +761,7 @@ function Tricycles() {
       }
 
       await fetchTricycles();
+      await fetchAllPrices(); // ⭐ Refresh prices too
       setShowEditModal(false);
       setSelectedId(null);
       setSelectedItemForEdit(null);
@@ -716,6 +774,144 @@ function Tricycles() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // ========== ⭐ PRICE CRUD (NEW — like EBikes) ==========
+  const handleOpenAddPriceModal = (tricycleId) => {
+    setCurrentTricycleIdForPrice(tricycleId);
+    setPriceModalMode('add');
+    setCurrentPriceId(null);
+    setPriceFormData({
+      price_type: 'full_day',
+      start_time: '07:00',
+      end_time: '14:00',
+      price: '',
+    });
+    setShowPriceModal(true);
+  };
+
+  const handleOpenEditPriceModal = (price) => {
+    setCurrentTricycleIdForPrice(
+      price.thonebane_id ?? price.tricycle_id ?? price.e_bike_id
+    );
+    setPriceModalMode('edit');
+    setCurrentPriceId(price.id);
+    setPriceFormData({
+      price_type: price.price_type || 'full_day',
+      start_time: price.start_time ? price.start_time.slice(0, 5) : '07:00',
+      end_time: price.end_time ? price.end_time.slice(0, 5) : '14:00',
+      price: price.price || '',
+    });
+    setShowPriceModal(true);
+  };
+
+  const handlePriceInputChange = (e) => {
+    const { name, value } = e.target;
+    setPriceFormData({ ...priceFormData, [name]: value });
+  };
+
+  const handleSavePrice = async () => {
+    if (!priceFormData.price || !priceFormData.start_time || !priceFormData.end_time) {
+      showToast('warning', 'Please fill in all fields.');
+      return;
+    }
+
+    const token = getToken();
+    if (!token) {
+      showToast('error', 'Please login first');
+      return;
+    }
+
+    // ⚠️ If backend expects a different FK name (e.g. tricycle_id), change here
+    const payload = {
+      thonebane_id: currentTricycleIdForPrice,
+      price_type: priceFormData.price_type,
+      start_time: priceFormData.start_time + ':00',
+      end_time: priceFormData.end_time + ':00',
+      price: parseFloat(priceFormData.price),
+    };
+
+    let url, method;
+    if (priceModalMode === 'add') {
+      url = `${API_BASE}/price/create`;
+      method = 'POST';
+    } else {
+      url = `${API_BASE}/price/update/${currentPriceId}`;
+      method = 'PUT';
+    }
+
+    try {
+      console.log(`📤 ${method} ${url}`, payload);
+      const response = await fetch(url, {
+        method,
+        headers: getHeaders(),
+        body: JSON.stringify(payload),
+      });
+      if (response.status === 401) return handle401Error();
+
+      const data = await response.json().catch(() => ({}));
+      console.log('✅ Price save response:', data);
+
+      if (!response.ok || data.success === false) {
+        throw new Error(
+          data.message ||
+            data.error ||
+            `Failed to save price (${response.status})`
+        );
+      }
+
+      showToast(
+        'success',
+        priceModalMode === 'add'
+          ? 'Price added successfully!'
+          : 'Price updated successfully!'
+      );
+      setShowPriceModal(false);
+      fetchAllPrices();
+    } catch (error) {
+      console.error('❌ Error saving price:', error);
+      showToast('error', 'Error: ' + (error.message || 'Failed'));
+    }
+  };
+
+  const performDeletePrice = async (priceId) => {
+    try {
+      const response = await fetch(`${API_BASE}/price/delete/${priceId}`, {
+        method: 'DELETE',
+        headers: getHeaders(),
+      });
+      if (response.status === 401) return handle401Error();
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.success === false) {
+        throw new Error(data.message || 'Failed to delete price.');
+      }
+
+      showToast('success', 'Price deleted successfully!');
+      fetchAllPrices();
+    } catch (error) {
+      console.error('❌ Error deleting price:', error);
+      showToast('error', 'Error: ' + (error.message || 'Failed'));
+    }
+  };
+
+  const handleDeletePrice = (priceId) => {
+    setConfirmDialog({
+      visible: true,
+      message: 'Are you sure you want to delete this price?',
+      onConfirm: () => performDeletePrice(priceId),
+    });
+  };
+
+  // ========== ⭐ PRICE TYPE LABEL HELPER ==========
+  const getPriceTypeLabel = (type) => {
+    const map = {
+      full_day: 'Full Day',
+      hourly: 'Hourly',
+      half_day_1: 'Half Day (AM)',
+      half_day_2: 'Half Day (PM)',
+    };
+    return map[type] || type;
   };
 
   // ========== SELECT ALL ==========
@@ -881,9 +1077,7 @@ function Tricycles() {
         </div>
       </div>
 
-      {/* ============================================================
-          ⭐ SHOP STATUS STRIP (same design as Hotels/EBikes/Restaurants)
-      ============================================================ */}
+      {/* SHOP STATUS STRIP */}
       {isShopRole && (
         <div
           style={{
@@ -891,21 +1085,11 @@ function Tricycles() {
             padding: '10px 14px',
             borderRadius: 10,
             background: shopActive
-              ? isDarkMode
-                ? 'rgba(40,167,69,0.12)'
-                : '#e6f7ed'
-              : isDarkMode
-              ? 'rgba(220,53,69,0.12)'
-              : '#fdeaec',
-            border: `1px solid ${
-              shopActive
-                ? isDarkMode
-                  ? 'rgba(40,167,69,0.35)'
-                  : '#b7e4c7'
-                : isDarkMode
-                ? 'rgba(220,53,69,0.35)'
-                : '#f5c6cb'
-            }`,
+              ? isDarkMode ? 'rgba(40,167,69,0.12)' : '#e6f7ed'
+              : isDarkMode ? 'rgba(220,53,69,0.12)' : '#fdeaec',
+            border: `1px solid ${shopActive
+              ? isDarkMode ? 'rgba(40,167,69,0.35)' : '#b7e4c7'
+              : isDarkMode ? 'rgba(220,53,69,0.35)' : '#f5c6cb'}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -914,42 +1098,14 @@ function Tricycles() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <i
-              className={`bi ${shopActive ? 'bi-shop-window' : 'bi-shop'}`}
-              style={{
-                fontSize: 20,
-                color: shopActive ? '#28a745' : '#dc3545',
-              }}
-            ></i>
+            <i className={`bi ${shopActive ? 'bi-shop-window' : 'bi-shop'}`} style={{ fontSize: 20, color: shopActive ? '#28a745' : '#dc3545' }}></i>
             <div>
-              <div
-                style={{
-                  fontWeight: 600,
-                  fontSize: 13,
-                  color: isDarkMode ? '#eee' : '#333',
-                }}
-              >
-                Shop Status
-              </div>
-              <div
-                style={{
-                  fontSize: 11.5,
-                  color: shopActive
-                    ? isDarkMode
-                      ? '#b7eb8f'
-                      : '#155724'
-                    : isDarkMode
-                    ? '#ffa39e'
-                    : '#721c24',
-                }}
-              >
-                {shopActive
-                  ? 'ON — Tricycles are visible to customers'
-                  : 'OFF — Tricycles are hidden from customers'}
+              <div style={{ fontWeight: 600, fontSize: 13, color: isDarkMode ? '#eee' : '#333' }}>Shop Status</div>
+              <div style={{ fontSize: 11.5, color: shopActive ? (isDarkMode ? '#b7eb8f' : '#155724') : (isDarkMode ? '#ffa39e' : '#721c24') }}>
+                {shopActive ? 'ON — Tricycles are visible to customers' : 'OFF — Tricycles are hidden from customers'}
               </div>
             </div>
           </div>
-
           <button
             type="button"
             onClick={handleToggleShop}
@@ -962,81 +1118,52 @@ function Tricycles() {
               borderRadius: 15,
               border: 'none',
               cursor: togglingShop ? 'not-allowed' : 'pointer',
-              background: shopActive
-                ? '#28a745'
-                : isDarkMode
-                ? '#555'
-                : '#ccc',
+              background: shopActive ? '#28a745' : isDarkMode ? '#555' : '#ccc',
               opacity: togglingShop ? 0.55 : 1,
               transition: 'background 0.25s ease',
               flexShrink: 0,
             }}
           >
-            <span
-              style={{
-                position: 'absolute',
-                top: 3,
-                left: shopActive ? 31 : 3,
-                width: 24,
-                height: 24,
-                borderRadius: '50%',
-                background: '#fff',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-                transition: 'left 0.25s ease',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
+            <span style={{
+              position: 'absolute',
+              top: 3,
+              left: shopActive ? 31 : 3,
+              width: 24,
+              height: 24,
+              borderRadius: '50%',
+              background: '#fff',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+              transition: 'left 0.25s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
               {togglingShop ? (
-                <i
-                  className="bi bi-arrow-repeat"
-                  style={{
-                    fontSize: 13,
-                    color: '#333',
-                    animation: 'spin 1s linear infinite',
-                  }}
-                ></i>
+                <i className="bi bi-arrow-repeat" style={{ fontSize: 13, color: '#333', animation: 'spin 1s linear infinite' }}></i>
               ) : (
-                <i
-                  className={`bi ${shopActive ? 'bi-check-lg' : 'bi-x-lg'}`}
-                  style={{
-                    fontSize: 12,
-                    color: shopActive ? '#28a745' : '#999',
-                  }}
-                ></i>
+                <i className={`bi ${shopActive ? 'bi-check-lg' : 'bi-x-lg'}`} style={{ fontSize: 12, color: shopActive ? '#28a745' : '#999' }}></i>
               )}
             </span>
           </button>
         </div>
       )}
 
-      {/* ⭐ Shop OFF warning */}
+      {/* Shop OFF warning */}
       {isShopRole && !shopActive && (
-        <div
-          style={{
-            margin: '0 20px 12px',
-            padding: '10px 14px',
-            borderRadius: 8,
-            background: isDarkMode
-              ? 'rgba(250,173,20,0.15)'
-              : '#fff8e6',
-            border: `1px dashed ${
-              isDarkMode ? 'rgba(250,173,20,0.5)' : '#ffd591'
-            }`,
-            color: isDarkMode ? '#ffe58f' : '#874d00',
-            fontSize: 12.5,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
+        <div style={{
+          margin: '0 20px 12px',
+          padding: '10px 14px',
+          borderRadius: 8,
+          background: isDarkMode ? 'rgba(250,173,20,0.15)' : '#fff8e6',
+          border: `1px dashed ${isDarkMode ? 'rgba(250,173,20,0.5)' : '#ffd591'}`,
+          color: isDarkMode ? '#ffe58f' : '#874d00',
+          fontSize: 12.5,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}>
           <i className="bi bi-info-circle"></i>
-          <span>
-            Your shop is <b>OFF</b>. Customers cannot see these tricycles or
-            make new bookings. Turn the shop ON above to make them visible
-            again.
-          </span>
+          <span>Your shop is <b>OFF</b>. Customers cannot see these tricycles or make new bookings. Turn the shop ON above to make them visible again.</span>
         </div>
       )}
 
@@ -1045,7 +1172,6 @@ function Tricycles() {
         {/* Left Column - Add Form */}
         <div className="add-form-column">
           <div className="add-form-card">
-            {/* Image Gallery */}
             <div className="image-gallery-top">
               <label className="gallery-label">Images Gallery</label>
               <div className="image-gallery-wrapper">
@@ -1066,7 +1192,6 @@ function Tricycles() {
               </div>
             </div>
 
-            {/* Form Fields */}
             <div className="form-fields-section">
               <div className="add-form-group">
                 <label>Tricycle Name <span style={{ color: 'red' }}>*</span></label>
@@ -1087,9 +1212,7 @@ function Tricycles() {
                           <>
                             <option value="">-- Select Type --</option>
                             {categories.map(cat => (
-                              <option key={cat.id} value={cat.id}>
-                                {cat.name}
-                              </option>
+                              <option key={cat.id} value={cat.id}>{cat.name}</option>
                             ))}
                           </>
                         )}
@@ -1149,27 +1272,14 @@ function Tricycles() {
                 <textarea name="description" rows="3" placeholder="Describe the tricycle experience..." value={formData.description} onChange={handleInputChange}></textarea>
               </div>
 
-              {/* ⭐ Add button — disabled when shop is OFF */}
               <button
                 className="add-item-btn-full"
                 onClick={handleAddTricycle}
                 disabled={loading || loadingCategories || (isShopRole && !shopActive)}
-                title={
-                  isShopRole && !shopActive
-                    ? 'Shop is OFF — turn it ON to add tricycles'
-                    : 'Add Tricycle'
-                }
-                style={
-                  isShopRole && !shopActive
-                    ? { opacity: 0.55, cursor: 'not-allowed' }
-                    : undefined
-                }
+                title={isShopRole && !shopActive ? 'Shop is OFF — turn it ON to add tricycles' : 'Add Tricycle'}
+                style={isShopRole && !shopActive ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}
               >
-                {loading
-                  ? 'Adding...'
-                  : isShopRole && !shopActive
-                  ? 'Shop is OFF — Cannot Add'
-                  : 'Add Tricycle'}
+                {loading ? 'Adding...' : isShopRole && !shopActive ? 'Shop is OFF — Cannot Add' : 'Add Tricycle'}
               </button>
             </div>
           </div>
@@ -1189,43 +1299,40 @@ function Tricycles() {
                   const imageUrl = item.image
                     ? (item.image.startsWith('http') ? item.image : `${BACKEND_URL}/${item.image}`)
                     : "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='200'%3E%3Crect width='300' height='200' fill='%23f0f0f0'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='14' fill='%23999' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E";
+
+                  // ⭐ Get prices for this tricycle
+                  const itemPrices = pricesByTricycle[item.id] || [];
+
                   return (
                     <div
                       key={item.id}
                       className={`hotel-card-vertical ${selectedId === item.id ? 'selected' : ''}`}
                       onClick={() => toggleSelection(item.id)}
-                      style={
-                        isShopRole && !shopActive
-                          ? { opacity: 0.65, position: 'relative' }
-                          : undefined
-                      }
+                      style={isShopRole && !shopActive ? { opacity: 0.65, position: 'relative' } : undefined}
                     >
                       <div className="hotel-card-image" style={{ position: 'relative' }}>
                         <div className="image-slider">
                           <img src={imageUrl} alt={item.name} onError={(e) => { e.target.onerror = null; e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='200'%3E%3Crect width='300' height='200' fill='%23f0f0f0'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='14' fill='%23999' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E"; }} />
                         </div>
 
-                        {/* ⭐ HIDDEN badge when shop OFF */}
                         {isShopRole && !shopActive && (
-                          <div
-                            style={{
-                              position: 'absolute',
-                              top: 8,
-                              left: 8,
-                              zIndex: 5,
-                              padding: '3px 10px',
-                              borderRadius: 12,
-                              background: 'rgba(220,53,69,0.92)',
-                              color: '#fff',
-                              fontSize: 10.5,
-                              fontWeight: 600,
-                              letterSpacing: 0.3,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 5,
-                              boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
-                            }}
-                          >
+                          <div style={{
+                            position: 'absolute',
+                            top: 8,
+                            left: 8,
+                            zIndex: 5,
+                            padding: '3px 10px',
+                            borderRadius: 12,
+                            background: 'rgba(220,53,69,0.92)',
+                            color: '#fff',
+                            fontSize: 10.5,
+                            fontWeight: 600,
+                            letterSpacing: 0.3,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                          }}>
                             <i className="bi bi-eye-slash-fill"></i> HIDDEN
                           </div>
                         )}
@@ -1252,6 +1359,69 @@ function Tricycles() {
                             <span className="price-day">Day: MMK {item.price_per_day}</span>
                           )}
                         </div>
+
+                        {/* ⭐ PRICE SECTION (NEW — like EBikes) */}
+                        <div className="price-section" style={{ marginTop: '12px', borderTop: '1px solid #ddd', paddingTop: '10px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <strong style={{ fontSize: '14px' }}>Prices</strong>
+                            <button
+                              className="add-price-btn"
+                              style={{
+                                background: '#28a745',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '4px 10px',
+                                fontSize: '12px',
+                                cursor: 'pointer',
+                              }}
+                              onClick={(e) => { e.stopPropagation(); handleOpenAddPriceModal(item.id); }}
+                            >
+                              <i className="bi bi-plus-circle"></i> Add Price
+                            </button>
+                          </div>
+                          {itemPrices.length === 0 ? (
+                            <div style={{ fontSize: '13px', color: '#888' }}>No prices set</div>
+                          ) : (
+                            <div style={{ maxHeight: '150px', overflowY: 'auto' }}>
+                              {itemPrices.map((price) => (
+                                <div key={price.id} style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  fontSize: '13px',
+                                  padding: '4px 0',
+                                  borderBottom: '1px solid #eee',
+                                }}>
+                                  <div>
+                                    <strong>{getPriceTypeLabel(price.price_type)}</strong>
+                                    <span style={{ marginLeft: '8px', color: '#555' }}>
+                                      {(price.start_time || '').slice(0, 5)} - {(price.end_time || '').slice(0, 5)}
+                                    </span>
+                                    <span style={{ marginLeft: '8px', fontWeight: 'bold', color: '#28a745' }}>
+                                      MMK {price.price}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <button
+                                      style={{ background: 'transparent', border: 'none', color: '#007bff', cursor: 'pointer', marginRight: '4px' }}
+                                      onClick={(e) => { e.stopPropagation(); handleOpenEditPriceModal(price); }}
+                                    >
+                                      <i className="bi bi-pencil-square"></i>
+                                    </button>
+                                    <button
+                                      style={{ background: 'transparent', border: 'none', color: '#dc3545', cursor: 'pointer' }}
+                                      onClick={(e) => { e.stopPropagation(); handleDeletePrice(price.id); }}
+                                    >
+                                      <i className="bi bi-trash"></i>
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
                         {item.features && (
                           <p className="features">
                             <i className="bi bi-star"></i> {item.features.substring(0, 60)}...
@@ -1324,9 +1494,7 @@ function Tricycles() {
                           <>
                             <option value="">-- Select Type --</option>
                             {categories.map(cat => (
-                              <option key={cat.id} value={cat.id}>
-                                {cat.name}
-                              </option>
+                              <option key={cat.id} value={cat.id}>{cat.name}</option>
                             ))}
                           </>
                         )}
@@ -1436,7 +1604,74 @@ function Tricycles() {
         </div>
       )}
 
-      {/* Spinner keyframes for toggle loading icon */}
+      {/* ⭐ Price Modal (Add / Edit) — NEW, like EBikes */}
+      {showPriceModal && (
+        <div className="modal-overlay" onClick={() => setShowPriceModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h2>{priceModalMode === 'add' ? 'Add Price' : 'Edit Price'}</h2>
+              <button className="close-btn" onClick={() => setShowPriceModal(false)}>
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Price Type</label>
+                <select
+                  name="price_type"
+                  value={priceFormData.price_type}
+                  onChange={handlePriceInputChange}
+                  className="form-select"
+                >
+                  <option value="full_day">Full Day</option>
+                  <option value="hourly">Hourly</option>
+                  <option value="half_day_1">Half Day (AM)</option>
+                  <option value="half_day_2">Half Day (PM)</option>
+                </select>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Start Time</label>
+                  <input
+                    type="time"
+                    name="start_time"
+                    value={priceFormData.start_time}
+                    onChange={handlePriceInputChange}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>End Time</label>
+                  <input
+                    type="time"
+                    name="end_time"
+                    value={priceFormData.end_time}
+                    onChange={handlePriceInputChange}
+                  />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Price (MMK)</label>
+                <input
+                  type="number"
+                  name="price"
+                  placeholder="Enter price"
+                  value={priceFormData.price}
+                  onChange={handlePriceInputChange}
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="discard-btn" onClick={() => setShowPriceModal(false)}>
+                Cancel
+              </button>
+              <button className="add-item-btn" onClick={handleSavePrice}>
+                {priceModalMode === 'add' ? 'Add Price' : 'Update Price'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
