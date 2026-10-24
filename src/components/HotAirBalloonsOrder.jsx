@@ -13,15 +13,8 @@ function HotAirBalloonsOrder() {
   const [bookings, setBookings] = useState([]);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
-  const [page, setPage] = useState(1);
-  const [limit] = useState(10);
-  const [totalItems, setTotalItems] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
 
-  const API_BOOKING_BASE = 'http://130.94.21.185:8000/api/admin/balloon/booking';
-  const BACKEND_URL = 'http://130.94.21.185:8000';
-  const getToken = () => localStorage.getItem('token');
-
+  // ===== TOAST & CONFIRM =====
   const [toast, setToast] = useState({ visible: false, type: 'success', message: '' });
   const toastTimeoutRef = useRef(null);
   const [confirmDialog, setConfirmDialog] = useState({
@@ -44,6 +37,124 @@ function HotAirBalloonsOrder() {
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
   };
 
+  // ===== SAMPLE DATA (no API) =====
+  const sampleBookings = [
+    {
+      id: 1,
+      balloon_id: 1,
+      balloon_name: 'Air Balloon #1',
+      pilot_name: 'U Aung Myint',
+      capacity: 12,
+      color: 'Red',
+      customer_name: 'John Smith',
+      customer_phone: '+95 9 111 222 333',
+      booking_date: '2024-03-20',
+      status: 'pending',
+      note: 'Wants sunrise flight',
+      image: null,
+      passenger: 2,
+      selected_price: 760000,
+    },
+    {
+      id: 2,
+      balloon_id: 1,
+      balloon_name: 'Air Balloon #1',
+      pilot_name: 'U Aung Myint',
+      capacity: 12,
+      color: 'Red',
+      customer_name: 'Mary Johnson',
+      customer_phone: '+95 9 222 333 444',
+      booking_date: '2024-03-21',
+      status: 'approved',
+      note: 'Vegetarian breakfast',
+      image: null,
+      passenger: 4,
+      selected_price: 1520000,
+    },
+    {
+      id: 3,
+      balloon_id: 2,
+      balloon_name: 'Air Balloon #2',
+      pilot_name: 'U Kyaw Zin',
+      capacity: 10,
+      color: 'Blue',
+      customer_name: 'David Lee',
+      customer_phone: '+95 9 333 444 555',
+      booking_date: '2024-03-22',
+      status: 'pending',
+      note: '',
+      image: null,
+      passenger: 1,
+      selected_price: 380000,
+    },
+    {
+      id: 4,
+      balloon_id: 3,
+      balloon_name: 'Air Balloon #3',
+      pilot_name: 'U Thein Win',
+      capacity: 8,
+      color: 'Gold',
+      customer_name: 'Sarah Brown',
+      customer_phone: '+95 9 444 555 666',
+      booking_date: '2024-03-23',
+      status: 'cancelled',
+      note: 'Weather concerns',
+      image: null,
+      passenger: 2,
+      selected_price: 720000,
+    },
+    {
+      id: 5,
+      balloon_id: 2,
+      balloon_name: 'Air Balloon #2',
+      pilot_name: 'U Kyaw Zin',
+      capacity: 10,
+      color: 'Blue',
+      customer_name: 'Michael Chen',
+      customer_phone: '+95 9 555 666 777',
+      booking_date: '2024-03-24',
+      status: 'approved',
+      note: 'Anniversary celebration',
+      image: null,
+      passenger: 2,
+      selected_price: 760000,
+    },
+    {
+      id: 6,
+      balloon_id: 4,
+      balloon_name: 'Air Balloon #4',
+      pilot_name: 'U Zaw Min',
+      capacity: 14,
+      color: 'Green',
+      customer_name: 'Emma Wilson',
+      customer_phone: '+95 9 666 777 888',
+      booking_date: '2024-03-25',
+      status: 'pending',
+      note: '',
+      image: null,
+      passenger: 3,
+      selected_price: 1140000,
+    },
+  ];
+
+  // ===== LOAD & SAVE (localStorage) =====
+  useEffect(() => {
+    const stored = localStorage.getItem('hotAirBalloonsOrdersData');
+    if (stored) {
+      try { setBookings(JSON.parse(stored)); }
+      catch { setBookings(sampleBookings); }
+    } else {
+      setBookings(sampleBookings);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (bookings.length > 0) {
+      localStorage.setItem('hotAirBalloonsOrdersData', JSON.stringify(bookings));
+    }
+  }, [bookings]);
+
   useEffect(() => {
     if (isDarkMode) {
       document.body.classList.add('dark-mode');
@@ -54,107 +165,16 @@ function HotAirBalloonsOrder() {
     }
   }, [isDarkMode]);
 
-  const fetchBookings = async () => {
-    const token = getToken();
-    if (!token) {
-      showToast('error', 'Please login first');
-      return;
-    }
-
+  // ===== UPDATE STATUS (local only) =====
+  const updateBookingStatus = (bookingId, newStatus) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (searchTerm) params.append('search', searchTerm);
-      if (statusFilter) params.append('status', statusFilter);
-      params.append('page', page);
-      params.append('limit', limit);
-
-      const response = await fetch(`${API_BOOKING_BASE}/list?${params.toString()}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ API Response:', result);
-
-      if (result.success && Array.isArray(result.booking)) {
-        const mapped = result.booking.map((item) => ({
-          id: item.booking_id || item.id,
-          user_id: item.user_id,
-          balloon_id: item.balloon_id,
-          price_id: item.price_id,
-          customer_name: item.customer_name || 'N/A',
-          customer_phone: item.customer_phone || 'N/A',
-          booking_date: item.booking_date || '',
-          status: item.status || 'pending',
-          note: item.note || '',
-          balloon_name: item.balloon_name || item.name || 'Hot Air Balloon',
-          pilot_name: item.pilot_name || 'N/A',
-          capacity: item.capacity || 0,
-          color: item.color || 'N/A',
-          image: item.image ? `${BACKEND_URL}/${item.image.replace(/^\/+/, '')}` : null,
-          passenger: item.passenger || 1,
-          selected_price: item.selected_price || 0,
-        }));
-        setBookings(mapped);
-        setTotalItems(result.total || mapped.length);
-        setTotalPages(result.totalPages || Math.ceil(mapped.length / limit) || 1);
-      } else {
-        throw new Error(result.message || 'Unexpected response format');
-      }
+      setBookings(prev =>
+        prev.map(b => (b.id === bookingId ? { ...b, status: newStatus } : b))
+      );
+      showToast('success', `Booking ${newStatus} successfully!`);
     } catch (err) {
-      console.error('❌ Fetch Error:', err);
-      showToast('error', 'Failed to fetch bookings: ' + err.message);
-      setBookings([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const updateBookingStatus = async (bookingId, newStatus) => {
-    const token = getToken();
-    if (!token) {
-      showToast('error', 'Please login first');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const endpoint =
-        newStatus === 'approved'
-          ? `${API_BOOKING_BASE}/approved/${bookingId}`
-          : `${API_BOOKING_BASE}/cancelled/${bookingId}`;
-
-      const response = await fetch(endpoint, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`HTTP ${response.status}: ${text}`);
-      }
-
-      const result = await response.json();
-      if (result.success) {
-        showToast('success', `Booking ${newStatus} successfully!`);
-        await fetchBookings();
-      } else {
-        throw new Error(result.message || 'Update failed');
-      }
-    } catch (err) {
-      console.error('❌ Update Error:', err);
-      showToast('error', 'Failed to update: ' + err.message);
+      showToast('error', 'Failed to update booking.');
     } finally {
       setLoading(false);
     }
@@ -169,25 +189,31 @@ function HotAirBalloonsOrder() {
     });
   };
 
-  useEffect(() => {
-    fetchBookings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchTerm, statusFilter, page]);
+  // ===== FILTER =====
+  const filteredBookings = bookings.filter(b => {
+    const matchesSearch =
+      (b.customer_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (b.balloon_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (b.customer_phone || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (b.pilot_name || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter ? b.status === statusFilter : true;
+    return matchesSearch && matchesStatus;
+  });
 
-  const handleSearch = (e) => {
-    setSearchTerm(e.target.value);
-    setPage(1);
-  };
+  // ===== SUMMARY STATS (5 boxes) =====
+  const totalBookings = bookings.length;
+  const pendingCount = bookings.filter(b => b.status === 'pending').length;
+  const approvedCount = bookings.filter(b => b.status === 'approved').length;
+  const cancelledCount = bookings.filter(b => b.status === 'cancelled').length;
+  const uniqueBalloons = new Set(bookings.map(b => b.balloon_id)).size;
 
-  const handleFilterStatus = (e) => {
-    setStatusFilter(e.target.value);
-    setPage(1);
-  };
-
-  const handlePageChange = (newPage) => {
-    if (newPage < 1 || newPage > totalPages) return;
-    setPage(newPage);
-  };
+  const summaryData = [
+    { label: 'Total Booking', count: totalBookings, icon: 'bi-box-seam', color: '#0d6efd' },
+    { label: 'Pending', count: pendingCount, icon: 'bi-clock-history', color: '#ffc107' },
+    { label: 'Approved', count: approvedCount, icon: 'bi-check-circle', color: '#198754' },
+    { label: 'Cancelled', count: cancelledCount, icon: 'bi-x-circle', color: '#dc3545' },
+    { label: 'Air Balloons', count: uniqueBalloons, icon: 'bi-circle', color: '#6f42c1' },
+  ];
 
   const getStatusBadge = (status) => {
     const statusMap = {
@@ -213,6 +239,7 @@ function HotAirBalloonsOrder() {
     );
   };
 
+  // ===== CARD ACTIONS =====
   const CardActions = ({ booking }) => {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -278,6 +305,7 @@ function HotAirBalloonsOrder() {
     );
   };
 
+  // ===== DETAIL MODAL =====
   const DetailModal = ({ booking, onClose }) => {
     if (!booking) return null;
 
@@ -315,6 +343,7 @@ function HotAirBalloonsOrder() {
     );
   };
 
+  // ===== BOOKING CARD =====
   const BookingCard = ({ booking }) => (
     <div className="hotel-card-vertical" style={{ cursor: 'default' }}>
       <div className="hotel-card-image" style={{ height: '200px' }}>
@@ -367,144 +396,87 @@ function HotAirBalloonsOrder() {
     </div>
   );
 
-  if (loading && bookings.length === 0) {
-    return (
-      <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
-        <Header title="Hot Air Balloon Bookings" onThemeChange={handleThemeChange} />
-        <div style={{ textAlign: 'center', padding: '50px' }}>
-          <div className="spinner-border" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-          <p>Loading bookings...</p>
-        </div>
-      </div>
-    );
-  }
-
-  const summaryData = [
-    { label: 'Total Bookings', count: bookings.length, icon: 'bi-box-seam', color: '#0d6efd' },
-    { label: 'Pending', count: bookings.filter((b) => b.status === 'pending').length, icon: 'bi-clock-history', color: '#ffc107' },
-    { label: 'Approved', count: bookings.filter((b) => b.status === 'approved').length, icon: 'bi-check-circle', color: '#198754' },
-    { label: 'Cancelled', count: bookings.filter((b) => b.status === 'cancelled').length, icon: 'bi-x-circle', color: '#dc3545' },
-    { label: 'Balloons', count: bookings.length, icon: 'bi-circle', color: '#6f42c1' },
-  ];
-
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Hot Air Balloon Bookings" onThemeChange={handleThemeChange} />
 
+      {loading && (
+        <div style={{ textAlign: 'center', padding: '10px', background: isDarkMode ? '#333' : '#f0f0f0' }}>
+          ⏳ Processing...
+        </div>
+      )}
+
+      {/* ==================== TOAST ==================== */}
       {toast.visible && (
         <div
           style={{
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            zIndex: 999999,
-            width: '420px',
-            maxWidth: '90%',
-            borderRadius: '16px',
-            boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
-            padding: '0',
-            overflow: 'hidden',
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            zIndex: 999999, width: '420px', maxWidth: '90%', borderRadius: '16px',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.5)', padding: '0', overflow: 'hidden',
             backgroundColor:
-              toast.type === 'success'
-                ? isDarkMode
-                  ? '#1e3a2e'
-                  : '#d4edda'
-                : '#f8d7da',
+              toast.type === 'success' ? (isDarkMode ? '#1e3a2e' : '#d4edda') :
+              toast.type === 'error' ? (isDarkMode ? '#3e1f1f' : '#f8d7da') :
+              toast.type === 'warning' ? (isDarkMode ? '#3d3512' : '#fff3cd') :
+              (isDarkMode ? '#112b3c' : '#d1ecf1'),
             color:
-              toast.type === 'success'
-                ? isDarkMode
-                  ? '#b7eb8f'
-                  : '#155724'
-                : '#721c24',
+              toast.type === 'success' ? (isDarkMode ? '#b7eb8f' : '#155724') :
+              toast.type === 'error' ? (isDarkMode ? '#ffa39e' : '#721c24') :
+              toast.type === 'warning' ? (isDarkMode ? '#ffe58f' : '#856404') :
+              (isDarkMode ? '#91d5ff' : '#0c5460'),
             borderLeft: `5px solid ${
-              toast.type === 'success'
-                ? isDarkMode
-                  ? '#52c41a'
-                  : '#28a745'
-                : '#dc3545'
+              toast.type === 'success' ? (isDarkMode ? '#52c41a' : '#28a745') :
+              toast.type === 'error' ? (isDarkMode ? '#ff4d4f' : '#dc3545') :
+              toast.type === 'warning' ? (isDarkMode ? '#faad14' : '#ffc107') :
+              (isDarkMode ? '#1890ff' : '#17a2b8')
             }`,
           }}
         >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '16px 20px',
-              borderBottom: `1px solid ${
-                isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
-              }`,
-            }}
-          >
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '16px 20px',
+            borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
+          }}>
             <div style={{ fontWeight: 'bold', fontSize: '16px' }}>Bagan 360</div>
             <button
               onClick={() => {
                 if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
                 setToast({ ...toast, visible: false });
               }}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'inherit',
-                fontSize: '18px',
-                cursor: 'pointer',
-              }}
+              style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: '18px', cursor: 'pointer' }}
             >
               <i className="bi bi-x-lg"></i>
             </button>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', padding: '20px' }}>
             <div style={{ fontSize: '28px' }}>
-              {toast.type === 'success' ? (
-                <i className="bi bi-check-circle-fill"></i>
-              ) : (
-                <i className="bi bi-x-circle-fill"></i>
-              )}
+              {toast.type === 'success' && <i className="bi bi-check-circle-fill"></i>}
+              {toast.type === 'error' && <i className="bi bi-x-circle-fill"></i>}
+              {toast.type === 'warning' && <i className="bi bi-exclamation-triangle-fill"></i>}
+              {toast.type === 'info' && <i className="bi bi-info-circle-fill"></i>}
             </div>
             <div style={{ fontSize: '15px', lineHeight: '1.5' }}>{toast.message}</div>
           </div>
         </div>
       )}
 
+      {/* ==================== CONFIRM DIALOG ==================== */}
       {confirmDialog.visible && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.5)',
-            zIndex: 999999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <div
-            style={{
-              background: isDarkMode ? '#2d2d2d' : '#fff',
-              padding: '24px',
-              borderRadius: '12px',
-              maxWidth: '400px',
-              width: '90%',
-              boxShadow: '0 15px 40px rgba(0,0,0,0.2)',
-            }}
-          >
-            <h3 style={{ color: isDarkMode ? '#eee' : '#333', marginBottom: '12px' }}>
-              Confirm Action
-            </h3>
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: isDarkMode ? '#2d2d2d' : '#fff', padding: '24px', borderRadius: '12px',
+            maxWidth: '400px', width: '90%', boxShadow: '0 15px 40px rgba(0,0,0,0.2)',
+          }}>
+            <h3 style={{ color: isDarkMode ? '#eee' : '#333', marginBottom: '12px' }}>Confirm Action</h3>
             <p style={{ color: isDarkMode ? '#ccc' : '#555' }}>{confirmDialog.message}</p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
               <button
                 onClick={() => setConfirmDialog({ ...confirmDialog, visible: false })}
                 style={{
-                  padding: '8px 16px',
-                  borderRadius: '6px',
-                  border: '1px solid #ddd',
-                  background: 'transparent',
-                  cursor: 'pointer',
-                  color: isDarkMode ? '#ccc' : '#333',
+                  padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd',
+                  background: 'transparent', cursor: 'pointer', color: isDarkMode ? '#ccc' : '#333',
                 }}
               >
                 Cancel
@@ -515,12 +487,8 @@ function HotAirBalloonsOrder() {
                   setConfirmDialog({ ...confirmDialog, visible: false });
                 }}
                 style={{
-                  padding: '8px 16px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: '#0d6efd',
-                  color: '#fff',
-                  cursor: 'pointer',
+                  padding: '8px 16px', borderRadius: '6px', border: 'none',
+                  background: '#0d6efd', color: '#fff', cursor: 'pointer',
                 }}
               >
                 Confirm
@@ -530,14 +498,13 @@ function HotAirBalloonsOrder() {
         </div>
       )}
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(5, 1fr)',
-          gap: '15px',
-          marginBottom: '20px',
-        }}
-      >
+      {/* ==================== 5 SUMMARY BOXES ==================== */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(5, 1fr)',
+        gap: '15px',
+        marginBottom: '20px',
+      }}>
         {summaryData.map((item, index) => (
           <div
             key={index}
@@ -548,62 +515,37 @@ function HotAirBalloonsOrder() {
               display: 'flex',
               alignItems: 'center',
               gap: '12px',
-              boxShadow: isDarkMode
-                ? '0 2px 8px rgba(0,0,0,0.3)'
-                : '0 2px 8px rgba(0,0,0,0.15)',
+              boxShadow: isDarkMode ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.15)',
               border: isDarkMode ? '1px solid #444' : '1px solid #555',
               transition: 'all 0.3s',
             }}
           >
-            <div
-              style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '50%',
-                backgroundColor: item.color,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#fff',
-                fontSize: '18px',
-                flexShrink: 0,
-              }}
-            >
+            <div style={{
+              width: '42px', height: '42px', borderRadius: '50%',
+              backgroundColor: item.color, display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              color: '#fff', fontSize: '18px', flexShrink: 0,
+            }}>
               <i className={item.icon}></i>
             </div>
             <div>
-              <div
-                style={{
-                  fontSize: '12px',
-                  color: '#bbb',
-                  fontWeight: '500',
-                }}
-              >
-                {item.label}
-              </div>
-              <div
-                style={{
-                  fontSize: '20px',
-                  fontWeight: 'bold',
-                  color: '#ffffff',
-                }}
-              >
-                {item.count}
-              </div>
+              <div style={{ fontSize: '12px', color: '#bbb', fontWeight: '500' }}>{item.label}</div>
+              <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#ffffff' }}>{item.count}</div>
             </div>
           </div>
         ))}
       </div>
 
+      {/* ==================== SEARCH + FILTER ==================== */}
       <div className="search-actions-row" style={{ marginBottom: '20px' }}>
         <div className="search-bar-wrapper">
           <i className="bi bi-search search-icon"></i>
           <input
             type="text"
-            placeholder="Search by customer, balloon..."
+            placeholder="Search by customer, balloon, pilot..."
             className="search-input-full"
             value={searchTerm}
-            onChange={handleSearch}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -612,7 +554,7 @@ function HotAirBalloonsOrder() {
             className="search-input-full"
             style={{ width: '150px' }}
             value={statusFilter}
-            onChange={handleFilterStatus}
+            onChange={(e) => setStatusFilter(e.target.value)}
           >
             <option value="">All</option>
             <option value="pending">Pending</option>
@@ -622,6 +564,7 @@ function HotAirBalloonsOrder() {
         </div>
       </div>
 
+      {/* ==================== CARD GRID ==================== */}
       <div className="hotels-two-columns">
         <div className="hotels-cards-column" style={{ gridColumn: '1 / -1' }}>
           <div className="hotels-scroll-area">
@@ -633,94 +576,24 @@ function HotAirBalloonsOrder() {
                 gap: '20px',
               }}
             >
-              {bookings.length > 0 ? (
-                bookings.map((booking) => (
+              {filteredBookings.length > 0 ? (
+                filteredBookings.map((booking) => (
                   <BookingCard key={booking.id} booking={booking} />
                 ))
               ) : (
-                <div
-                  style={{
-                    gridColumn: '1 / -1',
-                    textAlign: 'center',
-                    padding: '50px',
-                    color: '#999',
-                  }}
-                >
-                  <i
-                    className="bi bi-inbox"
-                    style={{ fontSize: '48px', display: 'block', marginBottom: '10px' }}
-                  ></i>
+                <div style={{
+                  gridColumn: '1 / -1', textAlign: 'center', padding: '50px', color: '#999',
+                }}>
+                  <i className="bi bi-inbox" style={{ fontSize: '48px', display: 'block', marginBottom: '10px' }}></i>
                   <p>No bookings found.</p>
                 </div>
               )}
             </div>
-
-            {totalPages > 1 && (
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  gap: '8px',
-                  marginTop: '20px',
-                  padding: '10px 0',
-                  flexWrap: 'wrap',
-                }}
-              >
-                <button
-                  className="pagination-btn"
-                  onClick={() => handlePageChange(page - 1)}
-                  disabled={page === 1}
-                  style={{
-                    padding: '6px 14px',
-                    borderRadius: '4px',
-                    border: '1px solid #ced4da',
-                    backgroundColor: page === 1 ? '#e9ecef' : 'white',
-                    cursor: page === 1 ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  <i className="bi bi-chevron-left"></i> Prev
-                </button>
-                {[...Array(totalPages).keys()].map((num) => (
-                  <button
-                    key={num + 1}
-                    onClick={() => handlePageChange(num + 1)}
-                    style={{
-                      padding: '6px 14px',
-                      borderRadius: '4px',
-                      border: '1px solid #ced4da',
-                      backgroundColor: page === num + 1 ? '#0d6efd' : 'white',
-                      color: page === num + 1 ? 'white' : '#212529',
-                      cursor: 'pointer',
-                      fontWeight: page === num + 1 ? 'bold' : 'normal',
-                    }}
-                  >
-                    {num + 1}
-                  </button>
-                ))}
-                <button
-                  className="pagination-btn"
-                  onClick={() => handlePageChange(page + 1)}
-                  disabled={page === totalPages}
-                  style={{
-                    padding: '6px 14px',
-                    borderRadius: '4px',
-                    border: '1px solid #ced4da',
-                    backgroundColor: page === totalPages ? '#e9ecef' : 'white',
-                    cursor: page === totalPages ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  Next <i className="bi bi-chevron-right"></i>
-                </button>
-                <span style={{ fontSize: '14px', color: '#6c757d', marginLeft: '10px' }}>
-                  Page {page} of {totalPages}
-                </span>
-              </div>
-            )}
           </div>
         </div>
       </div>
 
+      {/* ==================== DETAIL MODAL ==================== */}
       {showDetailModal && (
         <DetailModal
           booking={selectedBooking}

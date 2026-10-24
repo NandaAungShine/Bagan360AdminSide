@@ -15,6 +15,7 @@ import EBikes from './components/EBikes';
 import HotAirBalloons from './components/HotAirBalloons';
 import Tricycles from './components/Tricycles';
 import HorseCarts from './components/HorseCarts';
+import Others from './components/Others';                     // 🆕 Others page
 import Banner from './components/Banner';
 import Users from './components/Users';
 import Shop from './components/Shop';
@@ -34,6 +35,7 @@ import EBikesOrder from './components/EBikesOrder';
 import TricyclesOrder from './components/TricyclesOrder';
 import HotAirBalloonsOrder from './components/HotAirBalloonsOrder';
 import HorseCartsOrder from './components/HorseCartsOrder';
+import OthersOrder from './components/OthersOrder';           // 🆕 Others Order page
 import BannerOrder from './components/BannerOrder';
 
 import './index.css';
@@ -178,6 +180,17 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
+
+        {/* 🆕 Others Route */}
+        <Route path="/others" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <Others />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+        {/* ================================== */}
+
         <Route path="/banner" element={
           <ProtectedRoute>
             <MainLayout>
@@ -259,6 +272,16 @@ function App() {
             </MainLayout>
           </ProtectedRoute>
         } />
+
+        {/* 🆕 Others Order Route */}
+        <Route path="/othersorder" element={
+          <ProtectedRoute>
+            <MainLayout>
+              <OthersOrder />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+        {/* ================================== */}
 
         <Route path="/bannerorder" element={
           <ProtectedRoute>

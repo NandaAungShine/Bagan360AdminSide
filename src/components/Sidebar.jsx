@@ -56,10 +56,11 @@ function Sidebar() {
     { name: 'Restaurants', icon: 'bi-egg-fried', path: '/restaurants' },
     { name: 'E-Bikes', icon: 'bi-bicycle', path: '/ebikes' },
     { name: 'Tricycles', icon: 'bi-truck', path: '/tricycles' },
+    { name: 'Air Balloons', icon: 'bi-balloon', path: '/hotairballoons' },
+    { name: 'Others', icon: 'bi-three-dots', path: '/others' },
     // 🚫 Disabled (bottom)
     { name: 'Destinations', icon: 'bi-geo-alt', path: '/destinations', disabled: true },
     { name: 'Cars', icon: 'bi-car-front', path: '/cars', disabled: true },
-    { name: 'Hot Air Balloons', icon: 'bi-balloon', path: '/hotairballoons', disabled: true },
     { name: 'Horse Carts', icon: 'bi-truck', path: '/horsecarts', disabled: true },
   ];
 
@@ -70,10 +71,11 @@ function Sidebar() {
     { name: 'Restaurants Order', icon: 'bi-egg-fried', path: '/restaurantsorder' },
     { name: 'E-Bikes Order', icon: 'bi-bicycle', path: '/ebikesorder' },
     { name: 'Tricycles Order', icon: 'bi-truck', path: '/tricyclesorder' },
+    { name: 'Air Balloons Order', icon: 'bi-balloon', path: '/hotairballoonsorder' },
+    { name: 'Others Order', icon: 'bi-three-dots', path: '/othersorder' },
     // 🚫 Disabled (bottom)
     { name: 'Destinations Order', icon: 'bi-geo-alt', path: '/destinationsorder', disabled: true },
     { name: 'Cars Order', icon: 'bi-car-front', path: '/carsorder', disabled: true },
-    { name: 'Hot Air Balloons Order', icon: 'bi-balloon', path: '/hotairballoonsorder', disabled: true },
     { name: 'Horse Carts Order', icon: 'bi-truck', path: '/horsecartsorder', disabled: true },
     // ❌ Banner Order — turned off
     // { name: 'Banner Order', icon: 'bi-image', path: '/bannerorder' },
@@ -119,13 +121,19 @@ function Sidebar() {
     'e-bike': { main: 'E-Bikes', order: 'E-Bikes Order' },
     e_bike: { main: 'E-Bikes', order: 'E-Bikes Order' },
     'e bike': { main: 'E-Bikes', order: 'E-Bikes Order' },
-    hotairballoons: { main: 'Hot Air Balloons', order: 'Hot Air Balloons Order' },
-    hotairballoon: { main: 'Hot Air Balloons', order: 'Hot Air Balloons Order' },
+    hotairballoons: { main: 'Air Balloons', order: 'Air Balloons Order' },
+    hotairballoon: { main: 'Air Balloons', order: 'Air Balloons Order' },
+    airballoons: { main: 'Air Balloons', order: 'Air Balloons Order' },
+    airballoon: { main: 'Air Balloons', order: 'Air Balloons Order' },
+    'air-balloons': { main: 'Air Balloons', order: 'Air Balloons Order' },
+    'air-balloon': { main: 'Air Balloons', order: 'Air Balloons Order' },
     tricycles: { main: 'Tricycles', order: 'Tricycles Order' },
     tricycle: { main: 'Tricycles', order: 'Tricycles Order' },
     thonebane: { main: 'Tricycles', order: 'Tricycles Order' },
     horsecarts: { main: 'Horse Carts', order: 'Horse Carts Order' },
     horsecart: { main: 'Horse Carts', order: 'Horse Carts Order' },
+    others: { main: 'Others', order: 'Others Order' },
+    other: { main: 'Others', order: 'Others Order' },
   };
 
   const getMappedNames = (type) => {

@@ -17,19 +17,20 @@ function HotAirBalloons() {
 
   // ===== FORM STATE =====
   const [formData, setFormData] = useState({
-    name: '',
-    company: '',
-    capacity: '',
     duration: '',
-    price: '',
+    priceMmkMin: '',
+    priceMmkMax: '',
+    priceUsdMin: '',
+    priceUsdMax: '',
+    minPeople: '',
     discount: '',
-    description: '',
-    flightTimes: '',
-    season: '',
-    location: '',
-    includes: '',
-    status: 'Active'
+    rules: '',
+    flightTimes: ''
   });
+
+  // ===== PHONE NUMBERS (dynamic list) =====
+  const phoneIdCounter = useRef(1);
+  const [phoneNumbers, setPhoneNumbers] = useState([{ id: phoneIdCounter.current++, value: '' }]);
 
   // ===== EDIT MODAL =====
   const [selectedForEdit, setSelectedForEdit] = useState(null);
@@ -37,6 +38,7 @@ function HotAirBalloons() {
 
   // ===== IMAGE STATE =====
   const [imagePreviews, setImagePreviews] = useState([]);
+  const MAX_IMAGES = 3;
 
   // ===== SELECTION STATE =====
   const [selectedId, setSelectedId] = useState(null);
@@ -70,16 +72,22 @@ function HotAirBalloons() {
       company: 'Balloons Over Bagan',
       capacity: '8-12 persons',
       duration: '45-60 minutes',
-      price: '380,000',
+      price: '380000',
+      priceMmkMin: '350000',
+      priceMmkMax: '420000',
+      priceUsdMin: '165',
+      priceUsdMax: '200',
+      minPeople: '4',
       rating: 4.9,
       reviews: '2.5K',
       images: [],
       description: 'Experience the breathtaking sunrise over thousands of ancient temples in Bagan',
+      rules: 'No pregnant women. No children under 6 years. No persons with heart conditions. Follow pilot instructions at all times.',
       flightTimes: '5:30 AM - 7:30 AM (Sunrise Flight)',
       season: 'October - April',
       location: 'Old Bagan',
       includes: 'Hotel transfer, breakfast, souvenir certificate',
-      status: 'Active',
+      phoneNumbers: ['+95 9 123 456 789', '+95 9 987 654 321'],
       created_at: '2024-03-20'
     },
     {
@@ -88,16 +96,22 @@ function HotAirBalloons() {
       company: 'Oriental Ballooning',
       capacity: '6-10 persons',
       duration: '60 minutes',
-      price: '420,000',
+      price: '420000',
+      priceMmkMin: '400000',
+      priceMmkMax: '450000',
+      priceUsdMin: '190',
+      priceUsdMax: '215',
+      minPeople: '4',
       rating: 4.9,
       reviews: '1.8K',
       images: [],
       description: 'Luxury hot air balloon experience with champagne breakfast',
+      rules: 'Minimum age 8 years. Weight limit 120kg per person. No smoking on board.',
       flightTimes: '5:30 AM - 7:00 AM',
       season: 'October - April',
       location: 'New Bagan',
       includes: 'Champagne breakfast, flight certificate, photos',
-      status: 'Active',
+      phoneNumbers: ['+95 9 234 567 890'],
       created_at: '2024-03-18'
     },
     {
@@ -106,16 +120,22 @@ function HotAirBalloons() {
       company: 'Golden Eagle',
       capacity: '8-12 persons',
       duration: '50 minutes',
-      price: '350,000',
+      price: '350000',
+      priceMmkMin: '320000',
+      priceMmkMax: '380000',
+      priceUsdMin: '150',
+      priceUsdMax: '180',
+      minPeople: '6',
       rating: 4.8,
       reviews: '1.2K',
       images: [],
       description: 'Spectacular views of Bagan archaeological zone at sunrise',
+      rules: 'Not suitable for children under 6. Pregnant women not allowed.',
       flightTimes: '5:45 AM - 7:15 AM',
       season: 'November - March',
       location: 'Nyaung U',
       includes: 'Hotel pickup, light breakfast, flight certificate',
-      status: 'Inactive',
+      phoneNumbers: ['+95 9 345 678 901'],
       created_at: '2024-03-15'
     },
     {
@@ -124,16 +144,22 @@ function HotAirBalloons() {
       company: 'Sunrise Balloons',
       capacity: '6-8 persons',
       duration: '55 minutes',
-      price: '395,000',
+      price: '395000',
+      priceMmkMin: '370000',
+      priceMmkMax: '420000',
+      priceUsdMin: '175',
+      priceUsdMax: '200',
+      minPeople: '4',
       rating: 4.7,
       reviews: '980',
       images: [],
       description: 'Intimate ballooning experience with small groups',
+      rules: 'Age 6+ only. Follow all safety instructions.',
       flightTimes: '5:30 AM - 7:00 AM',
       season: 'October - April',
       location: 'Old Bagan',
       includes: 'Morning tea, snacks, digital photos',
-      status: 'Active',
+      phoneNumbers: ['+95 9 456 789 012'],
       created_at: '2024-03-25'
     },
     {
@@ -142,16 +168,22 @@ function HotAirBalloons() {
       company: 'Bagan Express',
       capacity: '10-14 persons',
       duration: '45 minutes',
-      price: '320,000',
+      price: '320000',
+      priceMmkMin: '300000',
+      priceMmkMax: '340000',
+      priceUsdMin: '140',
+      priceUsdMax: '160',
+      minPeople: '8',
       rating: 4.6,
       reviews: '750',
       images: [],
       description: 'Affordable hot air balloon ride with great views',
+      rules: 'Children under 6 not permitted. No heart conditions.',
       flightTimes: '6:00 AM - 7:30 AM',
       season: 'December - March',
       location: 'New Bagan',
       includes: 'Basic breakfast, hotel transfer',
-      status: 'Active',
+      phoneNumbers: ['+95 9 567 890 123'],
       created_at: '2024-03-22'
     },
     {
@@ -160,16 +192,22 @@ function HotAirBalloons() {
       company: 'Bagan Luxury Tours',
       capacity: '4-6 persons',
       duration: '75 minutes',
-      price: '550,000',
+      price: '550000',
+      priceMmkMin: '520000',
+      priceMmkMax: '580000',
+      priceUsdMin: '240',
+      priceUsdMax: '270',
+      minPeople: '2',
       rating: 5.0,
       reviews: '520',
       images: [],
       description: 'Exclusive premium experience with extended flight time',
+      rules: 'Premium safety briefing required. ID verification mandatory.',
       flightTimes: '5:30 AM - 7:45 AM',
       season: 'October - April',
       location: 'Old Bagan',
       includes: 'Gourmet breakfast, premium drinks, professional photos, souvenir video',
-      status: 'Active',
+      phoneNumbers: ['+95 9 678 901 234', '+95 9 789 012 345'],
       created_at: '2024-03-28'
     }
   ];
@@ -178,7 +216,7 @@ function HotAirBalloons() {
   useEffect(() => {
     const stored = localStorage.getItem('hotAirBalloonsData');
     if (stored) {
-      try { setBalloons(JSON.parse(stored)); } 
+      try { setBalloons(JSON.parse(stored)); }
       catch { setBalloons(sampleData); }
     } else {
       setBalloons(sampleData);
@@ -223,53 +261,112 @@ function HotAirBalloons() {
     setFormData({ ...formData, [name]: value });
   };
 
-  // ===== IMAGE UPLOAD =====
+  // ===== IMAGE UPLOAD (limit 3) =====
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
-    const newPreviews = files.map(file => URL.createObjectURL(file));
+
+    const remaining = MAX_IMAGES - imagePreviews.length;
+    if (remaining <= 0) {
+      showToast('warning', `Maximum ${MAX_IMAGES} images allowed.`);
+      e.target.value = '';
+      return;
+    }
+
+    const toAdd = files.slice(0, remaining);
+    if (files.length > remaining) {
+      showToast('warning', `Only ${remaining} more image(s) can be added.`);
+    }
+
+    const newPreviews = toAdd.map(file => URL.createObjectURL(file));
     setImagePreviews([...imagePreviews, ...newPreviews]);
+    e.target.value = '';
   };
 
   const removeImage = (index) => {
-    const newPreviews = imagePreviews.filter((_, i) => i !== index);
-    setImagePreviews(newPreviews);
+    setImagePreviews(imagePreviews.filter((_, i) => i !== index));
+  };
+
+  // ===== PHONE NUMBER HANDLERS =====
+  const handlePhoneChange = (id, value) => {
+    setPhoneNumbers(prev => prev.map(p => (p.id === id ? { ...p, value } : p)));
+  };
+
+  const addPhoneNumber = () => {
+    setPhoneNumbers(prev => [...prev, { id: phoneIdCounter.current++, value: '' }]);
+  };
+
+  const removePhoneNumber = (id) => {
+    setPhoneNumbers(prev => (prev.length > 1 ? prev.filter(p => p.id !== id) : prev));
   };
 
   const resetForm = () => {
     setFormData({
-      name: '', company: '', capacity: '', duration: '', price: '',
-      discount: '', description: '', flightTimes: '', season: '',
-      location: '', includes: '', status: 'Active'
+      duration: '',
+      priceMmkMin: '',
+      priceMmkMax: '',
+      priceUsdMin: '',
+      priceUsdMax: '',
+      minPeople: '',
+      discount: '',
+      rules: '',
+      flightTimes: ''
     });
     setImagePreviews([]);
+    setPhoneNumbers([{ id: phoneIdCounter.current++, value: '' }]);
+  };
+
+  const getValidPhones = () =>
+    phoneNumbers.map(p => p.value.trim()).filter(p => p !== '');
+
+  // Generate next auto name "Air Balloon #N"
+  const generateNextName = () => {
+    const maxNum = balloons.reduce((max, b) => {
+      const m = (b.name || '').match(/#(\d+)\s*$/);
+      const n = m ? parseInt(m[1], 10) : 0;
+      return Math.max(max, n);
+    }, 0);
+    return `Air Balloon #${maxNum + 1}`;
   };
 
   // ===== ADD =====
   const handleAdd = () => {
     setLoading(true);
     try {
-      if (!formData.name || !formData.price) {
-        showToast('warning', 'Please fill in name and price.');
+      const hasAnyPrice =
+        formData.priceMmkMin || formData.priceMmkMax ||
+        formData.priceUsdMin || formData.priceUsdMax;
+      if (!hasAnyPrice) {
+        showToast('warning', 'Please enter at least one price value.');
         setLoading(false);
         return;
       }
+
       const newItem = {
         id: Date.now(),
-        name: formData.name.trim(),
-        company: formData.company.trim() || 'Various',
-        capacity: formData.capacity.trim() || 'N/A',
-        duration: formData.duration.trim() || 'N/A',
-        price: formData.price.replace(/[^0-9]/g, ''),
+        name: generateNextName(),
+        // hidden backward-compat fields
+        company: '',
+        capacity: '',
+        season: '',
+        location: '',
+        includes: '',
+        description: '',
+        // active fields
+        duration: formData.duration.trim(),
+        price: (formData.priceMmkMin || '').replace(/[^0-9]/g, '') || '0',
+        priceMmkMin: formData.priceMmkMin.replace(/[^0-9]/g, ''),
+        priceMmkMax: formData.priceMmkMax.replace(/[^0-9]/g, ''),
+        priceUsdMin: formData.priceUsdMin.replace(/[^0-9.]/g, ''),
+        priceUsdMax: formData.priceUsdMax.replace(/[^0-9.]/g, ''),
+        minPeople: formData.minPeople.trim(),
+        discount: formData.discount.trim(),
         rating: 4.5,
         reviews: '0',
         images: imagePreviews.length > 0 ? imagePreviews : [],
-        description: formData.description.trim() || 'No description provided.',
-        flightTimes: formData.flightTimes.trim() || 'N/A',
-        season: formData.season.trim() || 'N/A',
-        location: formData.location.trim() || 'N/A',
-        includes: formData.includes.trim() || 'None',
-        status: formData.status || 'Active',
+        rules: formData.rules.trim(),
+        flightTimes: formData.flightTimes.trim(),
+        phoneNumbers: getValidPhones(),
         created_at: new Date().toISOString().split('T')[0]
       };
       setBalloons([newItem, ...balloons]);
@@ -302,20 +399,23 @@ function HotAirBalloons() {
   const handleEdit = (item) => {
     setSelectedForEdit(item);
     setFormData({
-      name: item.name || '',
-      company: item.company || '',
-      capacity: item.capacity || '',
-      duration: item.duration || '',
-      price: item.price || '',
-      discount: '',
-      description: item.description || '',
-      flightTimes: item.flightTimes || '',
-      season: item.season || '',
-      location: item.location || '',
-      includes: item.includes || '',
-      status: item.status || 'Active'
+      duration: item.duration && item.duration !== 'N/A' ? item.duration : '',
+      priceMmkMin: item.priceMmkMin || '',
+      priceMmkMax: item.priceMmkMax || '',
+      priceUsdMin: item.priceUsdMin || '',
+      priceUsdMax: item.priceUsdMax || '',
+      minPeople: item.minPeople || '',
+      discount: item.discount || '',
+      rules: item.rules && item.rules !== 'No rules provided.' ? item.rules : '',
+      flightTimes: item.flightTimes && item.flightTimes !== 'N/A' ? item.flightTimes : ''
     });
     setImagePreviews(item.images || []);
+
+    const loadedPhones = (item.phoneNumbers && item.phoneNumbers.length > 0)
+      ? item.phoneNumbers.map(v => ({ id: phoneIdCounter.current++, value: v }))
+      : [{ id: phoneIdCounter.current++, value: '' }];
+    setPhoneNumbers(loadedPhones);
+
     setShowEditModal(true);
     setActiveDropdown(null);
   };
@@ -323,21 +423,21 @@ function HotAirBalloons() {
   const handleConfirmEdit = () => {
     setLoading(true);
     try {
-      if (selectedForEdit && formData.name) {
+      if (selectedForEdit) {
         const updated = balloons.map(c =>
           c.id === selectedForEdit.id ? {
             ...c,
-            name: formData.name.trim(),
-            company: formData.company.trim() || c.company,
-            capacity: formData.capacity.trim() || c.capacity,
-            duration: formData.duration.trim() || c.duration,
-            price: formData.price.replace(/[^0-9]/g, ''),
-            description: formData.description.trim() || c.description,
-            flightTimes: formData.flightTimes.trim() || c.flightTimes,
-            season: formData.season.trim() || c.season,
-            location: formData.location.trim() || c.location,
-            includes: formData.includes.trim() || c.includes,
-            status: formData.status || c.status,
+            duration: formData.duration.trim(),
+            price: (formData.priceMmkMin || '').replace(/[^0-9]/g, '') || c.price || '0',
+            priceMmkMin: formData.priceMmkMin.replace(/[^0-9]/g, ''),
+            priceMmkMax: formData.priceMmkMax.replace(/[^0-9]/g, ''),
+            priceUsdMin: formData.priceUsdMin.replace(/[^0-9.]/g, ''),
+            priceUsdMax: formData.priceUsdMax.replace(/[^0-9.]/g, ''),
+            minPeople: formData.minPeople.trim(),
+            discount: formData.discount.trim(),
+            rules: formData.rules.trim(),
+            flightTimes: formData.flightTimes.trim(),
+            phoneNumbers: getValidPhones(),
             images: imagePreviews.length > 0 ? imagePreviews : c.images
           } : c
         );
@@ -399,9 +499,10 @@ function HotAirBalloons() {
 
   // ===== FILTER & SORT =====
   const filtered = balloons.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.location.toLowerCase().includes(searchTerm.toLowerCase())
+    (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c.company || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c.location || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c.flightTimes || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getSorted = (list) => {
@@ -409,22 +510,12 @@ function HotAirBalloons() {
     switch (sortBy) {
       case 'lifo': return sorted.sort((a, b) => b.id - a.id);
       case 'fifo': return sorted.sort((a, b) => a.id - b.id);
-      case 'az': return sorted.sort((a, b) => a.name.localeCompare(b.name));
-      case 'za': return sorted.sort((a, b) => b.name.localeCompare(a.name));
+      case 'az': return sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      case 'za': return sorted.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
       default: return sorted;
     }
   };
   const sortedItems = getSorted(filtered);
-
-  // ===== STATS =====
-  const total = balloons.length;
-  const active = balloons.filter(c => c.status === 'Active').length;
-  const inactive = balloons.filter(c => c.status === 'Inactive').length;
-
-  const getStatusStyle = (status) => {
-    if (status === 'Active') return { backgroundColor: '#d1e7dd', color: '#0f5132' };
-    return { backgroundColor: '#f8d7da', color: '#842029' };
-  };
 
   const renderStars = (rating) => {
     const fullStars = Math.floor(rating || 0);
@@ -553,6 +644,65 @@ function HotAirBalloons() {
     );
   };
 
+  // ===== PHONE NUMBERS UI =====
+  const PhoneNumbersUI = ({ formMode = false }) => {
+    const inputStyle = {
+      flex: 1,
+      padding: '10px 12px',
+      borderRadius: '8px',
+      border: `1px solid ${isDarkMode ? '#444' : '#ddd'}`,
+      background: isDarkMode ? '#1e1e1e' : '#fff',
+      color: isDarkMode ? '#eee' : '#333',
+      fontSize: '14px',
+      outline: 'none'
+    };
+    return (
+      <div>
+        <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', fontSize: '13px', color: isDarkMode ? '#ccc' : '#333' }}>Phone Numbers</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {phoneNumbers.map((phone, index) => (
+            <div key={phone.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="text"
+                placeholder={`Phone ${index + 1} (e.g. +95 9 123 456 789)`}
+                value={phone.value}
+                onChange={(e) => handlePhoneChange(phone.id, e.target.value)}
+                style={inputStyle}
+              />
+              {phoneNumbers.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removePhoneNumber(phone.id)}
+                  title="Remove this phone number"
+                  style={{
+                    padding: '10px 12px', borderRadius: '8px', border: 'none',
+                    background: '#dc3545', color: '#fff', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}
+                >
+                  <i className="bi bi-trash"></i>
+                </button>
+              )}
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={addPhoneNumber}
+            style={{
+              padding: '10px 14px', borderRadius: '8px',
+              border: '1px dashed #0d6efd', background: 'transparent',
+              color: '#0d6efd', cursor: 'pointer', display: 'flex',
+              alignItems: 'center', justifyContent: 'center', gap: '6px',
+              fontWeight: '500', fontSize: '14px'
+            }}
+          >
+            <i className="bi bi-plus-lg"></i> Add Ph no.
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   // ===== MAIN RENDER =====
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
@@ -592,25 +742,23 @@ function HotAirBalloons() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="stats-cards-row">
-        <div className="stat-card-mini"><div className="stat-icon-mini total"><i className="bi bi-circle"></i></div><div className="stat-info-mini"><h3>{total}</h3><p>Total</p></div></div>
-        <div className="stat-card-mini"><div className="stat-icon-mini active"><i className="bi bi-check-circle-fill"></i></div><div className="stat-info-mini"><h3>{active}</h3><p>Active</p></div></div>
-        <div className="stat-card-mini"><div className="stat-icon-mini inactive"><i className="bi bi-x-circle-fill"></i></div><div className="stat-info-mini"><h3>{inactive}</h3><p>Inactive</p></div></div>
-      </div>
-
       {/* Two Columns */}
       <div className="hotels-two-columns">
         {/* Left - Add Form */}
         <div className="add-form-column">
           <div className="add-form-card">
+            {/* Images (3 max) */}
             <div className="image-gallery-top">
-              <label className="gallery-label">📸 Images</label>
+              <label className="gallery-label">
+                📸 Images <span style={{ fontSize: '12px', opacity: 0.7 }}>({imagePreviews.length}/{MAX_IMAGES} max)</span>
+              </label>
               <div className="image-gallery-wrapper">
-                <div className="image-upload-box">
-                  <input type="file" accept="image/*" multiple onChange={handleImageUpload} style={{ display: 'none' }} id="image-upload-gallery" />
-                  <label htmlFor="image-upload-gallery" className="upload-box"><i className="bi bi-plus-lg"></i><span>Add Image</span></label>
-                </div>
+                {imagePreviews.length < MAX_IMAGES && (
+                  <div className="image-upload-box">
+                    <input type="file" accept="image/*" multiple onChange={handleImageUpload} style={{ display: 'none' }} id="image-upload-gallery" />
+                    <label htmlFor="image-upload-gallery" className="upload-box"><i className="bi bi-plus-lg"></i><span>Add Image</span></label>
+                  </div>
+                )}
                 <div className="image-scroll-container-horizontal">
                   {imagePreviews.map((img, i) => (
                     <div key={i} className="image-item"><img src={img} alt="" /><button className="remove-image-btn" onClick={() => removeImage(i)}><i className="bi bi-x-lg"></i></button></div>
@@ -620,15 +768,47 @@ function HotAirBalloons() {
             </div>
 
             <div className="form-fields-section">
-              <div className="add-form-group"><label>Name *</label><input type="text" name="name" placeholder="Balloons Over Bagan" value={formData.name} onChange={handleInputChange} /></div>
-              <div className="add-form-group"><label>Company</label><input type="text" name="company" placeholder="Balloons Over Bagan" value={formData.company} onChange={handleInputChange} /></div>
-              <div className="add-form-row"><div className="add-form-group half"><label>Capacity</label><input type="text" name="capacity" placeholder="8-12 persons" value={formData.capacity} onChange={handleInputChange} /></div><div className="add-form-group half"><label>Duration</label><input type="text" name="duration" placeholder="45-60 min" value={formData.duration} onChange={handleInputChange} /></div></div>
-              <div className="add-form-row"><div className="add-form-group half"><label>Price (MMK) *</label><input type="text" name="price" placeholder="380000" value={formData.price} onChange={handleInputChange} /></div><div className="add-form-group half"><label>Discount</label><input type="text" name="discount" placeholder="10" value={formData.discount} onChange={handleInputChange} /></div></div>
+              {/* Duration */}
+              <div className="add-form-group">
+                <label>Duration</label>
+                <input type="text" name="duration" placeholder="45-60 min" value={formData.duration} onChange={handleInputChange} />
+              </div>
+
+              {/* MMK Price Range */}
+              <div className="add-form-group">
+                <label>MMK Price Range (MMK)</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input type="text" name="priceMmkMin" placeholder="Min (e.g. 320000)" value={formData.priceMmkMin} onChange={handleInputChange} style={{ flex: 1 }} />
+                  <span style={{ color: '#888', fontWeight: 'bold' }}>—</span>
+                  <input type="text" name="priceMmkMax" placeholder="Max (e.g. 550000)" value={formData.priceMmkMax} onChange={handleInputChange} style={{ flex: 1 }} />
+                </div>
+              </div>
+
+              {/* USD Price Range */}
+              <div className="add-form-group">
+                <label>USD Price Range (USD)</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input type="text" name="priceUsdMin" placeholder="Min (e.g. 165)" value={formData.priceUsdMin} onChange={handleInputChange} style={{ flex: 1 }} />
+                  <span style={{ color: '#888', fontWeight: 'bold' }}>—</span>
+                  <input type="text" name="priceUsdMax" placeholder="Max (e.g. 270)" value={formData.priceUsdMax} onChange={handleInputChange} style={{ flex: 1 }} />
+                </div>
+              </div>
+
+              <div className="add-form-row">
+                <div className="add-form-group half"><label>Min People Required</label><input type="number" name="minPeople" placeholder="4" min="1" value={formData.minPeople} onChange={handleInputChange} /></div>
+                <div className="add-form-group half"><label>Discount</label><input type="text" name="discount" placeholder="10" value={formData.discount} onChange={handleInputChange} /></div>
+              </div>
+
               <div className="add-form-group"><label>Flight Times</label><input type="text" name="flightTimes" placeholder="5:30 AM - 7:30 AM" value={formData.flightTimes} onChange={handleInputChange} /></div>
-              <div className="add-form-row"><div className="add-form-group half"><label>Season</label><input type="text" name="season" placeholder="October - April" value={formData.season} onChange={handleInputChange} /></div><div className="add-form-group half"><label>Location</label><input type="text" name="location" placeholder="Old Bagan" value={formData.location} onChange={handleInputChange} /></div></div>
-              <div className="add-form-group"><label>Includes</label><textarea name="includes" rows="2" placeholder="Hotel transfer, breakfast..." value={formData.includes} onChange={handleInputChange} /></div>
-              <div className="add-form-group"><label>Status</label><select name="status" value={formData.status} onChange={handleInputChange}><option value="Active">Active</option><option value="Inactive">Inactive</option></select></div>
-              <div className="add-form-group"><label>Description</label><textarea name="description" rows="2" placeholder="Describe the experience..." value={formData.description} onChange={handleInputChange} /></div>
+
+              {/* Rules & Regulation */}
+              <div className="add-form-group"><label>Rules & Regulation</label><textarea name="rules" rows="3" placeholder="No pregnant women. No children under 6..." value={formData.rules} onChange={handleInputChange} /></div>
+
+              {/* Phone Numbers */}
+              <div className="add-form-group">
+                <PhoneNumbersUI formMode />
+              </div>
+
               <button className="add-item-btn-full" onClick={handleAdd} disabled={loading}>{loading ? 'Adding...' : 'Add Balloon'}</button>
             </div>
           </div>
@@ -641,27 +821,86 @@ function HotAirBalloons() {
               {sortedItems.length === 0 ? (
                 <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '50px', color: '#6c757d' }}><i className="bi bi-inbox" style={{ fontSize: '48px', display: 'block' }}></i><p>No balloons found.</p></div>
               ) : (
-                sortedItems.map(item => (
-                  <div key={item.id} className="hotel-card-vertical" style={{ borderLeft: `4px solid ${item.status === 'Active' ? '#28a745' : '#dc3545'}` }}>
-                    <div className="hotel-card-image" style={{ position: 'relative', minHeight: '150px', background: isDarkMode ? '#2d2d2d' : '#f8f9fa' }}>
-                      <div className="image-slider" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
-                        {item.images && item.images.length > 0 ? <img src={item.images[0]} alt={item.name} style={{ objectFit: 'cover', width: '100%', height: '100%', maxHeight: '150px' }} /> : <div style={{ fontSize: '60px', padding: '20px' }}>🎈</div>}
+                sortedItems.map(item => {
+                  const hasMmkRange = item.priceMmkMin || item.priceMmkMax;
+                  const hasUsdRange = item.priceUsdMin || item.priceUsdMax;
+                  return (
+                    <div key={item.id} className="hotel-card-vertical">
+                      <div className="hotel-card-image" style={{ position: 'relative', minHeight: '150px', background: isDarkMode ? '#2d2d2d' : '#f8f9fa' }}>
+                        <div className="image-slider" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
+                          {item.images && item.images.length > 0 ? <img src={item.images[0]} alt={item.name} style={{ objectFit: 'cover', width: '100%', height: '100%', maxHeight: '150px' }} /> : <div style={{ fontSize: '60px', padding: '20px' }}>🎈</div>}
+                        </div>
+                        <CardActions id={item.id} />
                       </div>
-                      <div style={{ position: 'absolute', top: '10px', left: '10px', padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', ...getStatusStyle(item.status) }}>{item.status}</div>
-                      <CardActions id={item.id} />
+                      <div className="hotel-card-info">
+                        {/* Name */}
+                        <h3 className="hotel-name" style={{ fontSize: '16px' }}>{item.name || 'Air Balloon'}</h3>
+
+                        {/* Company — show only if present */}
+                        {item.company && (
+                          <p style={{ fontSize: '13px', color: '#6c757d' }}><i className="bi bi-building"></i> {item.company}</p>
+                        )}
+
+                        {/* Location — show only if present */}
+                        {item.location && (
+                          <p className="hotel-location"><i className="bi bi-geo-alt-fill"></i> {item.location}</p>
+                        )}
+
+                        {/* Duration / Capacity / Min People */}
+                        <div style={{ display: 'flex', gap: '12px', fontSize: '13px', color: '#6c757d', flexWrap: 'wrap' }}>
+                          {item.capacity && <span><i className="bi bi-people"></i> {item.capacity}</span>}
+                          {item.duration && item.duration !== 'N/A' && <span><i className="bi bi-clock"></i> {item.duration}</span>}
+                          {item.minPeople && <span><i className="bi bi-person-check"></i> Min {item.minPeople} pax</span>}
+                        </div>
+
+                        {/* Flight Times */}
+                        {item.flightTimes && item.flightTimes !== 'N/A' && (
+                          <div style={{ display: 'flex', gap: '12px', fontSize: '13px', color: '#6c757d', flexWrap: 'wrap', marginTop: '4px' }}>
+                            <span><i className="bi bi-sunrise"></i> {item.flightTimes}</span>
+                          </div>
+                        )}
+
+                        {/* MMK Range */}
+                        {hasMmkRange && (
+                          <p className="hotel-price" style={{ marginTop: '6px' }}>
+                            MMK <span>{item.priceMmkMin || '?'} — {item.priceMmkMax || '?'}</span>
+                          </p>
+                        )}
+                        {/* USD Range */}
+                        {hasUsdRange && (
+                          <p style={{ fontSize: '13px', color: isDarkMode ? '#bbb' : '#555', margin: '2px 0' }}>
+                            USD <span style={{ fontWeight: 600 }}>{item.priceUsdMin || '?'} — {item.priceUsdMax || '?'}</span>
+                          </p>
+                        )}
+                        {/* Fallback legacy price */}
+                        {!hasMmkRange && !hasUsdRange && item.price && (
+                          <p className="hotel-price">From <span>MMK {item.price}</span></p>
+                        )}
+
+                        <div className="hotel-rating">{renderStars(item.rating)}<span className="rating-count">({item.reviews})</span></div>
+
+                        {/* Season — show only if present */}
+                        {item.season && <p style={{ fontSize: '12px', color: '#888' }}><i className="bi bi-calendar-event"></i> Season: {item.season}</p>}
+
+                        {/* Rules — show only if present */}
+                        {item.rules && item.rules !== 'No rules provided.' && (
+                          <p style={{ fontSize: '12px', color: '#666', marginTop: '4px' }} title={item.rules}>
+                            <i className="bi bi-shield-check"></i> {item.rules.length > 45 ? item.rules.slice(0, 45) + '…' : item.rules}
+                          </p>
+                        )}
+
+                        {/* Phones */}
+                        {item.phoneNumbers && item.phoneNumbers.length > 0 && (
+                          <p style={{ fontSize: '12px', color: '#0d6efd', marginTop: '2px' }} title={item.phoneNumbers.join('\n')}>
+                            <i className="bi bi-telephone-fill"></i> {item.phoneNumbers.join(' / ')}
+                          </p>
+                        )}
+
+                        <p style={{ fontSize: '11px', color: '#999' }}><i className="bi bi-clock"></i> Added: {item.created_at}</p>
+                      </div>
                     </div>
-                    <div className="hotel-card-info">
-                      <h3 className="hotel-name" style={{ fontSize: '16px' }}>{item.name}</h3>
-                      <p style={{ fontSize: '13px', color: '#6c757d' }}><i className="bi bi-building"></i> {item.company}</p>
-                      <p className="hotel-location"><i className="bi bi-geo-alt-fill"></i> {item.location}</p>
-                      <div style={{ display: 'flex', gap: '12px', fontSize: '13px', color: '#6c757d', flexWrap: 'wrap' }}><span><i className="bi bi-people"></i> {item.capacity}</span><span><i className="bi bi-clock"></i> {item.duration}</span><span><i className="bi bi-sunrise"></i> {item.flightTimes}</span></div>
-                      <p className="hotel-price">From <span>MMK {item.price}</span></p>
-                      <div className="hotel-rating">{renderStars(item.rating)}<span className="rating-count">({item.reviews})</span></div>
-                      {item.season && <p style={{ fontSize: '12px', color: '#888' }}><i className="bi bi-calendar-event"></i> Season: {item.season}</p>}
-                      <p style={{ fontSize: '11px', color: '#999' }}><i className="bi bi-clock"></i> Added: {item.created_at}</p>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -676,30 +915,62 @@ function HotAirBalloons() {
             <div className="modal-body">
               {/* Image Gallery - TOP */}
               <div className="image-gallery-top">
-                <label className="gallery-label">📸 Images (Upload new to replace)</label>
+                <label className="gallery-label">
+                  📸 Images <span style={{ fontSize: '12px', opacity: 0.7 }}>({imagePreviews.length}/{MAX_IMAGES} max)</span> — Upload new to replace
+                </label>
                 <div className="image-gallery-wrapper">
-                  <div className="image-upload-box">
-                    <input type="file" accept="image/*" multiple onChange={handleImageUpload} style={{ display: 'none' }} id="edit-image-upload" />
-                    <label htmlFor="edit-image-upload" className="upload-box"><i className="bi bi-plus-lg"></i><span>Add Image</span></label>
-                  </div>
+                  {imagePreviews.length < MAX_IMAGES && (
+                    <div className="image-upload-box">
+                      <input type="file" accept="image/*" multiple onChange={handleImageUpload} style={{ display: 'none' }} id="edit-image-upload" />
+                      <label htmlFor="edit-image-upload" className="upload-box"><i className="bi bi-plus-lg"></i><span>Add Image</span></label>
+                    </div>
+                  )}
                   <div className="image-scroll-container-horizontal">
                     {imagePreviews.map((img, i) => (
                       <div key={i} className="image-item"><img src={img} alt="" /><button className="remove-image-btn" onClick={() => removeImage(i)}><i className="bi bi-x-lg"></i></button></div>
                     ))}
                   </div>
                 </div>
-                <small style={{ opacity: 0.7, display: 'block', marginTop: '5px' }}>⚡ Upload new to replace. Leave empty to keep current.</small>
+                <small style={{ opacity: 0.7, display: 'block', marginTop: '5px' }}>⚡ Max {MAX_IMAGES} images. Leave empty to keep current.</small>
               </div>
 
-              <div className="form-group"><label>Name *</label><input type="text" name="name" value={formData.name} onChange={handleInputChange} /></div>
-              <div className="form-group"><label>Company</label><input type="text" name="company" value={formData.company} onChange={handleInputChange} /></div>
-              <div className="form-row"><div className="form-group"><label>Capacity</label><input type="text" name="capacity" value={formData.capacity} onChange={handleInputChange} /></div><div className="form-group"><label>Duration</label><input type="text" name="duration" value={formData.duration} onChange={handleInputChange} /></div></div>
-              <div className="form-row"><div className="form-group"><label>Price (MMK)</label><input type="text" name="price" value={formData.price} onChange={handleInputChange} /></div><div className="form-group"><label>Discount</label><input type="text" name="discount" value={formData.discount} onChange={handleInputChange} /></div></div>
+              {/* Duration */}
+              <div className="form-group"><label>Duration</label><input type="text" name="duration" value={formData.duration} onChange={handleInputChange} /></div>
+
+              {/* MMK Price Range */}
+              <div className="form-group">
+                <label>MMK Price Range</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input type="text" name="priceMmkMin" placeholder="Min" value={formData.priceMmkMin} onChange={handleInputChange} style={{ flex: 1 }} />
+                  <span style={{ color: '#888', fontWeight: 'bold' }}>—</span>
+                  <input type="text" name="priceMmkMax" placeholder="Max" value={formData.priceMmkMax} onChange={handleInputChange} style={{ flex: 1 }} />
+                </div>
+              </div>
+
+              {/* USD Price Range */}
+              <div className="form-group">
+                <label>USD Price Range</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input type="text" name="priceUsdMin" placeholder="Min" value={formData.priceUsdMin} onChange={handleInputChange} style={{ flex: 1 }} />
+                  <span style={{ color: '#888', fontWeight: 'bold' }}>—</span>
+                  <input type="text" name="priceUsdMax" placeholder="Max" value={formData.priceUsdMax} onChange={handleInputChange} style={{ flex: 1 }} />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group"><label>Min People Required</label><input type="number" name="minPeople" min="1" value={formData.minPeople} onChange={handleInputChange} /></div>
+                <div className="form-group"><label>Discount</label><input type="text" name="discount" value={formData.discount} onChange={handleInputChange} /></div>
+              </div>
+
               <div className="form-group"><label>Flight Times</label><input type="text" name="flightTimes" value={formData.flightTimes} onChange={handleInputChange} /></div>
-              <div className="form-row"><div className="form-group"><label>Season</label><input type="text" name="season" value={formData.season} onChange={handleInputChange} /></div><div className="form-group"><label>Location</label><input type="text" name="location" value={formData.location} onChange={handleInputChange} /></div></div>
-              <div className="form-group"><label>Includes</label><textarea name="includes" rows="2" value={formData.includes} onChange={handleInputChange} /></div>
-              <div className="form-group"><label>Status</label><select name="status" value={formData.status} onChange={handleInputChange}><option value="Active">Active</option><option value="Inactive">Inactive</option></select></div>
-              <div className="form-group"><label>Description</label><textarea name="description" rows="2" value={formData.description} onChange={handleInputChange} /></div>
+
+              {/* Rules & Regulation */}
+              <div className="form-group"><label>Rules & Regulation</label><textarea name="rules" rows="3" value={formData.rules} onChange={handleInputChange} /></div>
+
+              {/* Phone Numbers */}
+              <div className="form-group">
+                <PhoneNumbersUI formMode />
+              </div>
             </div>
             <div className="modal-footer"><button className="discard-btn" onClick={() => setShowEditModal(false)}>Cancel</button><button className="add-item-btn" onClick={handleConfirmEdit} disabled={loading}>{loading ? 'Updating...' : 'Confirm Edit'}</button></div>
           </div>
