@@ -135,7 +135,9 @@ function HistoryOfPagodas() {
   const getToken = () => localStorage.getItem('token');
 
   const api = axios.create({
-    baseURL: '/api',
+    baseURL: import.meta.env.DEV
+      ? '/api'
+      : 'http://130.94.21.185:8000/api',
     timeout: 30000,
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
   });

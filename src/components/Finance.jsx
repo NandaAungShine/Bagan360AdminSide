@@ -1,11 +1,30 @@
 // Finance.jsx
 import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
 import Header from './Header';
 
 // ---------------- Helpers ----------------
 const fmt = (n) => Number(n || 0).toLocaleString();
 
 const BACKEND_URL = 'http://130.94.21.185:8000';
+
+// ---------------- Axios Instance ----------------
+const api = axios.create({
+  baseURL: import.meta.env.DEV
+    ? '/api'
+    : 'http://130.94.21.185:8000/api',
+  timeout: 30000,
+  headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+});
+
+// Attach bearer token to every request
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 
 const buildImageUrl = (img) => {
   if (!img) return null;
@@ -118,8 +137,10 @@ function Finance() {
   const SHOP_API = '/auth/shop';
   const USER_API = '/auth/user';
   const API_BASE = '/api/admin/finance';
-  const PERCENTAGE_API = '/api/admin/percentage';
-  const TAX_API = '/api/admin/tax';
+
+  // axios path prefixes (relative to api baseURL)
+  const PERCENTAGE_API = '/admin/percentage';
+  const TAX_API = '/admin/tax';
 
   // ---------------- States ----------------
   const [shops, setShops] = useState([]);
@@ -139,7 +160,7 @@ function Finance() {
   const [detailsLoading, setDetailsLoading] = useState(false);
 
   // Percentage create form
-  const [percForm, setPercForm] = useState({ total_booking: '' });
+  const [percForm, setPercForm] = useState({ billing_month: currentBillingMonth() });
   const [percSubmitting, setPercSubmitting] = useState(false);
 
   // Tax create form (Amount + Payment + Reason)
@@ -152,7 +173,7 @@ function Finance() {
 
   // Percentage inline edit
   const [editingPercId, setEditingPercId] = useState(null);
-  const [editPercForm, setEditPercForm] = useState({ total_booking: '' });
+  const [editPercForm, setEditPercForm] = useState({ percentage: '', billing_month: '' });
 
   const [showNotif, setShowNotif] = useState(false);
   const notifRef = useRef(null);
@@ -306,24 +327,27 @@ function Finance() {
     setLoading(false);
   };
 
+  // ---------------- Fetch Global Finance Extras (Percentage + Tax) ----------------
   const fetchGlobalFinanceExtras = async () => {
-    try {
-      const [pRes, tRes] = await Promise.all([
-        fetch(`${PERCENTAGE_API}/list`, { headers: getHeaders() }).catch(() => null),
-        fetch(`${TAX_API}/list`, { headers: getHeaders() }).catch(() => null),
-      ]);
-      if (pRes && pRes.ok) {
-        const d = await pRes.json();
-        const list = d.data || d.list || (Array.isArray(d) ? d : []);
-        setAllPercentages(list);
-      }
-      if (tRes && tRes.ok) {
-        const d = await tRes.json();
-        const list = d.data || d.list || (Array.isArray(d) ? d : []);
-        setAllTaxes(list);
-      }
-    } catch (e) {
-      console.warn('Finance extras fetch failed:', e.message);
+    const [pRes, tRes] = await Promise.allSettled([
+      api.get(`${PERCENTAGE_API}/list`),
+      api.get(`${TAX_API}/list`),
+    ]);
+
+    if (pRes.status === 'fulfilled') {
+      const d = pRes.value.data;
+      const list = d?.data || d?.list || (Array.isArray(d) ? d : []);
+      setAllPercentages(list);
+    } else {
+      console.warn('Percentage global fetch failed:', pRes.reason?.message);
+    }
+
+    if (tRes.status === 'fulfilled') {
+      const d = tRes.value.data;
+      const list = d?.data || d?.list || (Array.isArray(d) ? d : []);
+      setAllTaxes(list);
+    } else {
+      console.warn('Tax global fetch failed:', tRes.reason?.message);
     }
   };
 
@@ -373,29 +397,25 @@ function Finance() {
   const totalShops = shops.length;
   const needsPaymentShops = shops.filter(s => s.needsPayment);
 
-  // ---------------- Detail fetchers ----------------
+  // ---------------- Detail fetchers (axios) ----------------
   const fetchPercentageForShop = async (shopId) => {
     try {
-      const res = await fetch(`${PERCENTAGE_API}/list`, { headers: getHeaders() });
-      if (!res.ok) return [];
-      const data = await res.json();
-      const list = data.data || data.list || (Array.isArray(data) ? data : []);
+      const { data } = await api.get(`${PERCENTAGE_API}/list`);
+      const list = data?.data || data?.list || (Array.isArray(data) ? data : []);
       return list.filter(r => String(r.shop_id) === String(shopId));
     } catch (e) {
-      console.warn('Percentage fetch failed', e.message);
+      console.warn('Percentage fetch failed', e?.response?.data?.message || e.message);
       return [];
     }
   };
 
   const fetchTaxForShop = async (shopId) => {
     try {
-      const res = await fetch(`${TAX_API}/list`, { headers: getHeaders() });
-      if (!res.ok) return [];
-      const data = await res.json();
-      const list = data.data || data.list || (Array.isArray(data) ? data : []);
+      const { data } = await api.get(`${TAX_API}/list`);
+      const list = data?.data || data?.list || (Array.isArray(data) ? data : []);
       return list.filter(r => String(r.shop_id) === String(shopId));
     } catch (e) {
-      console.warn('Tax fetch failed', e.message);
+      console.warn('Tax fetch failed', e?.response?.data?.message || e.message);
       return [];
     }
   };
@@ -409,7 +429,7 @@ function Finance() {
     setTaxRecords([]);
     setEditingTaxId(null);
     setEditingPercId(null);
-    setPercForm({ total_booking: '' });
+    setPercForm({ billing_month: currentBillingMonth() });
 
     const pfAmt = shop.platformFee?.amount;
     setTaxForm({
@@ -466,7 +486,7 @@ function Finance() {
     showToast('success', 'Marked as Paid.');
   };
 
-  // ---------- Percentage CRUD ----------
+  // ---------- Percentage CRUD (axios) ----------
   const handleCreatePercentage = async () => {
     if (!selectedShop) return;
 
@@ -475,40 +495,38 @@ function Finance() {
       showToast('error', 'Commission Fee percentage is missing. Set it above first.');
       return;
     }
-    if (percForm.total_booking === '' || isNaN(Number(percForm.total_booking))) {
-      showToast('error', 'Please enter a valid total booking.');
+    
+    const billingMonth = percForm.billing_month || currentBillingMonth();
+    if (!billingMonth) {
+      showToast('error', 'Please select a billing month.');
       return;
     }
 
-    const totalBooking = parseInt(percForm.total_booking, 10) || 0;
+    // Check if percentage is already collected for this billing month
+    const isAlreadyCollected = percentageRecords.some(r => r.billing_month === billingMonth);
+    if (isAlreadyCollected) {
+      showToast('warning', 'Percentage for this billing month has already been collected.');
+      return;
+    }
+
     setPercSubmitting(true);
     try {
       const payload = {
         shop_id: selectedShop.id,
-        shop_name: selectedShop.name,
-        shop_type: selectedShop.shopType || '',
-        tax: 'percentage',
         percentage: commissionPct,
-        total_booking: totalBooking,
-        booking_count: totalBooking,
-        billing_month: currentBillingMonth(),
+        billing_month: billingMonth,
       };
-      const res = await fetch(`${PERCENTAGE_API}/create`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.success === false) {
-        throw new Error(data.message || `Failed (${res.status})`);
+      const { data } = await api.post(`${PERCENTAGE_API}/create`, payload);
+      if (data && data.success === false) {
+        throw new Error(data.message || 'Create failed');
       }
-      showToast('success', data.message || 'Percentage created.');
-      setPercForm({ total_booking: '' });
+      showToast('success', data?.message || 'Percentage created successfully.');
+      setPercForm({ billing_month: currentBillingMonth() });
       const updated = await fetchPercentageForShop(selectedShop.id);
       setPercentageRecords(updated);
       fetchGlobalFinanceExtras();
     } catch (e) {
-      showToast('error', e.message || 'Failed to create percentage.');
+      showToast('error', e?.response?.data?.message || e.message || 'Failed to create percentage.');
     } finally {
       setPercSubmitting(false);
     }
@@ -516,55 +534,60 @@ function Finance() {
 
   const handleStartEditPerc = (rec) => {
     setEditingPercId(rec.id);
-    setEditPercForm({ total_booking: readTotalBooking(rec) || '' });
+    setEditPercForm({ 
+      percentage: rec.percentage || '',
+      billing_month: rec.billing_month || currentBillingMonth()
+    });
   };
 
   const handleCancelEditPerc = () => {
     setEditingPercId(null);
-    setEditPercForm({ total_booking: '' });
+    setEditPercForm({ percentage: '', billing_month: '' });
   };
 
   const handleUpdatePerc = async (id) => {
-    if (editPercForm.total_booking === '' || isNaN(Number(editPercForm.total_booking))) {
-      showToast('error', 'Please enter a valid total booking.');
+    if (!editPercForm.billing_month) {
+      showToast('error', 'Please enter a valid billing month.');
       return;
     }
-    const newTB = parseInt(editPercForm.total_booking, 10) || 0;
     try {
-      await fetch(`${PERCENTAGE_API}/update/${id}`, {
-        method: 'PUT',
-        headers: getHeaders(),
-        body: JSON.stringify({
-          total_booking: newTB,
-          booking_count: newTB,
-        }),
-      }).catch(() => null);
-    } catch (_) { /* ignore */ }
-
-    setPercentageRecords(prev => prev.map(r =>
-      r.id === id
-        ? { ...r, total_booking: newTB, booking_count: newTB, amount: Math.round(newTB * (Number(r.percentage) || 0) / 100) }
-        : r
-    ));
-    showToast('success', 'Percentage updated.');
-    setEditingPercId(null);
-    setEditPercForm({ total_booking: '' });
+      const { data } = await api.put(`${PERCENTAGE_API}/update/${id}`, {
+        percentage: Number(editPercForm.percentage) || 0,
+        billing_month: editPercForm.billing_month,
+      });
+      if (data && data.success === false) {
+        throw new Error(data.message || 'Update failed');
+      }
+      showToast('success', data?.message || 'Percentage updated.');
+      setEditingPercId(null);
+      setEditPercForm({ percentage: '', billing_month: '' });
+      if (selectedShop) {
+        const updated = await fetchPercentageForShop(selectedShop.id);
+        setPercentageRecords(updated);
+      }
+      fetchGlobalFinanceExtras();
+    } catch (e) {
+      showToast('error', e?.response?.data?.message || e.message || 'Failed to update percentage.');
+    }
   };
 
   const handleDeletePerc = async (id) => {
     if (!window.confirm('Delete this percentage record?')) return;
     try {
-      await fetch(`${PERCENTAGE_API}/delete/${id}`, {
-        method: 'DELETE',
-        headers: getHeaders(),
-      }).catch(() => null);
-    } catch (_) { /* ignore */ }
-    setPercentageRecords(prev => prev.filter(r => r.id !== id));
-    showToast('success', 'Percentage deleted.');
+      const { data } = await api.delete(`${PERCENTAGE_API}/delete/${id}`);
+      if (data && data.success === false) {
+        throw new Error(data.message || 'Delete failed');
+      }
+      setPercentageRecords(prev => prev.filter(r => r.id !== id));
+      showToast('success', data?.message || 'Percentage deleted.');
+      fetchGlobalFinanceExtras();
+    } catch (e) {
+      showToast('error', e?.response?.data?.message || e.message || 'Failed to delete percentage.');
+    }
   };
 
   // Approve percentage → push to Commission Records as PAID
-  const handleApprovePercentage = (rec) => {
+  const handleApprovePercentage = async (rec) => {
     if (!selectedShop) return;
     const { start, end } = periodFromBillingMonth(rec.billing_month);
     const sellAmount = readTotalBooking(rec);
@@ -587,51 +610,96 @@ function Finance() {
     setShops(prev => prev.map(s => s.id === updatedShop.id ? updatedShop : s));
 
     setPercentageRecords(prev => prev.filter(r => r.id !== rec.id));
-    fetch(`${PERCENTAGE_API}/delete/${rec.id}`, {
-      method: 'DELETE',
-      headers: getHeaders(),
-    }).catch(() => null);
+
+    try {
+      await api.delete(`${PERCENTAGE_API}/delete/${rec.id}`);
+    } catch (e) {
+      console.warn('Approve-delete failed:', e?.response?.data?.message || e.message);
+    }
 
     showToast('success', 'Approved — added to Commission Records as Paid.');
+    fetchGlobalFinanceExtras();
   };
 
-  // ---------- Tax CRUD ----------
+  // ---------- Tax CRUD (axios) ----------
   const handleCreateTax = async () => {
     if (!selectedShop) return;
-    if (taxForm.amount === '' || isNaN(Number(taxForm.amount))) {
-      showToast('error', 'Please enter a valid amount.');
+
+    // Check if Tax is already collected based on Platform Fee Method
+    const method = selectedShop.platformFee?.method || 'monthly';
+    let isAlreadyCollected = false;
+
+    if (method === 'daily') {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      isAlreadyCollected = taxRecords.some(r => {
+        if (!r.created_at) return false;
+        return String(r.created_at).replace(' ', 'T').slice(0, 10) === todayStr;
+      });
+    } else if (method === 'weekly') {
+      isAlreadyCollected = taxRecords.some(r => {
+        if (!r.created_at) return false;
+        const rDate = new Date(String(r.created_at).replace(' ', 'T'));
+        const diffDays = Math.ceil(Math.abs(new Date() - rDate) / (1000 * 60 * 60 * 24));
+        return diffDays <= 7;
+      });
+    } else if (method === 'monthly') {
+      const currentMonthStr = currentBillingMonth(); // "2026-11"
+      isAlreadyCollected = taxRecords.some(r => {
+        if (!r.created_at) return false;
+        return String(r.created_at).replace(' ', 'T').slice(0, 7) === currentMonthStr;
+      });
+    } else if (method === 'yearly') {
+      const currentYear = String(new Date().getFullYear());
+      isAlreadyCollected = taxRecords.some(r => {
+        if (!r.created_at) return false;
+        return String(r.created_at).replace(' ', 'T').slice(0, 4) === currentYear;
+      });
+    }
+
+    if (isAlreadyCollected) {
+      showToast('warning', `Tax for this ${method} period has already been collected.`);
       return;
     }
+
+    // Fallback: Amount ကွက်က ဗလာဖြစ်နေရင် (သို့) 0 ဖြစ်နေရင် Platform Fee Amount ကို ယူမယ်
+    let amountToSubmit = Number(taxForm.amount);
+    if (!taxForm.amount || isNaN(amountToSubmit) || amountToSubmit === 0) {
+       amountToSubmit = Number(selectedShop.platformFee?.amount) || 0;
+    }
+
+    if (amountToSubmit <= 0) {
+      showToast('error', 'Please enter a valid amount greater than 0.');
+      return;
+    }
+
     setTaxSubmitting(true);
     try {
       const payload = {
         shop_id: selectedShop.id,
         shop_name: selectedShop.name,
-        amount: Number(taxForm.amount) || 0,
+        amount: amountToSubmit,
         payment: taxForm.payment,
         reason: taxForm.reason || '',
       };
-      const res = await fetch(`${TAX_API}/create`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.success === false) {
-        throw new Error(data.message || `Failed (${res.status})`);
+      const { data } = await api.post(`${TAX_API}/create`, payload);
+      if (data && data.success === false) {
+        throw new Error(data.message || 'Create failed');
       }
-      showToast('success', data.message || 'Shop amount created.');
+      showToast('success', data?.message || 'Shop amount created.');
+      
+      // အောင်မြင်သွားရင် Platform Fee Amount ကို ပြန်ပြီး Default ထားပေးမယ်
       const pfAmt = selectedShop.platformFee?.amount;
       setTaxForm({
         amount: pfAmt != null && pfAmt !== '' ? String(pfAmt) : '',
         payment: 'Cash',
         reason: '',
       });
+
       const updated = await fetchTaxForShop(selectedShop.id);
       setTaxRecords(updated);
       fetchGlobalFinanceExtras();
     } catch (e) {
-      showToast('error', e.message || 'Failed to create shop amount.');
+      showToast('error', e?.response?.data?.message || e.message || 'Failed to create shop amount.');
     } finally {
       setTaxSubmitting(false);
     }
@@ -662,47 +730,42 @@ function Finance() {
         payment: editTaxForm.payment,
         reason: editTaxForm.reason || '',
       };
-      const res = await fetch(`${TAX_API}/update/${id}`, {
-        method: 'PUT',
-        headers: getHeaders(),
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.success === false) {
-        throw new Error(data.message || `Failed (${res.status})`);
+      const { data } = await api.put(`${TAX_API}/update/${id}`, payload);
+      if (data && data.success === false) {
+        throw new Error(data.message || 'Update failed');
       }
-      showToast('success', data.message || 'Shop amount updated.');
+      showToast('success', data?.message || 'Shop amount updated.');
       setEditingTaxId(null);
-      const updated = await fetchTaxForShop(selectedShop.id);
-      setTaxRecords(updated);
+      if (selectedShop) {
+        const updated = await fetchTaxForShop(selectedShop.id);
+        setTaxRecords(updated);
+      }
       fetchGlobalFinanceExtras();
     } catch (e) {
-      showToast('error', e.message || 'Failed to update.');
+      showToast('error', e?.response?.data?.message || e.message || 'Failed to update.');
     }
   };
 
   const handleDeleteTax = async (id) => {
     if (!window.confirm('Delete this shop amount record?')) return;
     try {
-      const res = await fetch(`${TAX_API}/delete/${id}`, {
-        method: 'DELETE',
-        headers: getHeaders(),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.success === false) {
-        throw new Error(data.message || `Failed (${res.status})`);
+      const { data } = await api.delete(`${TAX_API}/delete/${id}`);
+      if (data && data.success === false) {
+        throw new Error(data.message || 'Delete failed');
       }
-      showToast('success', data.message || 'Shop amount deleted.');
-      const updated = await fetchTaxForShop(selectedShop.id);
-      setTaxRecords(updated);
+      showToast('success', data?.message || 'Shop amount deleted.');
+      if (selectedShop) {
+        const updated = await fetchTaxForShop(selectedShop.id);
+        setTaxRecords(updated);
+      }
       fetchGlobalFinanceExtras();
     } catch (e) {
-      showToast('error', e.message || 'Failed to delete.');
+      showToast('error', e?.response?.data?.message || e.message || 'Failed to delete.');
     }
   };
 
   // Approve tax → push to Platform Fee Records as PAID
-  const handleApproveTax = (rec) => {
+  const handleApproveTax = async (rec) => {
     if (!selectedShop) return;
     const { start, end } = periodFromCreatedAt(rec.created_at);
     const methodLabel = (selectedShop.platformFee?.method || 'monthly');
@@ -723,12 +786,15 @@ function Finance() {
     setShops(prev => prev.map(s => s.id === updatedShop.id ? updatedShop : s));
 
     setTaxRecords(prev => prev.filter(r => r.id !== rec.id));
-    fetch(`${TAX_API}/delete/${rec.id}`, {
-      method: 'DELETE',
-      headers: getHeaders(),
-    }).catch(() => null);
+
+    try {
+      await api.delete(`${TAX_API}/delete/${rec.id}`);
+    } catch (e) {
+      console.warn('Approve-delete failed:', e?.response?.data?.message || e.message);
+    }
 
     showToast('success', 'Approved — added to Platform Fee Records as Paid.');
+    fetchGlobalFinanceExtras();
   };
 
   // ---------------- Render Helpers ----------------
@@ -1166,6 +1232,7 @@ function Finance() {
         }
         .fin-toast.success { background: #d1e7dd; color: #0f5132; border: 1px solid #badbcc; }
         .fin-toast.error { background: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
+        .fin-toast.warning { background: #fff3cd; color: #856404; border: 1px solid #ffecb5; }
         @keyframes finSlide {
           from { transform: translateX(40px); opacity: 0; }
           to { transform: translateX(0); opacity: 1; }
@@ -1193,7 +1260,7 @@ function Finance() {
       {/* Toast */}
       {toast.visible && (
         <div className={`fin-toast ${toast.type}`}>
-          <i className={`bi ${toast.type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill'}`}></i>
+          <i className={`bi ${toast.type === 'success' ? 'bi-check-circle-fill' : toast.type === 'warning' ? 'bi-exclamation-triangle-fill' : 'bi-x-circle-fill'}`}></i>
           <span>{toast.message}</span>
         </div>
       )}
@@ -1263,7 +1330,6 @@ function Finance() {
                         </div>
                         <div className="fin-notif-item-note">
                           <i className="bi bi-wallet2" style={{ marginRight: 6 }}></i>
-                          {/* အရောင်းမှရရှိသောငွေ */}
                         </div>
                       </div>
                     </div>
@@ -1390,10 +1456,15 @@ function Finance() {
                             type="number"
                             className="fin-input"
                             value={selectedShop.platformFee.amount}
-                            onChange={(e) => setSelectedShop({
-                              ...selectedShop,
-                              platformFee: { ...selectedShop.platformFee, amount: e.target.value },
-                            })}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setSelectedShop({
+                                ...selectedShop,
+                                platformFee: { ...selectedShop.platformFee, amount: val },
+                              });
+                              // အောက်က Tax Amount ကွက်ထဲကို အလိုအလျောက် လိုက်ပြောင်းပေးမယ်
+                              setTaxForm(f => ({ ...f, amount: val }));
+                            }}
                           />
                           <span className="fin-input-suffix">Ks</span>
                         </div>
@@ -1428,7 +1499,6 @@ function Finance() {
                         </div>
                         <div className="fin-hint">
                           <i className="bi bi-info-circle"></i>
-                          {/* ဒီ % ကို အောက်က Booking Percentage မှာ အလိုအလျောက် သုံးပါမယ် */}
                         </div>
                       </div>
                     )}
@@ -1453,10 +1523,15 @@ function Finance() {
                               type="number"
                               className="fin-input"
                               value={selectedShop.platformFee.amount}
-                              onChange={(e) => setSelectedShop({
-                                ...selectedShop,
-                                platformFee: { ...selectedShop.platformFee, amount: e.target.value },
-                              })}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setSelectedShop({
+                                  ...selectedShop,
+                                  platformFee: { ...selectedShop.platformFee, amount: val },
+                                });
+                                // အောက်က Tax Amount ကွက်ထဲကို အလိုအလျောက် လိုက်ပြောင်းပေးမယ်
+                                setTaxForm(f => ({ ...f, amount: val }));
+                              }}
                             />
                             <span className="fin-input-suffix">Ks</span>
                           </div>
@@ -1502,9 +1577,7 @@ function Finance() {
                     <h3 className="fin-section-title">
                       <i className="bi bi-graph-up-arrow"></i> Booking Percentage
                     </h3>
-                    <div className="fin-created">
-                      {/* Booking အလိုက် percentage ဖြင့် amount တွက်ချက်ပေးသော API */}
-                    </div>
+                    <div className="fin-created"></div>
 
                     <div className="fin-inline-form perc-form">
                       <div className="fin-field">
@@ -1523,14 +1596,12 @@ function Finance() {
                         </div>
                       </div>
                       <div className="fin-field">
-                        <label className="fin-field-label">Total Booking</label>
+                        <label className="fin-field-label">Billing Month</label>
                         <input
-                          type="number"
+                          type="month"
                           className="fin-input no-suffix"
-                          placeholder="e.g. 5000"
-                          value={percForm.total_booking}
-                          onChange={(e) => setPercForm(f => ({ ...f, total_booking: e.target.value }))}
-                          min="0"
+                          value={percForm.billing_month}
+                          onChange={(e) => setPercForm(f => ({ ...f, billing_month: e.target.value }))}
                         />
                       </div>
                       <button
@@ -1565,18 +1636,20 @@ function Finance() {
                               const tb = readTotalBooking(r);
                               return (
                                 <tr key={r.id}>
-                                  <td>{r.percentage}%</td>
                                   <td>
                                     {isEditing ? (
                                       <input
                                         type="number"
                                         className="mini-input"
-                                        value={editPercForm.total_booking}
-                                        onChange={(e) => setEditPercForm(f => ({ ...f, total_booking: e.target.value }))}
+                                        value={editPercForm.percentage}
+                                        onChange={(e) => setEditPercForm(f => ({ ...f, percentage: e.target.value }))}
                                       />
                                     ) : (
-                                      fmt(tb)
+                                      `${r.percentage}%`
                                     )}
+                                  </td>
+                                  <td>
+                                    {fmt(tb)}
                                   </td>
                                   <td>
                                     <span style={{ color: '#22c55e', fontWeight: 600 }}>
@@ -1584,7 +1657,18 @@ function Finance() {
                                     </span>{' '}
                                     <span style={{ color: '#9ca3af', fontSize: 11 }}>MMK</span>
                                   </td>
-                                  <td>{r.billing_month || '—'}</td>
+                                  <td>
+                                    {isEditing ? (
+                                      <input
+                                        type="month"
+                                        className="mini-input"
+                                        value={editPercForm.billing_month}
+                                        onChange={(e) => setEditPercForm(f => ({ ...f, billing_month: e.target.value }))}
+                                      />
+                                    ) : (
+                                      r.billing_month || '—'
+                                    )}
+                                  </td>
                                   <td>
                                     {isEditing ? (
                                       <div className="fin-actions">
@@ -1629,9 +1713,7 @@ function Finance() {
                     <h3 className="fin-section-title">
                       <i className="bi bi-wallet2"></i> Shop Amount (Tax)
                     </h3>
-                    <div className="fin-created">
-                      {/* ဆိုင်မှ Admin သို့ ပေးသွင်းရမည့် Amount များ */}
-                    </div>
+                    <div className="fin-created"></div>
 
                     <div className="fin-inline-form">
                       <div className="fin-field">
@@ -1642,7 +1724,7 @@ function Finance() {
                           <input
                             type="number"
                             className="fin-input"
-                            placeholder="60000"
+                            placeholder={selectedShop.platformFee.amount || "60000"}
                             value={taxForm.amount}
                             onChange={(e) => setTaxForm(f => ({ ...f, amount: e.target.value }))}
                           />

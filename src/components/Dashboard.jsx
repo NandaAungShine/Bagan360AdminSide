@@ -1,32 +1,68 @@
 // components/Dashboard.jsx
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, AreaChart, Area
 } from 'recharts';
 import Header from './Header';
 
-// --------------------- API Base & Endpoints ---------------------
-const API_BASE = 'http://130.94.21.185:8000';
+/* ============================================================
+   AXIOS INSTANCES
+   ------------------------------------------------------------
+   api      → /api prefix (dev proxy, prod full URL) → booking endpoints
+   authApi  → backend root URL (no /api)            → /auth/... endpoints
+   ============================================================ */
+const BACKEND_ROOT = 'http://130.94.21.185:8000';
 
-// ⚠️ NOTE: Endpoints must match EXACTLY what the server expects.
-// The user provided URLs show that 'thonebane' and 'restaurant' need trailing slash.
+const api = axios.create({
+  baseURL: import.meta.env.DEV
+    ? '/api'
+    : 'http://130.94.21.185:8000/api',
+  timeout: 30000,
+  headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+});
+
+const authApi = axios.create({
+  baseURL: BACKEND_ROOT,
+  timeout: 30000,
+  headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+});
+
+const attachToken = (config) => {
+  const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+};
+api.interceptors.request.use(attachToken);
+authApi.interceptors.request.use(attachToken);
+
+/* ============================================================
+   ENDPOINTS
+   ------------------------------------------------------------
+   Booking list endpoints are under /api/admin/... (relative to
+   axios `api` baseURL that already contains /api).
+   ============================================================ */
 const SERVICE_BOOKING_ENDPOINTS = {
-  hotel: '/api/admin/hotel/booking/list',
-  destination: '/api/admin/destination/booking/list',
-  'e-bike': '/api/admin/e-bike/booking/list',
-  thonebane: '/api/admin/thonebane/booking/list/',
-  restaurant: '/api/admin/restaurant/booking/list/',
-  package: '/api/admin/package/booking/list',
+  hotel:        '/admin/hotel/booking/list',
+  destination:  '/admin/destination/booking/list',
+  'e-bike':     '/admin/e-bike/booking/list',
+  tricycle:     '/admin/tricycle/booking/list',
+  thonebane:    '/admin/thonebane/booking/list/',
+  restaurant:   '/admin/restaurant/booking/list/',
+  package:      '/admin/package/booking/list',
+  air_balloon:  '/admin/air_balloon/booking/list',
 };
 
 const ALL_SERVICES = Object.keys(SERVICE_BOOKING_ENDPOINTS);
 
-// --------------------- Shop Type Normalization ---------------------
-// localStorage could store "EBike", "E-Bike", "ebike", "e_bike", "ThoneBane",
-// "Thone Bane", "thonebane", etc. This normalizes all variants to the key
-// used in SERVICE_BOOKING_ENDPOINTS.
+/* ============================================================
+   SHOP TYPE NORMALIZATION
+   ------------------------------------------------------------
+   Handles: "airBalloon", "Air Balloon", "air-balloon",
+   "airballoon", "hotairballoon", "balloon", etc.
+   ============================================================ */
 const normalizeShopType = (rawType) => {
   if (!rawType) return 'hotel';
   const cleaned = String(rawType).toLowerCase().replace(/[\s_-]+/g, '');
@@ -45,16 +81,23 @@ const normalizeShopType = (rawType) => {
     thonebane: 'thonebane',
     thonebain: 'thonebane',
     thone: 'thonebane',
+    tricycle: 'tricycle',
+    tricycles: 'tricycle',
+    trishaw: 'tricycle',
+    airballoon: 'air_balloon',
+    airballoons: 'air_balloon',
+    hotairballoon: 'air_balloon',
+    hotairballoons: 'air_balloon',
+    balloon: 'air_balloon',
+    balloons: 'air_balloon',
   };
   if (aliases[cleaned]) return aliases[cleaned];
-  // Fallback: contains check (e.g., "thonebaneshop")
   for (const [alias, target] of Object.entries(aliases)) {
     if (cleaned.includes(alias)) return target;
   }
   return cleaned;
 };
 
-// Pretty display name for the shop badge
 const prettyShopName = (normalized) => {
   const map = {
     'hotel': 'Hotel',
@@ -63,13 +106,15 @@ const prettyShopName = (normalized) => {
     'package': 'Package',
     'e-bike': 'E-Bike',
     'thonebane': 'ThoneBane',
+    'tricycle': 'Tricycle',
+    'air_balloon': 'Air Balloon',
   };
   return map[normalized] || normalized;
 };
 
-// --------------------- Defensive Field Getters ---------------------
-// Different services may use different field names. These helpers keep the
-// metrics code from crashing when a field is missing.
+/* ============================================================
+   DEFENSIVE FIELD GETTERS
+   ============================================================ */
 const getAmount = (b) => {
   if (!b) return 0;
   const v = b.amount ?? b.total_price ?? b.totalPrice ?? b.price ?? b.total ?? b.cost ?? 0;
@@ -101,41 +146,38 @@ const getRating = (b) => {
   return isNaN(n) ? null : n;
 };
 
-// --------------------- Fetch Helper ---------------------
-const fetchWithAuth = async (url, options = {}) => {
-  const token = localStorage.getItem('token');
-  const response = await fetch(`${API_BASE}${url}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-      ...options.headers,
-    },
-  });
-  if (!response.ok) throw new Error(`API ${response.status} at ${url}`);
-  return response.json();
+/* ============================================================
+   LIST EXTRACTOR (handles all common backend shapes)
+   ============================================================ */
+const extractList = (data) => {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.results)) return data.results;
+  if (Array.isArray(data.data)) return data.data;
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.bookings)) return data.bookings;
+  if (data.data && Array.isArray(data.data.data)) return data.data.data;
+  return [];
 };
 
-// --------------------- Main Component ---------------------
+/* ============================================================
+   MAIN COMPONENT
+   ============================================================ */
 function Dashboard() {
   const navigate = useNavigate();
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    const savedTheme = localStorage.getItem('theme');
-    return savedTheme === 'dark';
-  });
+  const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
   const [timeRange, setTimeRange] = useState('weekly');
   const [userRole, setUserRole] = useState(null);
-  const [shopType, setShopType] = useState(null);        // normalized, e.g. 'e-bike'
+  const [shopType, setShopType] = useState(null);        // normalized
   const [shopTypeRaw, setShopTypeRaw] = useState(null);  // raw from localStorage
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // All fetched data
   const [allBookings, setAllBookings] = useState([]);
   const [users, setUsers] = useState([]);
   const [shops, setShops] = useState([]);
 
-  // --------------------- Authentication & Role ---------------------
+  /* -------- Auth / Role -------- */
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -153,88 +195,69 @@ function Dashboard() {
     setShopType(normalized);
   }, [navigate]);
 
-  // --------------------- Fetch All Data ---------------------
+  /* -------- Fetch All Data -------- */
   const fetchAllData = useCallback(async () => {
     if (!userRole) return;
     setLoading(true);
     setError(null);
 
     try {
-      // 1. Determine which booking endpoints to fetch
+      // 1. Resolve which booking endpoints to fetch
       let endpoints = [];
       if (userRole === 'admin') {
         endpoints = ALL_SERVICES.map((s) => ({ type: s, url: SERVICE_BOOKING_ENDPOINTS[s] }));
       } else {
         const url = SERVICE_BOOKING_ENDPOINTS[shopType];
         if (!url) {
-          throw new Error(
-            `Unknown shop type "${shopTypeRaw}" (normalized: "${shopType}"). ` +
-            `Please set localStorage 'shopType' to one of: ${ALL_SERVICES.join(', ')}`
-          );
+          // Unknown shop type → empty dashboard, no crash
+          console.warn(`[Dashboard] Unknown shop type "${shopTypeRaw}" (normalized: "${shopType}"). Showing empty dashboard.`);
+          setAllBookings([]);
+          setUsers([]);
+          setShops([]);
+          setLoading(false);
+          return;
         }
         endpoints = [{ type: shopType, url }];
       }
 
       console.log('[Dashboard] Fetching endpoints:', endpoints);
 
-      // 2. Fetch bookings
+      // 2. Fetch bookings (all endpoints in parallel)
       const bookingResults = await Promise.allSettled(
-        endpoints.map((ep) => fetchWithAuth(ep.url))
+        endpoints.map((ep) => api.get(ep.url).then((r) => r.data))
       );
 
       let combined = [];
       bookingResults.forEach((result, idx) => {
         const ep = endpoints[idx];
         if (result.status === 'fulfilled') {
-          const data = result.value;
-          let items = [];
-          if (Array.isArray(data)) items = data;
-          else if (data && Array.isArray(data.results)) items = data.results;
-          else if (data && Array.isArray(data.data)) items = data.data;
-          else if (data && Array.isArray(data.items)) items = data.items;
-          else {
-            console.warn(`[Dashboard] Unexpected response for ${ep.type}:`, data);
-          }
-          // Tag each booking with its service type (so we know where it came from)
-          items = items.map((it) => ({
+          const items = extractList(result.value).map((it) => ({
             ...it,
             __serviceType: ep.type,
           }));
           combined = combined.concat(items);
           console.log(`[Dashboard] ${ep.type} → ${items.length} bookings`);
         } else {
-          console.error(`[Dashboard] Failed to fetch ${ep.type}:`, result.reason);
+          console.warn(`[Dashboard] Failed to fetch ${ep.type}:`, result.reason?.message || result.reason);
         }
       });
       setAllBookings(combined);
 
-      // 3. Admin: also fetch users + shops
+      // 3. Admin also fetches users + shops (auth endpoints at backend root)
       if (userRole === 'admin') {
         const [usersRes, shopsRes] = await Promise.allSettled([
-          fetchWithAuth('/auth/user/list'),
-          fetchWithAuth('/auth/shop/list'),
+          authApi.get('/auth/user/list').then((r) => r.data),
+          authApi.get('/auth/shop/list').then((r) => r.data),
         ]);
-        if (usersRes.status === 'fulfilled') {
-          const d = usersRes.value;
-          setUsers(Array.isArray(d) ? d : d?.results || d?.data || []);
-        } else {
-          console.warn('[Dashboard] users fetch failed:', usersRes.reason);
-          setUsers([]);
-        }
-        if (shopsRes.status === 'fulfilled') {
-          const d = shopsRes.value;
-          setShops(Array.isArray(d) ? d : d?.results || d?.data || []);
-        } else {
-          console.warn('[Dashboard] shops fetch failed:', shopsRes.reason);
-          setShops([]);
-        }
+        setUsers(usersRes.status === 'fulfilled' ? extractList(usersRes.value) : []);
+        setShops(shopsRes.status === 'fulfilled' ? extractList(shopsRes.value) : []);
       } else {
         setUsers([]);
         setShops([]);
       }
     } catch (err) {
       console.error('[Dashboard] Fatal error:', err);
-      setError(err.message || 'Failed to load dashboard data');
+      setError(err?.response?.data?.message || err.message || 'Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
@@ -244,7 +267,7 @@ function Dashboard() {
     if (userRole) fetchAllData();
   }, [userRole, shopType, fetchAllData]);
 
-  // --------------------- Theme ---------------------
+  /* -------- Theme -------- */
   useEffect(() => {
     document.body.classList.toggle('dark-mode', isDarkMode);
     document.body.classList.toggle('light-mode', !isDarkMode);
@@ -252,37 +275,26 @@ function Dashboard() {
 
   const handleThemeChange = (isDark) => setIsDarkMode(isDark);
 
-  // ===================== DATA PROCESSING =====================
+  /* ===================== DATA PROCESSING ===================== */
 
-  // 1. Main Metrics
   const computeMetrics = useMemo(() => {
     const total = allBookings.length;
     const revenue = allBookings.reduce((sum, b) => sum + getAmount(b), 0);
     const ratings = allBookings.map(getRating).filter((r) => r != null);
-    const avgRating = ratings.length
-      ? ratings.reduce((a, b) => a + b, 0) / ratings.length
-      : 0;
+    const avgRating = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
 
     const counts = { approved: 0, cancelled: 0, rejected: 0, pending: 0, other: 0 };
     allBookings.forEach((b) => {
       const s = getStatus(b);
-      if (['approved', 'approve', 'confirmed', 'confirm', 'completed', 'complete', 'success', 'active', 'done'].includes(s)) {
-        counts.approved++;
-      } else if (['cancelled', 'cancel', 'canceled'].includes(s)) {
-        counts.cancelled++;
-      } else if (['rejected', 'reject', 'declined', 'denied'].includes(s)) {
-        counts.rejected++;
-      } else if (['pending', 'waiting', 'processing', 'new', 'in_progress'].includes(s)) {
-        counts.pending++;
-      } else {
-        counts.other++;
-      }
+      if (['approved', 'approve', 'confirmed', 'confirm', 'completed', 'complete', 'success', 'active', 'done'].includes(s)) counts.approved++;
+      else if (['cancelled', 'cancel', 'canceled'].includes(s)) counts.cancelled++;
+      else if (['rejected', 'reject', 'declined', 'denied'].includes(s)) counts.rejected++;
+      else if (['pending', 'waiting', 'processing', 'new', 'in_progress'].includes(s)) counts.pending++;
+      else counts.other++;
     });
-
     return { total, revenue, avgRating, ...counts, statusCounts: counts };
   }, [allBookings]);
 
-  // 2. Admin user metrics
   const adminUserMetrics = useMemo(() => {
     const activeUsers = users.length;
     const today = new Date().toISOString().split('T')[0];
@@ -315,7 +327,6 @@ function Dashboard() {
     return { activeUsers, todayActive, latestUsers };
   }, [users]);
 
-  // 3. User Growth data (Admin)
   const userGrowthData = useMemo(() => {
     const dateMap = {};
     users.forEach((u) => {
@@ -332,7 +343,6 @@ function Dashboard() {
       .map(([date, count]) => ({ date, users: count }));
   }, [users]);
 
-  // 4. Trend Data
   const trendData = useMemo(() => {
     if (!allBookings.length) return [];
     const groupKey = (date) => {
@@ -371,7 +381,6 @@ function Dashboard() {
       }));
   }, [allBookings, timeRange]);
 
-  // 5. Distribution
   const distributionData = useMemo(() => {
     if (userRole === 'admin') {
       const counts = {};
@@ -385,7 +394,6 @@ function Dashboard() {
         value: Math.round((value / total) * 100),
       }));
     } else {
-      // Shop: distribution by status
       const { statusCounts } = computeMetrics;
       const total = allBookings.length || 1;
       return Object.entries(statusCounts)
@@ -397,7 +405,6 @@ function Dashboard() {
     }
   }, [allBookings, userRole, computeMetrics]);
 
-  // 6. Status data (pie chart)
   const statusData = useMemo(() => {
     const { statusCounts } = computeMetrics;
     return Object.entries(statusCounts)
@@ -413,7 +420,6 @@ function Dashboard() {
       }));
   }, [computeMetrics]);
 
-  // 7. Recent bookings
   const recentBookings = useMemo(() => {
     return [...allBookings]
       .sort((a, b) => {
@@ -433,7 +439,6 @@ function Dashboard() {
       }));
   }, [allBookings, userRole, shopType]);
 
-  // 8. Top agencies (Admin)
   const topAgencies = useMemo(() => {
     if (userRole !== 'admin') return [];
     const counts = {};
@@ -458,7 +463,6 @@ function Dashboard() {
       .map((item, idx) => ({ ...item, rank: idx + 1 }));
   }, [allBookings, userRole]);
 
-  // 9. Quick insights
   const insights = useMemo(() => {
     const { total, revenue, avgRating, approved, cancelled, pending } = computeMetrics;
     const conversion = total ? Math.round((approved / total) * 100) : 0;
@@ -473,7 +477,6 @@ function Dashboard() {
     ];
   }, [computeMetrics]);
 
-  // 10. Customer Reviews (Dummy - Replace with real API)
   const customerReviews = [
     { id: 1, name: 'John Doe', rating: 5, review: 'Excellent service!', date: '2 days ago', avatar: 'JD' },
     { id: 2, name: 'Jane Smith', rating: 4, review: 'Great experience.', date: '3 days ago', avatar: 'JS' },
@@ -481,7 +484,7 @@ function Dashboard() {
     { id: 4, name: 'Sarah Williams', rating: 4, review: 'Good service, quick response.', date: '1 week ago', avatar: 'SW' },
   ];
 
-  // ===================== RENDER HELPERS =====================
+  /* ===================== RENDER HELPERS ===================== */
   const renderStars = (rating) =>
     Array(5).fill().map((_, i) => (
       <i key={i} className={`bi bi-star${i < rating ? '-fill' : ''}`}
@@ -492,13 +495,17 @@ function Dashboard() {
     const map = {
       hotel: '#ff8a00', destination: '#10b981', 'e-bike': '#3b82f6',
       thonebane: '#8b5cf6', restaurant: '#ec4899', package: '#f59e0b',
+      tricycle: '#14b8a6', air_balloon: '#f43f5e',
       approved: '#10b981', cancelled: '#ef4444', rejected: '#f59e0b',
       pending: '#3b82f6', other: '#94a3b8',
     };
     return map[String(name || '').toLowerCase()] || '#94a3b8';
   };
 
-  // --------------------- Loading / Error ---------------------
+  const isUnknownShopType =
+    userRole === 'shop' && !!shopType && !SERVICE_BOOKING_ENDPOINTS[shopType];
+
+  /* --------------------- Loading / Error --------------------- */
   if (loading) {
     return (
       <div className="dashboard-loading" style={{ padding: '60px', textAlign: 'center', fontSize: '16px' }}>
@@ -515,7 +522,7 @@ function Dashboard() {
         <strong style={{ fontSize: '18px' }}>Dashboard Error</strong>
         <p style={{ marginTop: '12px', color: '#64748b', maxWidth: '600px', margin: '12px auto' }}>{error}</p>
         <button
-          onClick={() => window.location.reload()}
+          onClick={() => fetchAllData()}
           style={{ marginTop: '16px', padding: '10px 24px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}
         >
           Retry
@@ -524,9 +531,9 @@ function Dashboard() {
     );
   }
 
-  // ============================================================
-  // ===================== RENDER (ADMIN) =====================
-  // ============================================================
+  /* ============================================================
+     RENDER (ADMIN)
+     ============================================================ */
   if (userRole === 'admin') {
     const adminMetrics = [
       { title: 'Total Bookings', value: computeMetrics.total, icon: 'bi-calendar-check-fill', color: '#3b82f6' },
@@ -557,7 +564,6 @@ function Dashboard() {
           </span>
         </div>
 
-        {/* Time Range Selector */}
         <div className="time-range-selector">
           <button className={`time-btn ${timeRange === 'daily' ? 'active' : ''}`} onClick={() => setTimeRange('daily')}><i className="bi bi-calendar-day"></i> Daily</button>
           <button className={`time-btn ${timeRange === 'weekly' ? 'active' : ''}`} onClick={() => setTimeRange('weekly')}><i className="bi bi-calendar-week"></i> Weekly</button>
@@ -565,7 +571,6 @@ function Dashboard() {
           <button className={`time-btn ${timeRange === 'yearly' ? 'active' : ''}`} onClick={() => setTimeRange('yearly')}><i className="bi bi-calendar-year"></i> Yearly</button>
         </div>
 
-        {/* Metrics */}
         <div className="important-metrics-grid">
           {adminMetrics.map((metric, index) => (
             <div key={index} className="metric-card">
@@ -581,7 +586,6 @@ function Dashboard() {
           ))}
         </div>
 
-        {/* 3 Charts */}
         <div className="charts-grid-three">
           {/* Trend */}
           <div className="chart-card">
@@ -665,7 +669,6 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* Row 2: Today Active Users + Reviews */}
         <div className="charts-grid-two">
           <div className="chart-card">
             <div className="chart-header"><h3><i className="bi bi-person-activity"></i> Today's Active Users</h3></div>
@@ -702,7 +705,6 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* Row 3: Booking Status + Recent Bookings */}
         <div className="charts-grid-two" style={{ marginBottom: '28px' }}>
           <div className="chart-card">
             <div className="chart-header"><h3><i className="bi bi-pie-chart"></i> Booking Status</h3></div>
@@ -759,7 +761,6 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* Row 4: Top Agencies + Quick Insights */}
         <div className="charts-grid-two">
           <div className="chart-card">
             <div className="chart-header"><h3><i className="bi bi-trophy"></i> Top Agencies</h3><a href="#" className="view-all">View All</a></div>
@@ -810,9 +811,9 @@ function Dashboard() {
     );
   }
 
-  // ============================================================
-  // ===================== RENDER (SHOP) =====================
-  // ============================================================
+  /* ============================================================
+     RENDER (SHOP)
+     ============================================================ */
   const shopMetrics = [
     { title: 'Total Bookings', value: computeMetrics.total, icon: 'bi-calendar-check-fill', color: '#3b82f6' },
     { title: 'Total Revenue', value: `$${computeMetrics.revenue.toLocaleString()}`, icon: 'bi-currency-dollar', color: '#10b981' },
@@ -826,13 +827,45 @@ function Dashboard() {
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Dashboard" onThemeChange={handleThemeChange} />
 
-      <div style={{ padding: '0 28px', marginBottom: '12px', fontSize: '14px', fontWeight: '500' }}>
+      <div style={{ padding: '0 28px', marginBottom: '12px', fontSize: '14px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ background: '#10b981', color: '#fff', padding: '4px 14px', borderRadius: '20px' }}>
           🏪 Shop ({prettyShopName(shopType)})
         </span>
+        <button
+          onClick={() => fetchAllData()}
+          style={{
+            background: 'transparent', border: `1px solid ${isDarkMode ? '#555' : '#ddd'}`,
+            color: isDarkMode ? '#eee' : '#333', padding: '4px 12px', borderRadius: 6,
+            cursor: 'pointer', fontSize: 12,
+          }}
+        >
+          <i className="bi bi-arrow-clockwise"></i> Refresh
+        </button>
       </div>
 
-      {/* Time Range Selector */}
+      {/* Unknown shop type banner */}
+      {isUnknownShopType && (
+        <div style={{
+          margin: '0 28px 16px',
+          padding: '12px 18px',
+          background: isDarkMode ? 'rgba(245,158,11,0.15)' : '#fff3cd',
+          color: isDarkMode ? '#fbbf24' : '#856404',
+          border: `1px solid ${isDarkMode ? 'rgba(245,158,11,0.4)' : '#ffe69c'}`,
+          borderRadius: 8,
+          fontSize: 13,
+          display: 'flex', alignItems: 'flex-start', gap: 10,
+        }}>
+          <i className="bi bi-info-circle-fill" style={{ fontSize: 18, marginTop: 1 }}></i>
+          <div>
+            <strong>Shop type "{shopTypeRaw}" is not yet configured.</strong><br />
+            <span style={{ fontSize: 12 }}>
+              Supported types: {ALL_SERVICES.map(s => prettyShopName(s)).join(', ')}. 
+              Contact admin to enable data for this shop category.
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="time-range-selector">
         <button className={`time-btn ${timeRange === 'daily' ? 'active' : ''}`} onClick={() => setTimeRange('daily')}><i className="bi bi-calendar-day"></i> Daily</button>
         <button className={`time-btn ${timeRange === 'weekly' ? 'active' : ''}`} onClick={() => setTimeRange('weekly')}><i className="bi bi-calendar-week"></i> Weekly</button>
@@ -840,7 +873,6 @@ function Dashboard() {
         <button className={`time-btn ${timeRange === 'yearly' ? 'active' : ''}`} onClick={() => setTimeRange('yearly')}><i className="bi bi-calendar-year"></i> Yearly</button>
       </div>
 
-      {/* Shop Metrics */}
       <div className="important-metrics-grid">
         {shopMetrics.map((metric, index) => (
           <div key={index} className="metric-card">
@@ -855,7 +887,6 @@ function Dashboard() {
         ))}
       </div>
 
-      {/* Row 1: Trend + Distribution */}
       <div className="charts-grid-two" style={{ marginBottom: '28px' }}>
         <div className="chart-card">
           <div className="chart-header">
@@ -917,7 +948,6 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* Row 2: Booking Status + Recent Bookings */}
       <div className="charts-grid-two" style={{ marginBottom: '28px' }}>
         <div className="chart-card">
           <div className="chart-header"><h3><i className="bi bi-pie-chart"></i> Booking Status</h3></div>
@@ -978,7 +1008,6 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* Row 3: Reviews + Insights */}
       <div className="charts-grid-two">
         <div className="chart-card">
           <div className="chart-header"><h3><i className="bi bi-chat-dots"></i> Customer Reviews</h3><a href="#" className="view-all">View All</a></div>

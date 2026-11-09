@@ -1,30 +1,33 @@
 import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
 import Header from './Header';
 
-// ====== API CONFIG ======
-const API_BASE = 'http://130.94.21.185:8000/api/admin/slider';
-const IMAGE_BASE = 'http://130.94.21.185:8000/';
+// ====== API CONFIG (DEV vs PRODUCTION/ELECTRON) ======
+const api = axios.create({
+  baseURL: import.meta.env.DEV
+    ? '/api'
+    : 'http://130.94.21.185:8000/api',
+  timeout: 30000,
+  headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+});
 
-// ⭐ Token ကို localStorage ကနေ ယူ (သင့် login က သိမ်းတဲ့ key အတိုင်း)
-const getToken = () =>
-  localStorage.getItem('token') ||
-  localStorage.getItem('authToken') ||
-  localStorage.getItem('access_token') ||
-  localStorage.getItem('auth_token') ||
-  '';
-
-// ⭐ Auth header ပါတဲ့ fetch helper
-const authFetch = (url, options = {}) => {
-  const token = getToken();
-  const headers = {
-    Accept: 'application/json',
-    ...(options.headers || {}),
-  };
+// ⭐ Axios Interceptor ဖြင့် Token ကို အလိုအလျောက် ထည့်သွင်းခြင်း
+api.interceptors.request.use((config) => {
+  const token =
+    localStorage.getItem('token') ||
+    localStorage.getItem('authToken') ||
+    localStorage.getItem('access_token') ||
+    localStorage.getItem('auth_token') ||
+    '';
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    config.headers.Authorization = `Bearer ${token}`;
   }
-  return fetch(url, { ...options, headers });
-};
+  return config;
+});
+
+const API_BASE = '/admin/slider';
+// Images are served directly from backend root, not through /api proxy
+const IMAGE_BASE = 'http://130.94.21.185:8000/';
 
 function Banner() {
   // ===== THEME =====
@@ -45,6 +48,7 @@ function Banner() {
     title: '',
     link: '',
     status: 'Active',
+    timer: 10, // Default Timer (Seconds)
   });
 
   // ===== EDIT MODAL =====
@@ -107,6 +111,7 @@ function Banner() {
     link: item.link || '',
     imagePath: item.image,
     imageUrl: buildImageUrl(item.image),
+    timer: item.timer !== undefined && item.timer !== null ? item.timer : 10, // New field mapping
     status:
       item.is_active === 1 ||
       item.is_active === true ||
@@ -120,14 +125,8 @@ function Banner() {
   const fetchBanners = async () => {
     setLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/list`);
-      const json = await res.json();
-
-      if (res.status === 401) {
-        showToast('error', 'Unauthorized. Please login again.');
-        return;
-      }
-
+      const { data: json } = await api.get(`${API_BASE}/list`);
+      
       if (json.success && Array.isArray(json.data)) {
         setBanners(json.data.map(mapApiToBanner));
       } else {
@@ -135,7 +134,11 @@ function Banner() {
       }
     } catch (err) {
       console.error(err);
-      showToast('error', 'Network error while loading banners.');
+      if (err.response?.status === 401) {
+        showToast('error', 'Unauthorized. Please login again.');
+      } else {
+        showToast('error', 'Network error while loading banners.');
+      }
     } finally {
       setLoading(false);
     }
@@ -194,7 +197,7 @@ function Banner() {
   };
 
   const resetForm = () => {
-    setFormData({ title: '', link: '', status: 'Active' });
+    setFormData({ title: '', link: '', status: 'Active', timer: 10 });
     setImagePreviews([]);
     setImageFiles([]);
   };
@@ -216,18 +219,12 @@ function Banner() {
       fd.append('title', formData.title.trim());
       fd.append('link', formData.link.trim());
       fd.append('is_active', formData.status === 'Active' ? '1' : '0');
+      fd.append('timer', formData.timer || 10); // Add Timer
       fd.append('image', imageFiles[0]);
 
-      const res = await authFetch(`${API_BASE}/create`, {
-        method: 'POST',
-        body: fd,
+      const { data: json } = await api.post(`${API_BASE}/create`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
-      const json = await res.json();
-
-      if (res.status === 401) {
-        showToast('error', 'Unauthorized. Please login again.');
-        return;
-      }
 
       if (json.success) {
         showToast('success', json.message || 'Banner added successfully!');
@@ -238,7 +235,11 @@ function Banner() {
       }
     } catch (err) {
       console.error(err);
-      showToast('error', 'Network error while adding banner.');
+      if (err.response?.status === 401) {
+        showToast('error', 'Unauthorized. Please login again.');
+      } else {
+        showToast('error', 'Network error while adding banner.');
+      }
     } finally {
       setLoading(false);
     }
@@ -248,15 +249,7 @@ function Banner() {
   const performDeleteBanner = async (id) => {
     setLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/delete/${id}`, {
-        method: 'DELETE',
-      });
-      const json = await res.json();
-
-      if (res.status === 401) {
-        showToast('error', 'Unauthorized. Please login again.');
-        return;
-      }
+      const { data: json } = await api.delete(`${API_BASE}/delete/${id}`);
 
       if (json.success) {
         showToast('success', json.message || 'Banner deleted successfully!');
@@ -267,7 +260,11 @@ function Banner() {
       }
     } catch (err) {
       console.error(err);
-      showToast('error', 'Network error while deleting banner.');
+      if (err.response?.status === 401) {
+        showToast('error', 'Unauthorized. Please login again.');
+      } else {
+        showToast('error', 'Network error while deleting banner.');
+      }
     } finally {
       setLoading(false);
     }
@@ -288,19 +285,9 @@ function Banner() {
     const newStatus = banner.status === 'Active' ? 'Inactive' : 'Active';
     setLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/status/${banner.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          is_active: newStatus === 'Active' ? 1 : 0,
-        }),
+      const { data: json } = await api.put(`${API_BASE}/status/${banner.id}`, {
+        is_active: newStatus === 'Active' ? 1 : 0,
       });
-      const json = await res.json();
-
-      if (res.status === 401) {
-        showToast('error', 'Unauthorized. Please login again.');
-        return;
-      }
 
       if (json.success) {
         showToast('success', json.message || `Status changed to ${newStatus}`);
@@ -310,7 +297,11 @@ function Banner() {
       }
     } catch (err) {
       console.error(err);
-      showToast('error', 'Network error while changing status.');
+      if (err.response?.status === 401) {
+        showToast('error', 'Unauthorized. Please login again.');
+      } else {
+        showToast('error', 'Network error while changing status.');
+      }
     } finally {
       setLoading(false);
     }
@@ -323,6 +314,7 @@ function Banner() {
       title: banner.title || '',
       link: banner.link || '',
       status: banner.status || 'Active',
+      timer: banner.timer !== undefined && banner.timer !== null ? banner.timer : 10, // Load Timer
     });
     setImagePreviews([banner.imageUrl]);
     setImageFiles([]);
@@ -339,25 +331,20 @@ function Banner() {
       fd.append('title', formData.title.trim());
       fd.append('link', formData.link.trim());
       fd.append('is_active', formData.status === 'Active' ? '1' : '0');
+      fd.append('timer', formData.timer || 10); // Update Timer
       if (imageFiles.length > 0) {
         fd.append('image', imageFiles[0]);
       }
       // ⭐ Laravel method spoofing (PUT လိုအပ်ရင်)
       fd.append('_method', 'PUT');
 
-      const res = await authFetch(
+      const { data: json } = await api.post(
         `${API_BASE}/update/${selectedBannerForEdit.id}`,
+        fd,
         {
-          method: 'POST', // FormData နဲ့ method spoofing
-          body: fd,
+          headers: { 'Content-Type': 'multipart/form-data' },
         }
       );
-      const json = await res.json();
-
-      if (res.status === 401) {
-        showToast('error', 'Unauthorized. Please login again.');
-        return;
-      }
 
       if (json.success) {
         showToast('success', json.message || 'Banner updated successfully!');
@@ -370,7 +357,11 @@ function Banner() {
       }
     } catch (err) {
       console.error(err);
-      showToast('error', 'Network error while updating banner.');
+      if (err.response?.status === 401) {
+        showToast('error', 'Unauthorized. Please login again.');
+      } else {
+        showToast('error', 'Network error while updating banner.');
+      }
     } finally {
       setLoading(false);
     }
@@ -1011,6 +1002,19 @@ function Banner() {
                 />
               </div>
 
+              {/* Timer Field */}
+              <div className="add-form-group">
+                <label>Timer (Seconds) *</label>
+                <input
+                  type="number"
+                  name="timer"
+                  min="1"
+                  placeholder="e.g. 10"
+                  value={formData.timer}
+                  onChange={handleInputChange}
+                />
+              </div>
+
               <div className="add-form-group">
                 <label>Status</label>
                 <select
@@ -1083,7 +1087,7 @@ function Banner() {
                         position: 'relative',
                         minHeight: '150px',
                         background: isDarkMode ? '#2d2d2d' : '#f8f9fa',
-                         height: '200px',
+                        height: '200px',
                       }}
                     >
                       <img
@@ -1116,6 +1120,28 @@ function Banner() {
                       >
                         {banner.status}
                       </div>
+                      
+                      {/* Timer Badge on Image */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          bottom: '10px',
+                          left: '10px',
+                          padding: '4px 10px',
+                          borderRadius: '20px',
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          backgroundColor: 'rgba(0,0,0,0.6)',
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          backdropFilter: 'blur(4px)',
+                        }}
+                      >
+                        <i className="bi bi-stopwatch"></i> {banner.timer}s
+                      </div>
+
                       {/* Selection Check */}
                       <div className="selection-check">
                         {selectedBannerId === banner.id && (
@@ -1243,6 +1269,19 @@ function Banner() {
                   onChange={handleInputChange}
                 />
               </div>
+
+              {/* Timer Field */}
+              <div className="form-group">
+                <label>Timer (Seconds) *</label>
+                <input
+                  type="number"
+                  name="timer"
+                  min="1"
+                  value={formData.timer}
+                  onChange={handleInputChange}
+                />
+              </div>
+
               <div className="form-group">
                 <label>Status</label>
                 <select

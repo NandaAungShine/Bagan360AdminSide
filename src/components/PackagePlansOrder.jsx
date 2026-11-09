@@ -204,8 +204,12 @@ function PackagePlansOrder() {
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
-  // ===== 3. API CONFIG =====
-  const API_BOOKING_BASE = 'http://130.94.21.185:8000/api/admin/package/booking';
+  // ===== 3. API CONFIG (DEV vs PRODUCTION/ELECTRON) =====
+  const API_ROOT = import.meta.env.DEV
+    ? '/api'
+    : 'http://130.94.21.185:8000/api';
+  const API_BOOKING_BASE = `${API_ROOT}/admin/package/booking`;
+  // Images are served directly from backend (not proxied), so keep full URL in both modes
   const BACKEND_URL = 'http://130.94.21.185:8000';
   const getToken = () => localStorage.getItem('token');
 

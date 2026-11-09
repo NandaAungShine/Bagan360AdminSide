@@ -220,8 +220,14 @@ function PackagePlan() {
   const [totalPages, setTotalPages] = useState(1);
   const dataRef = useRef([]);
 
-  const API_BASE = 'http://130.94.21.185:8000/api/admin/package';
+  // ==================== API BASE URL (DEV vs PRODUCTION/ELECTRON) ====================
+  const API_ROOT = import.meta.env.DEV
+    ? '/api'
+    : 'http://130.94.21.185:8000/api';
+  const API_BASE = `${API_ROOT}/admin/package`;
+  // Images are served directly from backend (not proxied), so keep full URL in both modes
   const BACKEND_URL = 'http://130.94.21.185:8000';
+
   const getToken = () => localStorage.getItem('token');
 
   // ==================== FETCH PACKAGES (MAPPED TO UI STRUCTURE) ====================
@@ -458,10 +464,6 @@ function PackagePlan() {
       showToast('warning', 'Please enter a package title.');
       return;
     }
-    // Validate that each category has at least one item with a title (or we can skip validation)
-    // We'll just check if the first item has a title? Actually we send empty strings if not,
-    // so we can skip validation for categories.
-    // But we'll keep a light check: if the user added multiple items, we only use the first.
 
     const token = getToken();
     if (!token) {

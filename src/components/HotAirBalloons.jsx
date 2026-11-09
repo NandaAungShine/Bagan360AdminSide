@@ -1,242 +1,161 @@
 import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
 import Header from './Header';
 
-function HotAirBalloons() {
-  // ===== THEME =====
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    const savedTheme = localStorage.getItem('theme');
-    return savedTheme === 'dark';
-  });
+/* ============================================================
+   AXIOS INSTANCE
+   ============================================================ */
+const api = axios.create({
+  baseURL: import.meta.env.DEV
+    ? '/api'
+    : 'http://130.94.21.185:8000/api',
+  timeout: 30000,
+  headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+});
 
-  // ===== STATE =====
-  const [balloons, setBalloons] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState('lifo');
-  const [showSortDropdown, setShowSortDropdown] = useState(false);
+// Attach bearer token automatically
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
 
-  // ===== FORM STATE =====
-  const [formData, setFormData] = useState({
-    duration: '',
-    priceMmkMin: '',
-    priceMmkMax: '',
-    priceUsdMin: '',
-    priceUsdMax: '',
-    minPeople: '',
-    discount: '',
-    rules: '',
-    flightTimes: ''
-  });
+/* ============================================================
+   ENDPOINT PATHS
+   ============================================================ */
+const ADMIN_AIR_API = '/admin/air_balloon';       // POST /create, GET /list, PUT /update/:id, DELETE /delete/:id
+const SHOP_AIR_API  = '/air_balloon/shop';        // GET /list, GET /details/:id
 
-  // ===== PHONE NUMBERS (dynamic list) =====
-  const phoneIdCounter = useRef(1);
-  const [phoneNumbers, setPhoneNumbers] = useState([{ id: phoneIdCounter.current++, value: '' }]);
+const BACKEND_URL = 'http://130.94.21.185:8000';
 
-  // ===== EDIT MODAL =====
-  const [selectedForEdit, setSelectedForEdit] = useState(null);
-  const [showEditModal, setShowEditModal] = useState(false);
+/* ============================================================
+   HELPERS
+   ============================================================ */
+const MAX_IMAGES = 3;
 
-  // ===== IMAGE STATE =====
-  const [imagePreviews, setImagePreviews] = useState([]);
-  const MAX_IMAGES = 3;
+const buildImageUrl = (img) => {
+  if (!img || typeof img !== 'string') return null;
+  if (img.startsWith('http') || img.startsWith('data:') || img.startsWith('blob:')) return img;
+  return `${BACKEND_URL}/${img.replace(/^\/+/, '')}`;
+};
 
-  // ===== SELECTION STATE =====
-  const [selectedId, setSelectedId] = useState(null);
-  const [showAllDropdown, setShowAllDropdown] = useState(false);
-  const [activeDropdown, setActiveDropdown] = useState(null);
-  const dropdownRef = useRef(null);
+const isActiveItem = (item) => {
+  const v = item?.isActive;
+  return v === 1 || v === true || v === '1';
+};
 
-  // ===== TOAST & CONFIRM =====
-  const [toast, setToast] = useState({ visible: false, type: 'success', message: '' });
-  const toastTimeoutRef = useRef(null);
-  const [confirmDialog, setConfirmDialog] = useState({
-    visible: false,
-    message: '',
-    onConfirm: null,
-  });
+const extractList = (resp) => {
+  if (!resp) return [];
+  if (Array.isArray(resp)) return resp;
+  if (Array.isArray(resp.data)) return resp.data;
+  if (Array.isArray(resp.list)) return resp.list;
+  if (Array.isArray(resp.items)) return resp.items;
+  if (Array.isArray(resp.balloons)) return resp.balloons;
+  if (resp.data && Array.isArray(resp.data.data)) return resp.data.data;
+  return [];
+};
 
-  const showToast = (type, message) => {
-    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-    setToast({ visible: true, type, message });
-    toastTimeoutRef.current = setTimeout(() => {
-      setToast((prev) => ({ ...prev, visible: false }));
-      toastTimeoutRef.current = null;
-    }, 3000);
+// Normalize according to Postman Response
+const normalizeAirBalloon = (b) => {
+  if (!b) return null;
+  const id = b.id ?? b.balloon_id ?? b.air_balloon_id;
+
+  // Extract 3 specific image fields
+  const rawImgs = [b.airballon_image1, b.airballon_image2, b.airballon_image3].filter(Boolean);
+  const images = rawImgs.map(buildImageUrl);
+
+  return {
+    id,
+    shopId: b.shop_id ?? b.shopId ?? null,
+    // Map name from API to duration, or if backend has duration field, use it
+    duration: b.duration ?? b.name ?? '', 
+    priceFrom: b.price_from ?? '',
+    priceTo: b.price_to ?? '',
+    dollorFrom: b.dollor_from ?? '',
+    dollorTo: b.dollor_to ?? '',
+    guest: b.guest ?? '',
+    description: b.description ?? '',
+    rule: b.rule ?? b.rules ?? '',
+    phone1: b.phone1 ?? '',
+    phone2: b.phone2 ?? '',
+    images: images,
+    rawImages: rawImgs, // Keep relative paths for updates
+    location: b.location || '',
+    status: b.status || 'available',
+    isActive: b.is_active ?? b.isActive ?? 1,
+    shopName: b.shop_name ?? '',
+    shopAddress: b.shop_address ?? '',
+    shopPhone: b.shop_phone ?? '',
+    created_at: b.created_at ? new Date(b.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+    raw: b,
   };
+};
 
-  // ===== SAMPLE DATA =====
-  const sampleData = [
-    {
-      id: 1,
-      name: 'Balloons Over Bagan',
-      company: 'Balloons Over Bagan',
-      capacity: '8-12 persons',
-      duration: '45-60 minutes',
-      price: '380000',
-      priceMmkMin: '350000',
-      priceMmkMax: '420000',
-      priceUsdMin: '165',
-      priceUsdMax: '200',
-      minPeople: '4',
-      rating: 4.9,
-      reviews: '2.5K',
-      images: [],
-      description: 'Experience the breathtaking sunrise over thousands of ancient temples in Bagan',
-      rules: 'No pregnant women. No children under 6 years. No persons with heart conditions. Follow pilot instructions at all times.',
-      flightTimes: '5:30 AM - 7:30 AM (Sunrise Flight)',
-      season: 'October - April',
-      location: 'Old Bagan',
-      includes: 'Hotel transfer, breakfast, souvenir certificate',
-      phoneNumbers: ['+95 9 123 456 789', '+95 9 987 654 321'],
-      created_at: '2024-03-20'
-    },
-    {
-      id: 2,
-      name: 'Oriental Ballooning',
-      company: 'Oriental Ballooning',
-      capacity: '6-10 persons',
-      duration: '60 minutes',
-      price: '420000',
-      priceMmkMin: '400000',
-      priceMmkMax: '450000',
-      priceUsdMin: '190',
-      priceUsdMax: '215',
-      minPeople: '4',
-      rating: 4.9,
-      reviews: '1.8K',
-      images: [],
-      description: 'Luxury hot air balloon experience with champagne breakfast',
-      rules: 'Minimum age 8 years. Weight limit 120kg per person. No smoking on board.',
-      flightTimes: '5:30 AM - 7:00 AM',
-      season: 'October - April',
-      location: 'New Bagan',
-      includes: 'Champagne breakfast, flight certificate, photos',
-      phoneNumbers: ['+95 9 234 567 890'],
-      created_at: '2024-03-18'
-    },
-    {
-      id: 3,
-      name: 'Golden Eagle Ballooning',
-      company: 'Golden Eagle',
-      capacity: '8-12 persons',
-      duration: '50 minutes',
-      price: '350000',
-      priceMmkMin: '320000',
-      priceMmkMax: '380000',
-      priceUsdMin: '150',
-      priceUsdMax: '180',
-      minPeople: '6',
-      rating: 4.8,
-      reviews: '1.2K',
-      images: [],
-      description: 'Spectacular views of Bagan archaeological zone at sunrise',
-      rules: 'Not suitable for children under 6. Pregnant women not allowed.',
-      flightTimes: '5:45 AM - 7:15 AM',
-      season: 'November - March',
-      location: 'Nyaung U',
-      includes: 'Hotel pickup, light breakfast, flight certificate',
-      phoneNumbers: ['+95 9 345 678 901'],
-      created_at: '2024-03-15'
-    },
-    {
-      id: 4,
-      name: 'Sunrise Balloon Tours',
-      company: 'Sunrise Balloons',
-      capacity: '6-8 persons',
-      duration: '55 minutes',
-      price: '395000',
-      priceMmkMin: '370000',
-      priceMmkMax: '420000',
-      priceUsdMin: '175',
-      priceUsdMax: '200',
-      minPeople: '4',
-      rating: 4.7,
-      reviews: '980',
-      images: [],
-      description: 'Intimate ballooning experience with small groups',
-      rules: 'Age 6+ only. Follow all safety instructions.',
-      flightTimes: '5:30 AM - 7:00 AM',
-      season: 'October - April',
-      location: 'Old Bagan',
-      includes: 'Morning tea, snacks, digital photos',
-      phoneNumbers: ['+95 9 456 789 012'],
-      created_at: '2024-03-25'
-    },
-    {
-      id: 5,
-      name: 'Bagan Balloon Express',
-      company: 'Bagan Express',
-      capacity: '10-14 persons',
-      duration: '45 minutes',
-      price: '320000',
-      priceMmkMin: '300000',
-      priceMmkMax: '340000',
-      priceUsdMin: '140',
-      priceUsdMax: '160',
-      minPeople: '8',
-      rating: 4.6,
-      reviews: '750',
-      images: [],
-      description: 'Affordable hot air balloon ride with great views',
-      rules: 'Children under 6 not permitted. No heart conditions.',
-      flightTimes: '6:00 AM - 7:30 AM',
-      season: 'December - March',
-      location: 'New Bagan',
-      includes: 'Basic breakfast, hotel transfer',
-      phoneNumbers: ['+95 9 567 890 123'],
-      created_at: '2024-03-22'
-    },
-    {
-      id: 6,
-      name: 'Premium Balloon Experience',
-      company: 'Bagan Luxury Tours',
-      capacity: '4-6 persons',
-      duration: '75 minutes',
-      price: '550000',
-      priceMmkMin: '520000',
-      priceMmkMax: '580000',
-      priceUsdMin: '240',
-      priceUsdMax: '270',
-      minPeople: '2',
-      rating: 5.0,
-      reviews: '520',
-      images: [],
-      description: 'Exclusive premium experience with extended flight time',
-      rules: 'Premium safety briefing required. ID verification mandatory.',
-      flightTimes: '5:30 AM - 7:45 AM',
-      season: 'October - April',
-      location: 'Old Bagan',
-      includes: 'Gourmet breakfast, premium drinks, professional photos, souvenir video',
-      phoneNumbers: ['+95 9 678 901 234', '+95 9 789 012 345'],
-      created_at: '2024-03-28'
-    }
-  ];
+// Build multipart FormData payload
+const buildFormData = (data, imageItems, isUpdate = false) => {
+  const fd = new FormData();
+  // Duration ကို name နဲ့ duration နှစ်ခုလုံးအနေနဲ့ ပို့ပေးမယ် (Backend က name ကို လိုအပ်နေရင် Error မတက်အောင်)
+  fd.append('name', data.duration || '');
+  fd.append('duration', data.duration || ''); 
+  
+  fd.append('price_from', data.priceFrom || '');
+  fd.append('price_to', data.priceTo || '');
+  fd.append('dollor_from', data.dollorFrom || '');
+  fd.append('dollor_to', data.dollorTo || '');
+  fd.append('guest', data.guest || '');
+  fd.append('description', data.description || '');
+  fd.append('rule', data.rule || '');
+  fd.append('phone1', data.phone1 || '');
+  fd.append('phone2', data.phone2 || '');
+  fd.append('location', data.location || '');
+  fd.append('status', data.status || 'available');
+  fd.append('is_active', data.isActive ? 1 : 0);
 
-  // ===== LOAD & SAVE =====
-  useEffect(() => {
-    const stored = localStorage.getItem('hotAirBalloonsData');
-    if (stored) {
-      try { setBalloons(JSON.parse(stored)); }
-      catch { setBalloons(sampleData); }
-    } else {
-      setBalloons(sampleData);
+  // Map images exactly to airballon_image1, airballon_image2, airballon_image3
+  let imgCount = 1;
+  imageItems.forEach(item => {
+    if (imgCount > 3) return;
+    if (item.file) {
+      fd.append(`airballon_image${imgCount}`, item.file, item.file.name);
+    } else if (item.isExisting) {
+      // Extract path from full URL
+      const relPath = item.url.replace(BACKEND_URL + '/', '');
+      fd.append(`airballon_image${imgCount}`, relPath);
     }
-  }, []);
+    imgCount++;
+  });
+
+  return fd;
+};
+
+const initialFormFields = () => ({
+  duration: '',
+  priceFrom: '',
+  priceTo: '',
+  dollorFrom: '',
+  dollorTo: '',
+  guest: '',
+  description: '',
+  rule: '',
+  phone1: '',
+  phone2: '',
+  location: '',
+  status: 'available',
+  isActive: true,
+});
+
+/* ============================================================
+   COMPONENT
+   ============================================================ */
+function HotAirBalloons() {
+  /* -------- THEME -------- */
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    return localStorage.getItem('theme') === 'dark';
+  });
 
   useEffect(() => {
-    if (balloons.length > 0) {
-      localStorage.setItem('hotAirBalloonsData', JSON.stringify(balloons));
-    }
-  }, [balloons]);
-
-  useEffect(() => {
-    if (isDarkMode) {
-      document.body.classList.add('dark-mode');
-      document.body.classList.remove('light-mode');
-    } else {
-      document.body.classList.add('light-mode');
-      document.body.classList.remove('dark-mode');
-    }
+    document.body.classList.toggle('dark-mode', isDarkMode);
+    document.body.classList.toggle('light-mode', !isDarkMode);
   }, [isDarkMode]);
 
   const handleThemeChange = (isDark) => {
@@ -244,149 +163,265 @@ function HotAirBalloons() {
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
   };
 
-  // ===== DROPDOWN CLICK OUTSIDE =====
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setActiveDropdown(null);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  /* -------- DATA -------- */
+  const [balloons, setBalloons] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState('lifo');
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
 
-  // ===== FORM HANDLERS =====
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+  /* -------- ADD FORM -------- */
+  const [addForm, setAddForm] = useState(initialFormFields);
+  const [addImages, setAddImages] = useState([]);
+  const [adding, setAdding] = useState(false);
+
+  /* -------- EDIT FORM -------- */
+  const [selectedForEdit, setSelectedForEdit] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState(initialFormFields);
+  const [editImages, setEditImages] = useState([]);
+  const [updating, setUpdating] = useState(false);
+
+  /* -------- TOGGLE ACTIVE -------- */
+  const [togglingId, setTogglingId] = useState(null);
+
+  /* -------- SELECTION -------- */
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [showAllDropdown, setShowAllDropdown] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState(null);
+  const dropdownRef = useRef(null);
+
+  /* -------- TOAST -------- */
+  const [toast, setToast] = useState({ visible: false, type: 'success', message: '' });
+  const toastTimeoutRef = useRef(null);
+  const showToast = (type, message) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToast({ visible: true, type, message });
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(prev => ({ ...prev, visible: false }));
+      toastTimeoutRef.current = null;
+    }, 3500);
   };
 
-  // ===== IMAGE UPLOAD (limit 3) =====
-  const handleImageUpload = (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
+  /* -------- CONFIRM -------- */
+  const [confirmDialog, setConfirmDialog] = useState({
+    visible: false, message: '', onConfirm: null,
+  });
 
-    const remaining = MAX_IMAGES - imagePreviews.length;
+  /* -------- SHOP PREVIEW MODALS -------- */
+  const [shopPreview, setShopPreview] = useState({ show: false, loading: false, items: [] });
+  const [shopDetail, setShopDetail] = useState({ show: false, loading: false, item: null });
+
+  /* -------- CLICK-OUTSIDE -------- */
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setActiveDropdown(null);
+      }
+      if (!e.target.closest('.sort-dropdown-wrapper')) setShowSortDropdown(false);
+      if (!e.target.closest('.dropdown-wrapper')) setShowAllDropdown(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  /* ============================================================
+     FETCH LIST
+     ============================================================ */
+  const fetchBalloons = async (silent = false) => {
+    if (silent) setRefreshing(true); else setLoading(true);
+    try {
+      const { data } = await api.get(`${ADMIN_AIR_API}/list`);
+      const list = extractList(data);
+      setBalloons(list.map(normalizeAirBalloon).filter(Boolean));
+    } catch (e) {
+      const msg = e?.response?.data?.message || e.message || 'Failed to load air balloons';
+      showToast('error', msg);
+      setBalloons([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => { fetchBalloons(); /* eslint-disable-next-line */ }, []);
+
+  /* ============================================================
+     FORM FIELD HANDLERS
+     ============================================================ */
+  const updateField = (setter) => (e) => {
+    const { name, value, type, checked } = e.target;
+    setter(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  };
+
+  const uploadImages = (setter, currentLength, files) => {
+    if (!files || files.length === 0) return;
+    const remaining = MAX_IMAGES - currentLength;
     if (remaining <= 0) {
       showToast('warning', `Maximum ${MAX_IMAGES} images allowed.`);
-      e.target.value = '';
       return;
     }
-
-    const toAdd = files.slice(0, remaining);
+    const toAdd = files.slice(0, remaining).map(f => ({
+      id: `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      url: URL.createObjectURL(f),
+      file: f,
+      isExisting: false,
+    }));
     if (files.length > remaining) {
       showToast('warning', `Only ${remaining} more image(s) can be added.`);
     }
-
-    const newPreviews = toAdd.map(file => URL.createObjectURL(file));
-    setImagePreviews([...imagePreviews, ...newPreviews]);
-    e.target.value = '';
+    setter(prev => [...prev, ...toAdd]);
   };
 
-  const removeImage = (index) => {
-    setImagePreviews(imagePreviews.filter((_, i) => i !== index));
+  const removeImageItem = (setter, id) => {
+    setter(prev => prev.filter(i => i.id !== id));
   };
 
-  // ===== PHONE NUMBER HANDLERS =====
-  const handlePhoneChange = (id, value) => {
-    setPhoneNumbers(prev => prev.map(p => (p.id === id ? { ...p, value } : p)));
-  };
+  /* ============================================================
+     CREATE
+     ============================================================ */
+  const handleAdd = async () => {
+    if (!addForm.duration) {
+      showToast('warning', 'Please enter duration.');
+      return;
+    }
+    if (!addForm.priceFrom && !addForm.priceTo) {
+      showToast('warning', 'Please enter at least one price value.');
+      return;
+    }
 
-  const addPhoneNumber = () => {
-    setPhoneNumbers(prev => [...prev, { id: phoneIdCounter.current++, value: '' }]);
-  };
-
-  const removePhoneNumber = (id) => {
-    setPhoneNumbers(prev => (prev.length > 1 ? prev.filter(p => p.id !== id) : prev));
-  };
-
-  const resetForm = () => {
-    setFormData({
-      duration: '',
-      priceMmkMin: '',
-      priceMmkMax: '',
-      priceUsdMin: '',
-      priceUsdMax: '',
-      minPeople: '',
-      discount: '',
-      rules: '',
-      flightTimes: ''
-    });
-    setImagePreviews([]);
-    setPhoneNumbers([{ id: phoneIdCounter.current++, value: '' }]);
-  };
-
-  const getValidPhones = () =>
-    phoneNumbers.map(p => p.value.trim()).filter(p => p !== '');
-
-  // Generate next auto name "Air Balloon #N"
-  const generateNextName = () => {
-    const maxNum = balloons.reduce((max, b) => {
-      const m = (b.name || '').match(/#(\d+)\s*$/);
-      const n = m ? parseInt(m[1], 10) : 0;
-      return Math.max(max, n);
-    }, 0);
-    return `Air Balloon #${maxNum + 1}`;
-  };
-
-  // ===== ADD =====
-  const handleAdd = () => {
-    setLoading(true);
+    setAdding(true);
     try {
-      const hasAnyPrice =
-        formData.priceMmkMin || formData.priceMmkMax ||
-        formData.priceUsdMin || formData.priceUsdMax;
-      if (!hasAnyPrice) {
-        showToast('warning', 'Please enter at least one price value.');
-        setLoading(false);
-        return;
+      const fd = buildFormData(addForm, addImages, false);
+      const { data } = await api.post(`${ADMIN_AIR_API}/create`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (data && data.success === false) {
+        throw new Error(data.message || 'Create failed');
       }
-
-      const newItem = {
-        id: Date.now(),
-        name: generateNextName(),
-        // hidden backward-compat fields
-        company: '',
-        capacity: '',
-        season: '',
-        location: '',
-        includes: '',
-        description: '',
-        // active fields
-        duration: formData.duration.trim(),
-        price: (formData.priceMmkMin || '').replace(/[^0-9]/g, '') || '0',
-        priceMmkMin: formData.priceMmkMin.replace(/[^0-9]/g, ''),
-        priceMmkMax: formData.priceMmkMax.replace(/[^0-9]/g, ''),
-        priceUsdMin: formData.priceUsdMin.replace(/[^0-9.]/g, ''),
-        priceUsdMax: formData.priceUsdMax.replace(/[^0-9.]/g, ''),
-        minPeople: formData.minPeople.trim(),
-        discount: formData.discount.trim(),
-        rating: 4.5,
-        reviews: '0',
-        images: imagePreviews.length > 0 ? imagePreviews : [],
-        rules: formData.rules.trim(),
-        flightTimes: formData.flightTimes.trim(),
-        phoneNumbers: getValidPhones(),
-        created_at: new Date().toISOString().split('T')[0]
-      };
-      setBalloons([newItem, ...balloons]);
-      resetForm();
-      showToast('success', 'Balloon added successfully!');
-    } catch (err) {
-      showToast('error', 'Failed to add balloon.');
+      showToast('success', data?.message || 'Balloon added successfully!');
+      setAddForm(initialFormFields());
+      setAddImages([]);
+      fetchBalloons(true);
+    } catch (e) {
+      const msg = e?.response?.data?.message || e.message || 'Failed to add balloon.';
+      showToast('error', msg);
     } finally {
-      setLoading(false);
+      setAdding(false);
     }
   };
 
-  // ===== DELETE =====
-  const performDelete = (id) => {
-    setBalloons(balloons.filter(c => c.id !== id));
-    if (selectedId === id) setSelectedId(null);
-    showToast('success', 'Balloon deleted successfully!');
+  /* ============================================================
+     EDIT
+     ============================================================ */
+  const handleEdit = (item) => {
+    setSelectedForEdit(item);
+    setEditForm({
+      duration: item.duration || '',
+      priceFrom: item.priceFrom ?? '',
+      priceTo: item.priceTo ?? '',
+      dollorFrom: item.dollorFrom ?? '',
+      dollorTo: item.dollorTo ?? '',
+      guest: item.guest ?? '',
+      description: item.description || '',
+      rule: item.rule || '',
+      phone1: item.phone1 || '',
+      phone2: item.phone2 || '',
+      location: item.location || '',
+      status: item.status || 'available',
+      isActive: isActiveItem(item),
+    });
+    setEditImages(
+      (item.images || []).map((url, idx) => ({
+        id: `exist-${idx}-${url}`,
+        url,
+        file: null,
+        isExisting: true,
+      }))
+    );
+    setShowEditModal(true);
+    setActiveDropdown(null);
   };
 
-  const handleDelete = (id) => {
+  const handleConfirmEdit = async () => {
+    if (!selectedForEdit) return;
+    if (!editForm.duration) {
+      showToast('warning', 'Please enter duration.');
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      const fd = buildFormData(editForm, editImages, true);
+      const { data } = await api.put(`${ADMIN_AIR_API}/update/${selectedForEdit.id}`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (data && data.success === false) {
+        throw new Error(data.message || 'Update failed');
+      }
+      showToast('success', data?.message || 'Balloon updated successfully!');
+      setShowEditModal(false);
+      setSelectedForEdit(null);
+      setEditForm(initialFormFields());
+      setEditImages([]);
+      fetchBalloons(true);
+    } catch (e) {
+      const msg = e?.response?.data?.message || e.message || 'Failed to update balloon.';
+      showToast('error', msg);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  /* ============================================================
+     TOGGLE ACTIVE (From Card)
+     ============================================================ */
+  const handleToggleActive = async (item) => {
+    if (togglingId === item.id) return;
+
+    const currentlyActive = isActiveItem(item);
+    const newActive = currentlyActive ? 0 : 1;
+
+    // Optimistic update
+    setBalloons(prev => prev.map(b => b.id === item.id ? { ...b, isActive: newActive } : b));
+    setTogglingId(item.id);
+
+    try {
+      const fd = new FormData();
+      fd.append('is_active', newActive);
+      await api.put(`${ADMIN_AIR_API}/update/${item.id}`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      showToast('success', newActive ? 'Balloon activated.' : 'Balloon deactivated.');
+    } catch (err) {
+      // Revert
+      setBalloons(prev => prev.map(b => b.id === item.id ? { ...b, isActive: currentlyActive ? 1 : 0 } : b));
+      showToast('error', 'Failed to update active status.');
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  /* ============================================================
+     DELETE
+     ============================================================ */
+  const performDelete = async (id) => {
+    try {
+      const { data } = await api.delete(`${ADMIN_AIR_API}/delete/${id}`);
+      if (data && data.success === false) {
+        throw new Error(data.message || 'Delete failed');
+      }
+      setBalloons(prev => prev.filter(b => b.id !== id));
+      setSelectedIds(prev => prev.filter(x => x !== id));
+      showToast('success', data?.message || 'Balloon deleted successfully!');
+    } catch (e) {
+      const msg = e?.response?.data?.message || e.message || 'Failed to delete balloon.';
+      showToast('error', msg);
+    }
+  };
+
+  const askDelete = (id) => {
     setActiveDropdown(null);
     setConfirmDialog({
       visible: true,
@@ -395,193 +430,288 @@ function HotAirBalloons() {
     });
   };
 
-  // ===== EDIT =====
-  const handleEdit = (item) => {
-    setSelectedForEdit(item);
-    setFormData({
-      duration: item.duration && item.duration !== 'N/A' ? item.duration : '',
-      priceMmkMin: item.priceMmkMin || '',
-      priceMmkMax: item.priceMmkMax || '',
-      priceUsdMin: item.priceUsdMin || '',
-      priceUsdMax: item.priceUsdMax || '',
-      minPeople: item.minPeople || '',
-      discount: item.discount || '',
-      rules: item.rules && item.rules !== 'No rules provided.' ? item.rules : '',
-      flightTimes: item.flightTimes && item.flightTimes !== 'N/A' ? item.flightTimes : ''
-    });
-    setImagePreviews(item.images || []);
-
-    const loadedPhones = (item.phoneNumbers && item.phoneNumbers.length > 0)
-      ? item.phoneNumbers.map(v => ({ id: phoneIdCounter.current++, value: v }))
-      : [{ id: phoneIdCounter.current++, value: '' }];
-    setPhoneNumbers(loadedPhones);
-
-    setShowEditModal(true);
-    setActiveDropdown(null);
-  };
-
-  const handleConfirmEdit = () => {
-    setLoading(true);
-    try {
-      if (selectedForEdit) {
-        const updated = balloons.map(c =>
-          c.id === selectedForEdit.id ? {
-            ...c,
-            duration: formData.duration.trim(),
-            price: (formData.priceMmkMin || '').replace(/[^0-9]/g, '') || c.price || '0',
-            priceMmkMin: formData.priceMmkMin.replace(/[^0-9]/g, ''),
-            priceMmkMax: formData.priceMmkMax.replace(/[^0-9]/g, ''),
-            priceUsdMin: formData.priceUsdMin.replace(/[^0-9.]/g, ''),
-            priceUsdMax: formData.priceUsdMax.replace(/[^0-9.]/g, ''),
-            minPeople: formData.minPeople.trim(),
-            discount: formData.discount.trim(),
-            rules: formData.rules.trim(),
-            flightTimes: formData.flightTimes.trim(),
-            phoneNumbers: getValidPhones(),
-            images: imagePreviews.length > 0 ? imagePreviews : c.images
-          } : c
-        );
-        setBalloons(updated);
-        setShowEditModal(false);
-        setSelectedForEdit(null);
-        resetForm();
-        showToast('success', 'Balloon updated successfully!');
-      }
-    } catch (err) {
-      showToast('error', 'Failed to update balloon.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ===== SELECTION =====
   const handleDeleteSelected = () => {
-    if (!selectedId) {
+    if (selectedIds.length === 0) {
       showToast('warning', 'Please select an item to delete');
       return;
     }
     setConfirmDialog({
       visible: true,
-      message: 'Are you sure you want to delete this balloon?',
-      onConfirm: () => {
-        setBalloons(balloons.filter(c => c.id !== selectedId));
-        setSelectedId(null);
-        showToast('success', 'Balloon deleted successfully!');
+      message: `Delete ${selectedIds.length} selected balloon(s)?`,
+      onConfirm: async () => {
+        for (const id of selectedIds) {
+          try {
+            await api.delete(`${ADMIN_AIR_API}/delete/${id}`);
+          } catch { /* keep going */ }
+        }
+        setSelectedIds([]);
+        showToast('success', 'Selected balloons deleted.');
+        fetchBalloons(true);
       },
     });
   };
 
   const handleEditSelected = () => {
-    if (!selectedId) {
-      showToast('warning', 'Please select an item to edit');
+    if (selectedIds.length !== 1) {
+      showToast('warning', 'Select exactly one item to edit.');
       return;
     }
-    const item = balloons.find(c => c.id === selectedId);
+    const item = balloons.find(b => b.id === selectedIds[0]);
     if (item) handleEdit(item);
   };
 
-  const handleSelectAll = () => {
-    if (selectedId === 'all') {
-      setSelectedId(null);
-    } else {
-      setSelectedId('all');
-    }
-    setShowAllDropdown(false);
-  };
-
-  const toggleSelection = (id) => {
-    if (selectedId === id) {
-      setSelectedId(null);
-    } else {
-      setSelectedId(id);
+  /* ============================================================
+     SHOP PREVIEW
+     ============================================================ */
+  const openShopPreview = async () => {
+    setShopPreview({ show: true, loading: true, items: [] });
+    try {
+      const { data } = await api.get(`${SHOP_AIR_API}/list`);
+      const list = extractList(data);
+      setShopPreview({ show: true, loading: false, items: list.map(normalizeAirBalloon).filter(Boolean) });
+    } catch (e) {
+      showToast('error', e?.response?.data?.message || 'Failed to load shop list');
+      setShopPreview({ show: true, loading: false, items: [] });
     }
   };
 
-  // ===== FILTER & SORT =====
-  const filtered = balloons.filter(c =>
-    (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (c.company || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (c.location || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (c.flightTimes || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const openShopDetail = async (id) => {
+    setShopDetail({ show: true, loading: true, item: null });
+    try {
+      const { data } = await api.get(`${SHOP_AIR_API}/details/${id}`);
+      const item = data?.data ?? data?.balloon ?? data;
+      setShopDetail({ show: true, loading: false, item: normalizeAirBalloon(item) });
+    } catch (e) {
+      showToast('error', e?.response?.data?.message || 'Failed to load shop details');
+      setShopDetail({ show: true, loading: false, item: null });
+    }
+  };
 
-  const getSorted = (list) => {
-    const sorted = [...list];
+  /* ============================================================
+     FILTER / SORT
+     ============================================================ */
+  const filtered = balloons.filter(b => {
+    const q = searchTerm.toLowerCase();
+    return (
+      (b.duration || '').toLowerCase().includes(q) ||
+      (b.location || '').toLowerCase().includes(q) ||
+      (b.description || '').toLowerCase().includes(q) ||
+      (b.rule || '').toLowerCase().includes(q) ||
+      (b.shopName || '').toLowerCase().includes(q) ||
+      (b.phone1 || '').toLowerCase().includes(q) ||
+      (b.phone2 || '').toLowerCase().includes(q)
+    );
+  });
+
+  const sortedItems = (() => {
+    const list = [...filtered];
+    const idCmp = (a, b) => {
+      const na = Number(a.id), nb = Number(b.id);
+      if (!isNaN(na) && !isNaN(nb)) return nb - na;
+      return String(b.id).localeCompare(String(a.id));
+    };
     switch (sortBy) {
-      case 'lifo': return sorted.sort((a, b) => b.id - a.id);
-      case 'fifo': return sorted.sort((a, b) => a.id - b.id);
-      case 'az': return sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-      case 'za': return sorted.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
-      default: return sorted;
+      case 'lifo': return list.sort(idCmp);
+      case 'fifo': return list.sort((a, b) => -idCmp(a, b));
+      case 'az':   return list.sort((a, b) => (a.duration || '').localeCompare(b.duration || ''));
+      case 'za':   return list.sort((a, b) => (b.duration || '').localeCompare(a.duration || ''));
+      default:     return list;
     }
-  };
-  const sortedItems = getSorted(filtered);
+  })();
 
+  /* ============================================================
+     RENDER HELPERS
+     ============================================================ */
   const renderStars = (rating) => {
-    const fullStars = Math.floor(rating || 0);
-    const hasHalfStar = (rating || 0) % 1 !== 0;
+    const full = Math.floor(rating || 0);
+    const half = (rating || 0) % 1 !== 0;
     return (
       <>
-        {[...Array(fullStars)].map((_, i) => (
-          <i key={i} className="bi bi-star-fill" style={{ color: '#ff8a00', fontSize: '12px' }}></i>
+        {[...Array(full)].map((_, i) => (
+          <i key={`f${i}`} className="bi bi-star-fill" style={{ color: '#ff8a00', fontSize: '12px' }}></i>
         ))}
-        {hasHalfStar && <i className="bi bi-star-half" style={{ color: '#ff8a00', fontSize: '12px' }}></i>}
+        {half && <i className="bi bi-star-half" style={{ color: '#ff8a00', fontSize: '12px' }}></i>}
         {[...Array(5 - Math.ceil(rating || 0))].map((_, i) => (
-          <i key={i} className="bi bi-star" style={{ color: '#ff8a00', fontSize: '12px' }}></i>
+          <i key={`e${i}`} className="bi bi-star" style={{ color: '#ff8a00', fontSize: '12px' }}></i>
         ))}
       </>
     );
   };
 
-  // ===== CARD ACTIONS =====
-  const CardActions = ({ id }) => {
-    const isOpen = activeDropdown === id;
+  const toggleSelection = (id) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
 
-    const toggleDropdown = (e) => {
-      e.stopPropagation();
-      setActiveDropdown(isOpen ? null : id);
-    };
+  const handleSelectAll = () => {
+    if (selectedIds.length === sortedItems.length && sortedItems.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(sortedItems.map(i => i.id));
+    }
+    setShowAllDropdown(false);
+  };
 
-    const handleEditAction = (e) => {
-      e.stopPropagation();
-      const item = balloons.find(c => c.id === id);
-      if (item) handleEdit(item);
-    };
+  /* ============================================================
+     SMALL UI COMPONENTS
+     ============================================================ */
+  const ImagesUI = ({ items, setItems }) => (
+    <div className="image-gallery-top">
+      <label className="gallery-label">
+        📸 Images <span style={{ fontSize: '12px', opacity: 0.7 }}>({items.length}/{MAX_IMAGES} max)</span>
+      </label>
+      <div className="image-gallery-wrapper">
+        {items.length < MAX_IMAGES && (
+          <div className="image-upload-box">
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => {
+                uploadImages(setItems, items.length, Array.from(e.target.files));
+                e.target.value = '';
+              }}
+              style={{ display: 'none' }}
+              id={`img-upload-${Math.random().toString(36).slice(2, 8)}`}
+            />
+            <label
+              htmlFor={document.querySelector('#img-upload-' + '')?.id}
+              className="upload-box"
+              style={{ cursor: 'pointer' }}
+              onClick={(e) => {
+                const input = e.currentTarget.previousElementSibling;
+                if (input) input.click();
+              }}
+            >
+              <i className="bi bi-plus-lg"></i><span>Add Image</span>
+            </label>
+          </div>
+        )}
+        <div className="image-scroll-container-horizontal">
+          {items.map(img => (
+            <div key={img.id} className="image-item">
+              <img src={img.url} alt="" />
+              <button className="remove-image-btn" onClick={() => removeImageItem(setItems, img.id)}>
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
-    const handleDeleteAction = (e) => {
-      e.stopPropagation();
-      handleDelete(id);
-    };
+  const ActiveToggle = ({ item }) => {
+    const active = isActiveItem(item);
+    const busy = togglingId === item.id;
 
     return (
-      <div className="card-actions-wrapper" style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 10 }}>
-        <button className="card-actions-btn" onClick={toggleDropdown} style={{
-          width: '32px', height: '32px', borderRadius: '50%', border: 'none',
-          background: 'rgba(0,0,0,0.6)', color: 'white', display: 'flex',
-          alignItems: 'center', justifyContent: 'center', fontSize: '18px',
-          cursor: 'pointer', backdropFilter: 'blur(4px)'
-        }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span
+          style={{
+            fontSize: '10px',
+            fontWeight: 700,
+            letterSpacing: '0.5px',
+            color: active ? '#28a745' : isDarkMode ? '#888' : '#999',
+          }}
+        >
+          {active ? 'ON' : 'OFF'}
+        </span>
+        <button
+          type="button"
+          onClick={() => handleToggleActive(item)}
+          disabled={busy}
+          title={active ? 'Deactivate' : 'Activate'}
+          role="switch"
+          aria-checked={active}
+          style={{
+            position: 'relative',
+            width: '38px',
+            height: '20px',
+            borderRadius: '10px',
+            border: 'none',
+            padding: 0,
+            background: active ? '#28a745' : isDarkMode ? '#444' : '#ccc',
+            cursor: busy ? 'wait' : 'pointer',
+            transition: 'background 0.25s ease',
+            opacity: busy ? 0.6 : 1,
+          }}
+        >
+          <span
+            style={{
+              position: 'absolute',
+              top: '2px',
+              left: active ? '20px' : '2px',
+              width: '16px',
+              height: '16px',
+              borderRadius: '50%',
+              background: '#fff',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+              transition: 'left 0.25s ease',
+            }}
+          />
+        </button>
+      </div>
+    );
+  };
+
+  const CardActions = ({ id }) => {
+    const isOpen = activeDropdown === id;
+    return (
+      <div className="card-actions-wrapper" style={{ position: 'absolute', top: 10, right: 10, zIndex: 10 }}>
+        <button
+          className="card-actions-btn"
+          onClick={(e) => { e.stopPropagation(); setActiveDropdown(isOpen ? null : id); }}
+          style={{
+            width: 32, height: 32, borderRadius: '50%', border: 'none',
+            background: 'rgba(0,0,0,0.6)', color: 'white',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 18, cursor: 'pointer', backdropFilter: 'blur(4px)',
+          }}
+        >
           <i className="bi bi-three-dots-vertical"></i>
         </button>
-        <div className={`card-actions-dropdown ${isOpen ? 'show' : ''}`} style={{
-          position: 'absolute', top: '40px', right: '0',
-          background: isDarkMode ? '#2d2d2d' : '#fff',
-          borderRadius: '8px', boxShadow: '0 8px 25px rgba(0,0,0,0.3)',
-          minWidth: '150px', padding: '4px 0',
-          border: isDarkMode ? '1px solid #444' : '1px solid #ddd'
-        }}>
-          <button onClick={handleEditAction} style={{
-            display: 'flex', alignItems: 'center', gap: '10px', width: '100%',
-            padding: '8px 16px', border: 'none', background: 'transparent',
-            color: isDarkMode ? '#eee' : '#333', cursor: 'pointer', fontSize: '14px'
-          }}>
+        <div
+          className={`card-actions-dropdown ${isOpen ? 'show' : ''}`}
+          style={{
+            position: 'absolute', top: 40, right: 0,
+            background: isDarkMode ? '#2d2d2d' : '#fff',
+            borderRadius: 8, boxShadow: '0 8px 25px rgba(0,0,0,0.3)',
+            minWidth: 160, padding: '4px 0',
+            border: isDarkMode ? '1px solid #444' : '1px solid #ddd',
+            display: isOpen ? 'block' : 'none',
+          }}
+        >
+          <button
+            onClick={(e) => { e.stopPropagation(); const item = balloons.find(b => b.id === id); if (item) handleEdit(item); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+              padding: '8px 16px', border: 'none', background: 'transparent',
+              color: isDarkMode ? '#eee' : '#333', cursor: 'pointer', fontSize: 14,
+            }}
+          >
             <i className="bi bi-pencil-square" style={{ color: '#0d6efd' }}></i> Edit
           </button>
-          <button onClick={handleDeleteAction} style={{
-            display: 'flex', alignItems: 'center', gap: '10px', width: '100%',
-            padding: '8px 16px', border: 'none', background: 'transparent',
-            color: isDarkMode ? '#eee' : '#333', cursor: 'pointer', fontSize: '14px'
-          }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); openShopDetail(id); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+              padding: '8px 16px', border: 'none', background: 'transparent',
+              color: isDarkMode ? '#eee' : '#333', cursor: 'pointer', fontSize: 14,
+            }}
+          >
+            <i className="bi bi-shop" style={{ color: '#17a2b8' }}></i> Shop View
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); askDelete(id); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+              padding: '8px 16px', border: 'none', background: 'transparent',
+              color: isDarkMode ? '#eee' : '#333', cursor: 'pointer', fontSize: 14,
+            }}
+          >
             <i className="bi bi-trash" style={{ color: '#dc3545' }}></i> Delete
           </button>
         </div>
@@ -589,148 +719,134 @@ function HotAirBalloons() {
     );
   };
 
-  // ===== TOAST UI =====
   const ToastUI = () => {
     if (!toast.visible) return null;
+    const palette = {
+      success: { bg: '#d1e7dd', color: '#0f5132', border: '#badbcc', icon: 'bi-check-circle-fill' },
+      error:   { bg: '#f8d7da', color: '#842029', border: '#f5c2c7', icon: 'bi-x-circle-fill' },
+      warning: { bg: '#fff3cd', color: '#856404', border: '#ffe69c', icon: 'bi-exclamation-triangle-fill' },
+      info:    { bg: '#cff4fc', color: '#055160', border: '#b6effb', icon: 'bi-info-circle-fill' },
+    }[toast.type] || { bg: '#e9ecef', color: '#333', border: '#dee2e6', icon: 'bi-info-circle-fill' };
+
     return (
       <div style={{
-        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-        zIndex: 999999, width: '420px', maxWidth: '90%', borderRadius: '16px',
-        boxShadow: '0 20px 50px rgba(0,0,0,0.5)', padding: '0', overflow: 'hidden',
-        backgroundColor: toast.type === 'success' ? (isDarkMode ? '#1e3a2e' : '#d4edda') :
-                         toast.type === 'error' ? (isDarkMode ? '#3e1f1f' : '#f8d7da') :
-                         toast.type === 'warning' ? (isDarkMode ? '#3d3512' : '#fff3cd') :
-                         (isDarkMode ? '#112b3c' : '#d1ecf1'),
-        color: toast.type === 'success' ? (isDarkMode ? '#b7eb8f' : '#155724') :
-               toast.type === 'error' ? (isDarkMode ? '#ffa39e' : '#721c24') :
-               toast.type === 'warning' ? (isDarkMode ? '#ffe58f' : '#856404') :
-               (isDarkMode ? '#91d5ff' : '#0c5460'),
-        borderLeft: `5px solid ${toast.type === 'success' ? (isDarkMode ? '#52c41a' : '#28a745') :
-                                 toast.type === 'error' ? (isDarkMode ? '#ff4d4f' : '#dc3545') :
-                                 toast.type === 'warning' ? (isDarkMode ? '#faad14' : '#ffc107') :
-                                 (isDarkMode ? '#1890ff' : '#17a2b8')}`
+        position: 'fixed', top: 20, right: 20, zIndex: 999999,
+        padding: '12px 18px', borderRadius: 10,
+        background: palette.bg, color: palette.color, border: `1px solid ${palette.border}`,
+        display: 'flex', alignItems: 'center', gap: 10, fontSize: 14,
+        boxShadow: '0 10px 30px rgba(0,0,0,0.15)',
+        animation: 'finSlide .25s ease',
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
-          <div style={{ fontWeight: 'bold', fontSize: '16px' }}>Bagan 360</div>
-          <button onClick={() => { if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); setToast({ ...toast, visible: false }); }} style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: '18px', cursor: 'pointer' }}><i className="bi bi-x-lg"></i></button>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', padding: '20px' }}>
-          <div style={{ fontSize: '28px' }}>
-            {toast.type === 'success' && <i className="bi bi-check-circle-fill"></i>}
-            {toast.type === 'error' && <i className="bi bi-x-circle-fill"></i>}
-            {toast.type === 'warning' && <i className="bi bi-exclamation-triangle-fill"></i>}
-            {toast.type === 'info' && <i className="bi bi-info-circle-fill"></i>}
-          </div>
-          <div style={{ fontSize: '15px', lineHeight: '1.5' }}>{toast.message}</div>
-        </div>
+        <i className={`bi ${palette.icon}`} style={{ fontSize: 18 }}></i>
+        <span>{toast.message}</span>
+        <button
+          onClick={() => setToast(t => ({ ...t, visible: false }))}
+          style={{ background: 'transparent', border: 'none', color: palette.color, cursor: 'pointer' }}
+        >
+          <i className="bi bi-x-lg"></i>
+        </button>
       </div>
     );
   };
 
-  // ===== CONFIRM DIALOG UI =====
-  const ConfirmDialogUI = () => {
+  const ConfirmUI = () => {
     if (!confirmDialog.visible) return null;
     return (
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ background: isDarkMode ? '#2d2d2d' : '#fff', padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%', boxShadow: '0 15px 40px rgba(0,0,0,0.2)' }}>
-          <h3 style={{ color: isDarkMode ? '#eee' : '#333', marginBottom: '12px' }}>Confirm Delete</h3>
+      <div style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999999,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <div style={{
+          background: isDarkMode ? '#2d2d2d' : '#fff',
+          padding: 24, borderRadius: 12, maxWidth: 420, width: '90%',
+          boxShadow: '0 15px 40px rgba(0,0,0,0.2)',
+        }}>
+          <h3 style={{ color: isDarkMode ? '#eee' : '#333', marginBottom: 12 }}>Confirm</h3>
           <p style={{ color: isDarkMode ? '#ccc' : '#555' }}>{confirmDialog.message}</p>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-            <button onClick={() => setConfirmDialog({ ...confirmDialog, visible: false })} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', background: 'transparent', cursor: 'pointer', color: isDarkMode ? '#ccc' : '#333' }}>Cancel</button>
-            <button onClick={() => { if (confirmDialog.onConfirm) confirmDialog.onConfirm(); setConfirmDialog({ ...confirmDialog, visible: false }); }} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc3545', color: '#fff', cursor: 'pointer' }}>Delete</button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+            <button
+              onClick={() => setConfirmDialog({ visible: false, message: '', onConfirm: null })}
+              style={{
+                padding: '8px 16px', borderRadius: 6, border: '1px solid #ddd',
+                background: 'transparent', cursor: 'pointer', color: isDarkMode ? '#ccc' : '#333',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                const fn = confirmDialog.onConfirm;
+                setConfirmDialog({ visible: false, message: '', onConfirm: null });
+                if (fn) fn();
+              }}
+              style={{
+                padding: '8px 16px', borderRadius: 6, border: 'none',
+                background: '#dc3545', color: '#fff', cursor: 'pointer',
+              }}
+            >
+              Confirm
+            </button>
           </div>
         </div>
       </div>
     );
   };
 
-  // ===== PHONE NUMBERS UI =====
-  const PhoneNumbersUI = ({ formMode = false }) => {
-    const inputStyle = {
-      flex: 1,
-      padding: '10px 12px',
-      borderRadius: '8px',
-      border: `1px solid ${isDarkMode ? '#444' : '#ddd'}`,
-      background: isDarkMode ? '#1e1e1e' : '#fff',
-      color: isDarkMode ? '#eee' : '#333',
-      fontSize: '14px',
-      outline: 'none'
-    };
-    return (
-      <div>
-        <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', fontSize: '13px', color: isDarkMode ? '#ccc' : '#333' }}>Phone Numbers</label>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {phoneNumbers.map((phone, index) => (
-            <div key={phone.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="text"
-                placeholder={`Phone ${index + 1} (e.g. +95 9 123 456 789)`}
-                value={phone.value}
-                onChange={(e) => handlePhoneChange(phone.id, e.target.value)}
-                style={inputStyle}
-              />
-              {phoneNumbers.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removePhoneNumber(phone.id)}
-                  title="Remove this phone number"
-                  style={{
-                    padding: '10px 12px', borderRadius: '8px', border: 'none',
-                    background: '#dc3545', color: '#fff', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center'
-                  }}
-                >
-                  <i className="bi bi-trash"></i>
-                </button>
-              )}
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={addPhoneNumber}
-            style={{
-              padding: '10px 14px', borderRadius: '8px',
-              border: '1px dashed #0d6efd', background: 'transparent',
-              color: '#0d6efd', cursor: 'pointer', display: 'flex',
-              alignItems: 'center', justifyContent: 'center', gap: '6px',
-              fontWeight: '500', fontSize: '14px'
-            }}
-          >
-            <i className="bi bi-plus-lg"></i> Add Ph no.
-          </button>
-        </div>
-      </div>
-    );
-  };
-
-  // ===== MAIN RENDER =====
+  /* ============================================================
+     MAIN RENDER
+     ============================================================ */
   return (
     <div className={`dashboard-container ${isDarkMode ? 'dark-theme' : 'light-theme'}`}>
       <Header title="Hot Air Balloons Management" onThemeChange={handleThemeChange} />
       <ToastUI />
-      <ConfirmDialogUI />
+      <ConfirmUI />
 
-      {loading && <div style={{ textAlign: 'center', padding: '10px', background: isDarkMode ? '#333' : '#f0f0f0' }}>⏳ Processing...</div>}
+      {(loading || refreshing || adding || updating) && (
+        <div style={{
+          textAlign: 'center', padding: 8,
+          background: isDarkMode ? '#333' : '#f0f0f0', color: isDarkMode ? '#eee' : '#333',
+          fontSize: 13,
+        }}>
+          <i className="bi bi-arrow-repeat"></i>{' '}
+          {loading ? 'Loading balloons…' : refreshing ? 'Refreshing…' : adding ? 'Adding…' : 'Updating…'}
+        </div>
+      )}
 
-      {/* Search & Actions */}
+      {/* ===== Top action bar ===== */}
       <div className="search-actions-row">
         <div className="search-bar-wrapper">
           <i className="bi bi-search search-icon"></i>
-          <input type="text" placeholder="Search balloon..." className="search-input-full" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+          <input
+            type="text"
+            placeholder="Search duration, location, shop, phone…"
+            className="search-input-full"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
-        <button className="action-btn delete-btn" onClick={handleDeleteSelected}><i className="bi bi-trash"></i> Delete</button>
-        <button className="action-btn edit-btn-action" onClick={handleEditSelected}><i className="bi bi-pencil-square"></i> Edit</button>
+        <button className="action-btn delete-btn" onClick={handleDeleteSelected}>
+          <i className="bi bi-trash"></i> Delete
+        </button>
+        <button className="action-btn edit-btn-action" onClick={handleEditSelected}>
+          <i className="bi bi-pencil-square"></i> Edit
+        </button>
         <div className="dropdown-wrapper">
-          <button className="action-btn all-btn" onClick={() => setShowAllDropdown(!showAllDropdown)}><i className="bi bi-check-all"></i> All <i className="bi bi-chevron-down"></i></button>
+          <button className="action-btn all-btn" onClick={() => setShowAllDropdown(!showAllDropdown)}>
+            <i className="bi bi-check-all"></i> All <i className="bi bi-chevron-down"></i>
+          </button>
           {showAllDropdown && (
             <div className="dropdown-menu">
-              <button onClick={handleSelectAll}>Select All</button>
-              <button onClick={() => { setSelectedId(null); setShowAllDropdown(false); }}>Deselect All</button>
+              <button onClick={handleSelectAll}>
+                {selectedIds.length === sortedItems.length && sortedItems.length > 0
+                  ? 'Deselect All' : 'Select All'}
+              </button>
             </div>
           )}
         </div>
         <div className="sort-dropdown-wrapper">
-          <button className="sort-btn" onClick={() => setShowSortDropdown(!showSortDropdown)}><i className="bi bi-arrow-down-up"></i> Sort: {sortBy.toUpperCase()} <i className="bi bi-chevron-down"></i></button>
+          <button className="sort-btn" onClick={() => setShowSortDropdown(!showSortDropdown)}>
+            <i className="bi bi-arrow-down-up"></i> Sort: {sortBy.toUpperCase()} <i className="bi bi-chevron-down"></i>
+          </button>
           {showSortDropdown && (
             <div className="sort-dropdown-menu">
               <button onClick={() => { setSortBy('lifo'); setShowSortDropdown(false); }}>LIFO</button>
@@ -740,163 +856,228 @@ function HotAirBalloons() {
             </div>
           )}
         </div>
+        <button className="action-btn" onClick={() => fetchBalloons(true)} title="Refresh">
+          <i className="bi bi-arrow-clockwise"></i>
+        </button>
+        <button className="action-btn" onClick={openShopPreview} title="Preview as Shop">
+          <i className="bi bi-shop"></i> Shop Preview
+        </button>
       </div>
 
-      {/* Two Columns */}
+      {/* ===== Two-column layout ===== */}
       <div className="hotels-two-columns">
-        {/* Left - Add Form */}
+        {/* LEFT — Add form */}
         <div className="add-form-column">
           <div className="add-form-card">
-            {/* Images (3 max) */}
-            <div className="image-gallery-top">
-              <label className="gallery-label">
-                📸 Images <span style={{ fontSize: '12px', opacity: 0.7 }}>({imagePreviews.length}/{MAX_IMAGES} max)</span>
-              </label>
-              <div className="image-gallery-wrapper">
-                {imagePreviews.length < MAX_IMAGES && (
-                  <div className="image-upload-box">
-                    <input type="file" accept="image/*" multiple onChange={handleImageUpload} style={{ display: 'none' }} id="image-upload-gallery" />
-                    <label htmlFor="image-upload-gallery" className="upload-box"><i className="bi bi-plus-lg"></i><span>Add Image</span></label>
-                  </div>
-                )}
-                <div className="image-scroll-container-horizontal">
-                  {imagePreviews.map((img, i) => (
-                    <div key={i} className="image-item"><img src={img} alt="" /><button className="remove-image-btn" onClick={() => removeImage(i)}><i className="bi bi-x-lg"></i></button></div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <ImagesUI items={addImages} setItems={setAddImages} />
 
             <div className="form-fields-section">
-              {/* Duration */}
               <div className="add-form-group">
                 <label>Duration</label>
-                <input type="text" name="duration" placeholder="45-60 min" value={formData.duration} onChange={handleInputChange} />
+                <input
+                  type="text" name="duration" placeholder="e.g. 1 Hour, 45 Minutes"
+                  value={addForm.duration} onChange={updateField(setAddForm)}
+                />
               </div>
 
-              {/* MMK Price Range */}
               <div className="add-form-group">
                 <label>MMK Price Range (MMK)</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input type="text" name="priceMmkMin" placeholder="Min (e.g. 320000)" value={formData.priceMmkMin} onChange={handleInputChange} style={{ flex: 1 }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input type="text" name="priceFrom" placeholder="From (e.g. 500000)"
+                    value={addForm.priceFrom} onChange={updateField(setAddForm)} style={{ flex: 1 }} />
                   <span style={{ color: '#888', fontWeight: 'bold' }}>—</span>
-                  <input type="text" name="priceMmkMax" placeholder="Max (e.g. 550000)" value={formData.priceMmkMax} onChange={handleInputChange} style={{ flex: 1 }} />
+                  <input type="text" name="priceTo" placeholder="To (e.g. 1000000)"
+                    value={addForm.priceTo} onChange={updateField(setAddForm)} style={{ flex: 1 }} />
                 </div>
               </div>
 
-              {/* USD Price Range */}
               <div className="add-form-group">
                 <label>USD Price Range (USD)</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input type="text" name="priceUsdMin" placeholder="Min (e.g. 165)" value={formData.priceUsdMin} onChange={handleInputChange} style={{ flex: 1 }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input type="text" name="dollorFrom" placeholder="From (e.g. 12.45)"
+                    value={addForm.dollorFrom} onChange={updateField(setAddForm)} style={{ flex: 1 }} />
                   <span style={{ color: '#888', fontWeight: 'bold' }}>—</span>
-                  <input type="text" name="priceUsdMax" placeholder="Max (e.g. 270)" value={formData.priceUsdMax} onChange={handleInputChange} style={{ flex: 1 }} />
+                  <input type="text" name="dollorTo" placeholder="To (e.g. 25.50)"
+                    value={addForm.dollorTo} onChange={updateField(setAddForm)} style={{ flex: 1 }} />
                 </div>
               </div>
 
               <div className="add-form-row">
-                <div className="add-form-group half"><label>Min People Required</label><input type="number" name="minPeople" placeholder="4" min="1" value={formData.minPeople} onChange={handleInputChange} /></div>
-                <div className="add-form-group half"><label>Discount</label><input type="text" name="discount" placeholder="10" value={formData.discount} onChange={handleInputChange} /></div>
+                <div className="add-form-group half">
+                  <label>Guest (Min People)</label>
+                  <input type="number" name="guest" placeholder="5" min="1"
+                    value={addForm.guest} onChange={updateField(setAddForm)} />
+                </div>
+                <div className="add-form-group half">
+                  <label>Status</label>
+                  <select name="status" value={addForm.status} onChange={updateField(setAddForm)} style={{ width: '100%' }}>
+                    <option value="available">Available</option>
+                    <option value="unavailable">Unavailable</option>
+                  </select>
+                </div>
               </div>
 
-              <div className="add-form-group"><label>Flight Times</label><input type="text" name="flightTimes" placeholder="5:30 AM - 7:30 AM" value={formData.flightTimes} onChange={handleInputChange} /></div>
-
-              {/* Rules & Regulation */}
-              <div className="add-form-group"><label>Rules & Regulation</label><textarea name="rules" rows="3" placeholder="No pregnant women. No children under 6..." value={formData.rules} onChange={handleInputChange} /></div>
-
-              {/* Phone Numbers */}
               <div className="add-form-group">
-                <PhoneNumbersUI formMode />
+                <label>Location</label>
+                <input type="text" name="location" placeholder="e.g. Old Bagan"
+                  value={addForm.location} onChange={updateField(setAddForm)} />
               </div>
 
-              <button className="add-item-btn-full" onClick={handleAdd} disabled={loading}>{loading ? 'Adding...' : 'Add Balloon'}</button>
+              <div className="add-form-group">
+                <label>Description</label>
+                <textarea name="description" rows="2"
+                  placeholder="Hot air balloon experience..."
+                  value={addForm.description} onChange={updateField(setAddForm)} />
+              </div>
+
+              <div className="add-form-group">
+                <label>Rule</label>
+                <textarea name="rule" rows="2"
+                  placeholder="Arrive 30 minutes early..."
+                  value={addForm.rule} onChange={updateField(setAddForm)} />
+              </div>
+
+              <div className="add-form-row">
+                <div className="add-form-group half">
+                  <label>Phone 1</label>
+                  <input type="text" name="phone1" placeholder="09123456789"
+                    value={addForm.phone1} onChange={updateField(setAddForm)} />
+                </div>
+                <div className="add-form-group half">
+                  <label>Phone 2</label>
+                  <input type="text" name="phone2" placeholder="09987654321"
+                    value={addForm.phone2} onChange={updateField(setAddForm)} />
+                </div>
+              </div>
+
+              <button className="add-item-btn-full" onClick={handleAdd} disabled={adding}>
+                {adding ? 'Adding…' : 'Add Balloon'}
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Right - Balloon Cards */}
+        {/* RIGHT — Cards */}
         <div className="hotels-cards-column">
           <div className="hotels-scroll-area">
             <div className="hotels-grid-2cols">
               {sortedItems.length === 0 ? (
-                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '50px', color: '#6c757d' }}><i className="bi bi-inbox" style={{ fontSize: '48px', display: 'block' }}></i><p>No balloons found.</p></div>
+                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 50, color: '#6c757d' }}>
+                  <i className="bi bi-inbox" style={{ fontSize: 48, display: 'block' }}></i>
+                  <p>No balloons found.</p>
+                </div>
               ) : (
                 sortedItems.map(item => {
-                  const hasMmkRange = item.priceMmkMin || item.priceMmkMax;
-                  const hasUsdRange = item.priceUsdMin || item.priceUsdMax;
+                  const hasMmk = item.priceFrom || item.priceTo;
+                  const hasUsd = item.dollorFrom || item.dollorTo;
+                  const active = isActiveItem(item);
+
                   return (
-                    <div key={item.id} className="hotel-card-vertical">
-                      <div className="hotel-card-image" style={{ position: 'relative', minHeight: '150px', background: isDarkMode ? '#2d2d2d' : '#f8f9fa' }}>
-                        <div className="image-slider" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
-                          {item.images && item.images.length > 0 ? <img src={item.images[0]} alt={item.name} style={{ objectFit: 'cover', width: '100%', height: '100%', maxHeight: '150px' }} /> : <div style={{ fontSize: '60px', padding: '20px' }}>🎈</div>}
+                    <div key={item.id} className="hotel-card-vertical"
+                      style={{
+                        borderRadius: 10,
+                        opacity: active ? 1 : 0.65,
+                        transition: 'opacity 0.25s'
+                      }}>
+                      <div className="hotel-card-image"
+                        style={{ position: 'relative', minHeight: 200, background: isDarkMode ? '#2d2d2d' : '#f8f9fa' }}>
+                        <div style={{
+                          display: 'flex', 
+                          height: '100%', overflow: 'hidden'
+                        }}>
+                          {item.images && item.images.length > 0 ? (
+                            <img src={item.images[0]} alt={item.duration}
+                              style={{ objectFit: 'cover', width: '100%', height: '100%', maxHeight: 150 }} />
+                          ) : (
+                            <div style={{ fontSize: 60, padding: 20 }}>🎈</div>
+                          )}
                         </div>
+                        {/* Status badge */}
+                        <span
+                          style={{
+                            position: 'absolute',
+                            bottom: '10px',
+                            left: '10px',
+                            padding: '3px 10px',
+                            borderRadius: '12px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            color: '#fff',
+                            background: item.status === 'available' ? '#28a745' : '#6c757d',
+                          }}
+                        >
+                          {item.status}
+                        </span>
                         <CardActions id={item.id} />
                       </div>
                       <div className="hotel-card-info">
-                        {/* Name */}
-                        <h3 className="hotel-name" style={{ fontSize: '16px' }}>{item.name || 'Air Balloon'}</h3>
-
-                        {/* Company — show only if present */}
-                        {item.company && (
-                          <p style={{ fontSize: '13px', color: '#6c757d' }}><i className="bi bi-building"></i> {item.company}</p>
-                        )}
-
-                        {/* Location — show only if present */}
-                        {item.location && (
-                          <p className="hotel-location"><i className="bi bi-geo-alt-fill"></i> {item.location}</p>
-                        )}
-
-                        {/* Duration / Capacity / Min People */}
-                        <div style={{ display: 'flex', gap: '12px', fontSize: '13px', color: '#6c757d', flexWrap: 'wrap' }}>
-                          {item.capacity && <span><i className="bi bi-people"></i> {item.capacity}</span>}
-                          {item.duration && item.duration !== 'N/A' && <span><i className="bi bi-clock"></i> {item.duration}</span>}
-                          {item.minPeople && <span><i className="bi bi-person-check"></i> Min {item.minPeople} pax</span>}
+                        {/* Duration + Active switch */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                          <h3 className="hotel-name" style={{ fontSize: 16, margin: 0, flex: 1 }}>
+                            <i className="bi bi-clock" style={{ marginRight: 6, color: '#0d6efd' }}></i>
+                            {item.duration || 'Hot Air Balloon'}
+                          </h3>
+                          <ActiveToggle item={item} />
                         </div>
 
-                        {/* Flight Times */}
-                        {item.flightTimes && item.flightTimes !== 'N/A' && (
-                          <div style={{ display: 'flex', gap: '12px', fontSize: '13px', color: '#6c757d', flexWrap: 'wrap', marginTop: '4px' }}>
-                            <span><i className="bi bi-sunrise"></i> {item.flightTimes}</span>
+                        {item.guest && (
+                          <div style={{ display: 'flex', gap: 12, fontSize: 13, color: '#6c757d', flexWrap: 'wrap', marginTop: 4 }}>
+                            <span><i className="bi bi-person-check"></i> Min {item.guest} pax</span>
                           </div>
                         )}
 
-                        {/* MMK Range */}
-                        {hasMmkRange && (
-                          <p className="hotel-price" style={{ marginTop: '6px' }}>
-                            MMK <span>{item.priceMmkMin || '?'} — {item.priceMmkMax || '?'}</span>
+                        {item.location && (
+                          <div style={{ display: 'flex', gap: 12, fontSize: 13, color: '#6c757d', flexWrap: 'wrap', marginTop: 4 }}>
+                            <span><i className="bi bi-geo-alt"></i> {item.location}</span>
+                          </div>
+                        )}
+
+                        {hasMmk && (
+                          <p className="hotel-price" style={{ marginTop: 6 }}>
+                            MMK <span>{item.priceFrom || '?'} — {item.priceTo || '?'}</span>
                           </p>
                         )}
-                        {/* USD Range */}
-                        {hasUsdRange && (
-                          <p style={{ fontSize: '13px', color: isDarkMode ? '#bbb' : '#555', margin: '2px 0' }}>
-                            USD <span style={{ fontWeight: 600 }}>{item.priceUsdMin || '?'} — {item.priceUsdMax || '?'}</span>
-                          </p>
-                        )}
-                        {/* Fallback legacy price */}
-                        {!hasMmkRange && !hasUsdRange && item.price && (
-                          <p className="hotel-price">From <span>MMK {item.price}</span></p>
-                        )}
-
-                        <div className="hotel-rating">{renderStars(item.rating)}<span className="rating-count">({item.reviews})</span></div>
-
-                        {/* Season — show only if present */}
-                        {item.season && <p style={{ fontSize: '12px', color: '#888' }}><i className="bi bi-calendar-event"></i> Season: {item.season}</p>}
-
-                        {/* Rules — show only if present */}
-                        {item.rules && item.rules !== 'No rules provided.' && (
-                          <p style={{ fontSize: '12px', color: '#666', marginTop: '4px' }} title={item.rules}>
-                            <i className="bi bi-shield-check"></i> {item.rules.length > 45 ? item.rules.slice(0, 45) + '…' : item.rules}
+                        {hasUsd && (
+                          <p style={{ fontSize: 13, color: isDarkMode ? '#bbb' : '#555', margin: '2px 0' }}>
+                            USD <span style={{ fontWeight: 600 }}>{item.dollorFrom || '?'} — {item.dollorTo || '?'}</span>
                           </p>
                         )}
 
-                        {/* Phones */}
-                        {item.phoneNumbers && item.phoneNumbers.length > 0 && (
-                          <p style={{ fontSize: '12px', color: '#0d6efd', marginTop: '2px' }} title={item.phoneNumbers.join('\n')}>
-                            <i className="bi bi-telephone-fill"></i> {item.phoneNumbers.join(' / ')}
+                        <div className="hotel-rating">
+                          {renderStars(item.rating)}<span className="rating-count">({item.reviews})</span>
+                        </div>
+
+                        {item.description && (
+                          <p style={{ fontSize: 12, color: '#666', marginTop: 4 }} title={item.description}>
+                            <i className="bi bi-chat-left-text"></i>{' '}
+                            {item.description.length > 45 ? item.description.slice(0, 45) + '…' : item.description}
                           </p>
                         )}
 
-                        <p style={{ fontSize: '11px', color: '#999' }}><i className="bi bi-clock"></i> Added: {item.created_at}</p>
+                        {item.rule && (
+                          <p style={{ fontSize: 12, color: '#666', marginTop: 2 }} title={item.rule}>
+                            <i className="bi bi-shield-check"></i>{' '}
+                            {item.rule.length > 45 ? item.rule.slice(0, 45) + '…' : item.rule}
+                          </p>
+                        )}
+
+                        {(item.phone1 || item.phone2) && (
+                          <p style={{ fontSize: 12, color: '#0d6efd', marginTop: 2 }}>
+                            <i className="bi bi-telephone-fill"></i> {[item.phone1, item.phone2].filter(Boolean).join(' / ')}
+                          </p>
+                        )}
+
+                        {item.shopName && (
+                          <p style={{ fontSize: 12, color: isDarkMode ? '#aaa' : '#666', marginTop: 2 }}>
+                            <i className="bi bi-shop"></i> {item.shopName}
+                          </p>
+                        )}
+
+                        {item.created_at && (
+                          <p style={{ fontSize: 11, color: '#999' }}>
+                            <i className="bi bi-clock-history"></i> Added: {item.created_at}
+                          </p>
+                        )}
                       </div>
                     </div>
                   );
@@ -908,74 +1089,241 @@ function HotAirBalloons() {
       </div>
 
       {/* ===== EDIT MODAL ===== */}
-      {showEditModal && (
+      {showEditModal && selectedForEdit && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header"><h2>Edit Hot Air Balloon</h2><button className="close-btn" onClick={() => setShowEditModal(false)}><i className="bi bi-x-lg"></i></button></div>
+            <div className="modal-header">
+              <h2>Edit Hot Air Balloon</h2>
+              <button className="close-btn" onClick={() => setShowEditModal(false)}>
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
             <div className="modal-body">
-              {/* Image Gallery - TOP */}
-              <div className="image-gallery-top">
-                <label className="gallery-label">
-                  📸 Images <span style={{ fontSize: '12px', opacity: 0.7 }}>({imagePreviews.length}/{MAX_IMAGES} max)</span> — Upload new to replace
-                </label>
-                <div className="image-gallery-wrapper">
-                  {imagePreviews.length < MAX_IMAGES && (
-                    <div className="image-upload-box">
-                      <input type="file" accept="image/*" multiple onChange={handleImageUpload} style={{ display: 'none' }} id="edit-image-upload" />
-                      <label htmlFor="edit-image-upload" className="upload-box"><i className="bi bi-plus-lg"></i><span>Add Image</span></label>
-                    </div>
-                  )}
-                  <div className="image-scroll-container-horizontal">
-                    {imagePreviews.map((img, i) => (
-                      <div key={i} className="image-item"><img src={img} alt="" /><button className="remove-image-btn" onClick={() => removeImage(i)}><i className="bi bi-x-lg"></i></button></div>
-                    ))}
-                  </div>
-                </div>
-                <small style={{ opacity: 0.7, display: 'block', marginTop: '5px' }}>⚡ Max {MAX_IMAGES} images. Leave empty to keep current.</small>
+              <ImagesUI items={editImages} setItems={setEditImages} />
+
+              <div className="form-group">
+                <label>Duration</label>
+                <input type="text" name="duration" placeholder="e.g. 1 Hour, 45 Minutes" 
+                  value={editForm.duration} onChange={updateField(setEditForm)} />
               </div>
 
-              {/* Duration */}
-              <div className="form-group"><label>Duration</label><input type="text" name="duration" value={formData.duration} onChange={handleInputChange} /></div>
-
-              {/* MMK Price Range */}
               <div className="form-group">
                 <label>MMK Price Range</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input type="text" name="priceMmkMin" placeholder="Min" value={formData.priceMmkMin} onChange={handleInputChange} style={{ flex: 1 }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input type="text" name="priceFrom" placeholder="From"
+                    value={editForm.priceFrom} onChange={updateField(setEditForm)} style={{ flex: 1 }} />
                   <span style={{ color: '#888', fontWeight: 'bold' }}>—</span>
-                  <input type="text" name="priceMmkMax" placeholder="Max" value={formData.priceMmkMax} onChange={handleInputChange} style={{ flex: 1 }} />
+                  <input type="text" name="priceTo" placeholder="To"
+                    value={editForm.priceTo} onChange={updateField(setEditForm)} style={{ flex: 1 }} />
                 </div>
               </div>
 
-              {/* USD Price Range */}
               <div className="form-group">
                 <label>USD Price Range</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input type="text" name="priceUsdMin" placeholder="Min" value={formData.priceUsdMin} onChange={handleInputChange} style={{ flex: 1 }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input type="text" name="dollorFrom" placeholder="From"
+                    value={editForm.dollorFrom} onChange={updateField(setEditForm)} style={{ flex: 1 }} />
                   <span style={{ color: '#888', fontWeight: 'bold' }}>—</span>
-                  <input type="text" name="priceUsdMax" placeholder="Max" value={formData.priceUsdMax} onChange={handleInputChange} style={{ flex: 1 }} />
+                  <input type="text" name="dollorTo" placeholder="To"
+                    value={editForm.dollorTo} onChange={updateField(setEditForm)} style={{ flex: 1 }} />
                 </div>
               </div>
 
               <div className="form-row">
-                <div className="form-group"><label>Min People Required</label><input type="number" name="minPeople" min="1" value={formData.minPeople} onChange={handleInputChange} /></div>
-                <div className="form-group"><label>Discount</label><input type="text" name="discount" value={formData.discount} onChange={handleInputChange} /></div>
+                <div className="form-group">
+                  <label>Guest (Min People)</label>
+                  <input type="number" name="guest" min="1"
+                    value={editForm.guest} onChange={updateField(setEditForm)} />
+                </div>
+                <div className="form-group">
+                  <label>Status</label>
+                  <select name="status" value={editForm.status} onChange={updateField(setEditForm)} style={{ width: '100%' }}>
+                    <option value="available">Available</option>
+                    <option value="unavailable">Unavailable</option>
+                  </select>
+                </div>
               </div>
 
-              <div className="form-group"><label>Flight Times</label><input type="text" name="flightTimes" value={formData.flightTimes} onChange={handleInputChange} /></div>
-
-              {/* Rules & Regulation */}
-              <div className="form-group"><label>Rules & Regulation</label><textarea name="rules" rows="3" value={formData.rules} onChange={handleInputChange} /></div>
-
-              {/* Phone Numbers */}
               <div className="form-group">
-                <PhoneNumbersUI formMode />
+                <label>Location</label>
+                <input type="text" name="location"
+                  value={editForm.location} onChange={updateField(setEditForm)} />
+              </div>
+
+              <div className="form-group">
+                <label>Description</label>
+                <textarea name="description" rows="2"
+                  value={editForm.description} onChange={updateField(setEditForm)} />
+              </div>
+
+              <div className="form-group">
+                <label>Rule</label>
+                <textarea name="rule" rows="2"
+                  value={editForm.rule} onChange={updateField(setEditForm)} />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Phone 1</label>
+                  <input type="text" name="phone1"
+                    value={editForm.phone1} onChange={updateField(setEditForm)} />
+                </div>
+                <div className="form-group">
+                  <label>Phone 2</label>
+                  <input type="text" name="phone2"
+                    value={editForm.phone2} onChange={updateField(setEditForm)} />
+                </div>
               </div>
             </div>
-            <div className="modal-footer"><button className="discard-btn" onClick={() => setShowEditModal(false)}>Cancel</button><button className="add-item-btn" onClick={handleConfirmEdit} disabled={loading}>{loading ? 'Updating...' : 'Confirm Edit'}</button></div>
+            <div className="modal-footer">
+              <button className="discard-btn" onClick={() => setShowEditModal(false)}>Cancel</button>
+              <button className="add-item-btn" onClick={handleConfirmEdit} disabled={updating}>
+                {updating ? 'Updating…' : 'Confirm Edit'}
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+      {/* ===== SHOP PREVIEW MODAL (list API) ===== */}
+      {shopPreview.show && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={() => setShopPreview({ show: false, loading: false, items: [] })}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: isDarkMode ? '#2d2d2d' : '#fff',
+              color: isDarkMode ? '#eee' : '#333',
+              padding: 24, borderRadius: 12, width: '90%', maxWidth: 900,
+              maxHeight: '85vh', overflow: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h2 style={{ margin: 0 }}>🛍️ Shop Preview <small style={{ color: '#9ca3af', fontSize: 12 }}>(/air_balloon/shop/list)</small></h2>
+              <button
+                onClick={() => setShopPreview({ show: false, loading: false, items: [] })}
+                style={{ background: 'transparent', border: 'none', color: isDarkMode ? '#eee' : '#333', fontSize: 20, cursor: 'pointer' }}
+              >
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+
+            {shopPreview.loading ? (
+              <div style={{ textAlign: 'center', padding: 40 }}>Loading…</div>
+            ) : shopPreview.items.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No shop balloons available.</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
+                {shopPreview.items.map(it => (
+                  <div key={it.id} style={{
+                    border: `1px solid ${isDarkMode ? '#444' : '#ddd'}`,
+                    borderRadius: 10, overflow: 'hidden',
+                    background: isDarkMode ? '#1e1e1e' : '#fafafa',
+                  }}>
+                    <div style={{ height: 140, background: isDarkMode ? '#333' : '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {it.images[0] ? (
+                        <img src={it.images[0]} alt={it.duration} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <span style={{ fontSize: 40 }}>🎈</span>
+                      )}
+                    </div>
+                    <div style={{ padding: 12 }}>
+                      <h4 style={{ margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <i className="bi bi-clock" style={{ color: '#0d6efd' }}></i>
+                        {it.duration || 'Hot Air Balloon'}
+                      </h4>
+                      <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                        {it.guest && <div><i className="bi bi-person-check"></i> Min {it.guest} pax</div>}
+                        {it.location && <div><i className="bi bi-geo-alt"></i> {it.location}</div>}
+                        {(it.priceFrom || it.priceTo) && (
+                          <div style={{ color: '#22c55e', marginTop: 4 }}>
+                            MMK {it.priceFrom || '?'} — {it.priceTo || '?'}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== SHOP DETAIL MODAL (details API) ===== */}
+      {shopDetail.show && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={() => setShopDetail({ show: false, loading: false, item: null })}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: isDarkMode ? '#2d2d2d' : '#fff',
+              color: isDarkMode ? '#eee' : '#333',
+              padding: 24, borderRadius: 12, width: '90%', maxWidth: 600,
+              maxHeight: '85vh', overflow: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h2 style={{ margin: 0 }}>🛍️ Shop Detail <small style={{ color: '#9ca3af', fontSize: 12 }}>(/air_balloon/shop/details/:id)</small></h2>
+              <button
+                onClick={() => setShopDetail({ show: false, loading: false, item: null })}
+                style={{ background: 'transparent', border: 'none', color: isDarkMode ? '#eee' : '#333', fontSize: 20, cursor: 'pointer' }}
+              >
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+
+            {shopDetail.loading ? (
+              <div style={{ textAlign: 'center', padding: 40 }}>Loading…</div>
+            ) : !shopDetail.item ? (
+              <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No details found.</div>
+            ) : (
+              <div>
+                {shopDetail.item.images[0] && (
+                  <img
+                    src={shopDetail.item.images[0]}
+                    alt={shopDetail.item.duration}
+                    style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 10, marginBottom: 14 }}
+                  />
+                )}
+                <h3 style={{ margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <i className="bi bi-clock" style={{ color: '#0d6efd' }}></i>
+                  {shopDetail.item.duration || 'Hot Air Balloon'}
+                </h3>
+                <ul style={{ listStyle: 'none', padding: 0, lineHeight: 1.9, fontSize: 14 }}>
+                  {shopDetail.item.location && <li><i className="bi bi-geo-alt"></i> Location: {shopDetail.item.location}</li>}
+                  {(shopDetail.item.priceFrom || shopDetail.item.priceTo) && (
+                    <li><i className="bi bi-currency-exchange"></i> MMK: {shopDetail.item.priceFrom || '?'} — {shopDetail.item.priceTo || '?'}</li>
+                  )}
+                  {(shopDetail.item.dollorFrom || shopDetail.item.dollorTo) && (
+                    <li><i className="bi bi-currency-dollar"></i> USD: {shopDetail.item.dollorFrom || '?'} — {shopDetail.item.dollorTo || '?'}</li>
+                  )}
+                  {shopDetail.item.guest && <li><i className="bi bi-person-check"></i> Min People: {shopDetail.item.guest}</li>}
+                  {shopDetail.item.description && <li><i className="bi bi-chat-left-text"></i> Desc: {shopDetail.item.description}</li>}
+                  {shopDetail.item.rule && <li><i className="bi bi-shield-check"></i> Rule: {shopDetail.item.rule}</li>}
+                  {(shopDetail.item.phone1 || shopDetail.item.phone2) && (
+                    <li><i className="bi bi-telephone-fill"></i> Phones: {[shopDetail.item.phone1, shopDetail.item.phone2].filter(Boolean).join(' / ')}</li>
+                  )}
+                  {shopDetail.item.shopName && <li><i className="bi bi-shop"></i> Shop: {shopDetail.item.shopName}</li>}
+                  {shopDetail.item.shopPhone && <li><i className="bi bi-telephone"></i> Shop Phone: {shopDetail.item.shopPhone}</li>}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Simple keyframes for toast animation */}
+      <style>{`
+        @keyframes finSlide {
+          from { transform: translateX(40px); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
