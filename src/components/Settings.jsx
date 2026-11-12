@@ -40,23 +40,25 @@ function Settings() {
   // ---------- API Helpers ----------
   const getToken = () => localStorage.getItem('token');
   const getHeaders = () => ({
-    'Authorization': `Bearer ${getToken()}`,
+    Authorization: `Bearer ${getToken()}`,
     'Content-Type': 'application/json',
   });
 
   const API_BASE_SHOP = '/auth/shop';
   const BACKEND_URL = 'http://130.94.21.185:8000';
 
-  // ⭐ Shop On/Off endpoint (single endpoint — PUT with is_active in body)
-  //   PUT  /auth/shop/activate/
-  //   Body: { "is_active": true }  → Shop ON
-  //   Body: { "is_active": false } → Shop OFF
   const ACTIVATE_API = `${BACKEND_URL}/auth/shop/activate/`;
+
+  // Password change endpoints (role-based)
+  const CHANGE_PASSWORD_API_SHOP = `${BACKEND_URL}/auth/shop/change/password`;
+  const CHANGE_PASSWORD_API_ADMIN = `${BACKEND_URL}/auth/admin/change/password`;
 
   const handle401Error = () => {
     localStorage.removeItem('token');
     showToast('error', 'Session expired. Please login again.');
-    setTimeout(() => { window.location.href = '/login'; }, 1500);
+    setTimeout(() => {
+      window.location.href = '/login';
+    }, 1500);
   };
 
   // ---------- Role Check ----------
@@ -73,6 +75,7 @@ function Settings() {
   const userRole = getRole();
   const isShopRole = userRole === 'shop';
   const isAdminRole = userRole === 'admin' || userRole === 'superadmin';
+  const canChangePassword = isShopRole || isAdminRole;
 
   // ---------- Profile Data ----------
   const [adminProfile, setAdminProfile] = useState({
@@ -114,10 +117,12 @@ function Settings() {
     return `${window.location.origin}/shop/${key}`;
   };
 
-  // ============ localStorage ထဲက user object ရှာဖွေခြင်း ============
   const getStoredUser = () => {
-    const keys = ['user', 'userData', 'userInfo', 'shop', 'shopData', 'currentUser', 'profile', 'authUser', 'loggedUser'];
-
+    const keys = [
+      'user', 'userData', 'userInfo', 'shop', 'shopData',
+      'currentUser', 'profile', 'authUser', 'loggedUser',
+      'admin', 'adminData',
+    ];
     for (const key of keys) {
       try {
         const raw = localStorage.getItem(key);
@@ -125,18 +130,14 @@ function Settings() {
           const parsed = JSON.parse(raw);
           const obj = Array.isArray(parsed) ? parsed[0] : parsed;
           if (obj && typeof obj === 'object' && Object.keys(obj).length > 0) {
-            if (obj.user && typeof obj.user === 'object') {
-              return { ...obj, ...obj.user };
-            }
-            console.log(`📦 Found user in localStorage["${key}"]:`, obj);
+            if (obj.user && typeof obj.user === 'object') return { ...obj, ...obj.user };
             return obj;
           }
         }
       } catch (e) {
-        // ignore
+        /* ignore */
       }
     }
-    console.warn('⚠️ No user object found in localStorage');
     return {};
   };
 
@@ -147,13 +148,11 @@ function Settings() {
     return '';
   };
 
-  // ---------- Determine Active Status ----------
   const deriveActiveStatus = (data, storedUser) => {
     const rawStatus = pick(
       data.is_active, data.active, data.status, data.shop_status,
       storedUser.is_active, storedUser.active, storedUser.status, storedUser.shop_status
     );
-
     if (typeof rawStatus === 'boolean') return rawStatus;
     if (typeof rawStatus === 'number') return rawStatus === 1;
     if (typeof rawStatus === 'string') {
@@ -161,10 +160,67 @@ function Settings() {
       if (['active', 'open', '1', 'true', 'yes'].includes(lower)) return true;
       if (['inactive', 'closed', '0', 'false', 'no', 'disable', 'disabled'].includes(lower)) return false;
     }
-    return true; // default active
+    return true;
   };
 
-  // ---------- FETCH SHOP PROFILE ----------
+  // ==================================================================
+  // ⭐ ADMIN: load profile from localStorage (NO shop API call)
+  // ==================================================================
+  const loadAdminProfileFromStorage = () => {
+    const storedUser = getStoredUser();
+    const roleLower = getRole();
+
+    const mapped = {
+      id: pick(storedUser.id, storedUser.user_id, storedUser.admin_id),
+      fullName: pick(
+        storedUser.full_name,
+        storedUser.name,
+        storedUser.username,
+        storedUser.email ? storedUser.email.split('@')[0] : '',
+        'Admin'
+      ),
+      email: pick(storedUser.email),
+      role: roleLower
+        ? roleLower.charAt(0).toUpperCase() + roleLower.slice(1)
+        : 'Admin',
+      phone: pick(storedUser.phone, storedUser.phone_number, storedUser.mobile),
+      location: [storedUser.address, storedUser.township, storedUser.region]
+        .filter(Boolean)
+        .join(', '),
+      address: pick(storedUser.address, storedUser.street),
+      township: pick(storedUser.township, storedUser.city),
+      region: pick(storedUser.region, storedUser.state),
+      department: pick(storedUser.department, 'Administration'),
+      joinDate: storedUser.created_at
+        ? new Date(storedUser.created_at).toLocaleDateString('en-US', {
+            month: 'long', day: 'numeric', year: 'numeric',
+          })
+        : '',
+      lastLogin:
+        'Today at ' +
+        new Date().toLocaleTimeString('en-US', {
+          hour: '2-digit', minute: '2-digit',
+        }),
+      timezone: 'Asia/Yangon (MMT)',
+      status: storedUser.status
+        ? storedUser.status.charAt(0).toUpperCase() + storedUser.status.slice(1)
+        : 'Active',
+      image: buildImageUrl(pick(storedUser.image, storedUser.avatar)),
+      imageFile: null,
+      imagePreview: buildImageUrl(pick(storedUser.image, storedUser.avatar)),
+      createdAt: pick(storedUser.created_at),
+      updatedAt: pick(storedUser.updated_at),
+      raw: storedUser,
+      slug: pick(storedUser.slug, storedUser.username),
+      profileUrl: '',
+    };
+
+    setAdminProfile(mapped);
+    setTempProfile({ ...mapped });
+    setLoading(false);
+  };
+
+  // ---------- FETCH SHOP PROFILE (Shop only) ----------
   const fetchProfile = async () => {
     setLoading(true);
     setError(null);
@@ -179,11 +235,8 @@ function Settings() {
         throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
       }
       const result = await response.json();
-      console.log('✅ Shop Profile (Raw):', result);
-
       const rawData = result.data || result.shop || result.user || result || {};
       const data = Array.isArray(rawData) ? (rawData[0] || {}) : rawData;
-
       const storedUser = getStoredUser();
 
       const mapped = {
@@ -191,52 +244,30 @@ function Settings() {
           data.shop_id, data.id, data.user_id,
           storedUser.shop_id, storedUser.id, storedUser.user_id
         ),
-
         fullName: pick(
           data.shop_name, data.name, data.full_name, data.username,
           storedUser.shop_name, storedUser.name, storedUser.full_name, storedUser.username,
           'Shop'
         ),
-
-        email: pick(
-          data.email, data.shop_email,
-          storedUser.email, storedUser.shop_email
-        ),
-
+        email: pick(data.email, data.shop_email, storedUser.email, storedUser.shop_email),
         role: data.role
           ? data.role.charAt(0).toUpperCase() + data.role.slice(1)
           : (storedUser.role
               ? storedUser.role.charAt(0).toUpperCase() + storedUser.role.slice(1)
               : 'Shop'),
-
         phone: pick(
           data.phone, data.phone_number, data.mobile,
           storedUser.phone, storedUser.phone_number, storedUser.mobile
         ),
-
         location: pick(
           data.location,
           [data.address, data.township, data.region].filter(Boolean).join(', '),
           [storedUser.address, storedUser.township, storedUser.region].filter(Boolean).join(', ')
         ),
-
-        address: pick(
-          data.address, data.street,
-          storedUser.address, storedUser.street
-        ),
-
-        township: pick(
-          data.township, data.city,
-          storedUser.township, storedUser.city
-        ),
-
-        region: pick(
-          data.region, data.state,
-          storedUser.region, storedUser.state
-        ),
-
+        address: pick(data.address, data.street, storedUser.address, storedUser.street),
+        township: pick(data.township, data.city, storedUser.township, storedUser.city),
+        region: pick(data.region, data.state, storedUser.region, storedUser.state),
         department: pick(data.department, storedUser.department, 'Operations'),
-
         joinDate: data.created_at
           ? new Date(data.created_at).toLocaleDateString('en-US', {
               month: 'long', day: 'numeric', year: 'numeric',
@@ -246,40 +277,33 @@ function Settings() {
                   month: 'long', day: 'numeric', year: 'numeric',
                 })
               : ''),
-
-        lastLogin: 'Today at ' + new Date().toLocaleTimeString('en-US', {
-          hour: '2-digit', minute: '2-digit',
-        }),
-
+        lastLogin:
+          'Today at ' +
+          new Date().toLocaleTimeString('en-US', {
+            hour: '2-digit', minute: '2-digit',
+          }),
         timezone: 'Asia/Yangon (MMT)',
-
         status: data.status
           ? data.status.charAt(0).toUpperCase() + data.status.slice(1)
           : (storedUser.status
               ? storedUser.status.charAt(0).toUpperCase() + storedUser.status.slice(1)
               : 'Active'),
-
         image: buildImageUrl(pick(
           data.image, data.avatar, data.logo,
           storedUser.image, storedUser.avatar, storedUser.logo
         )),
-
         imageFile: null,
-
         imagePreview: buildImageUrl(pick(
           data.image, data.avatar, data.logo,
           storedUser.image, storedUser.avatar, storedUser.logo
         )),
-
         createdAt: pick(data.created_at, storedUser.created_at),
         updatedAt: pick(data.updated_at, storedUser.updated_at),
         raw: data,
-
         slug: pick(
           data.slug, data.username, data.profile_slug, data.shop_code,
           storedUser.slug, storedUser.username, storedUser.profile_slug, storedUser.shop_code
         ),
-
         profileUrl: pick(
           data.profile_url, data.profileUrl,
           storedUser.profile_url, storedUser.profileUrl
@@ -291,30 +315,35 @@ function Settings() {
         if (key) mapped.profileUrl = buildProfileUrl(key);
       }
 
-      console.log('📦 Mapped Profile:', mapped);
-
       setAdminProfile(mapped);
       setTempProfile({ ...mapped });
 
       const activeStatus = deriveActiveStatus(data, storedUser);
       setIsShopActive(activeStatus);
-      console.log('🏪 Shop Active Status:', activeStatus);
     } catch (err) {
       setError(err.message);
-      console.error('❌ Fetch Shop Profile Error:', err);
       showToast('error', 'Failed to load shop profile.');
     } finally {
       setLoading(false);
     }
   };
 
+  // ==================================================================
+  // ⭐ ROLE-AWARE INITIAL LOAD  (404 fix)
+  // ==================================================================
   useEffect(() => {
     const token = getToken();
     if (!token) {
       setError('Please login first');
       return;
     }
-    fetchProfile();
+
+    const role = getRole();
+    if (role === 'shop') {
+      fetchProfile();
+    } else {
+      loadAdminProfileFromStorage();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -369,21 +398,123 @@ function Settings() {
     setNotificationSettings({ ...notificationSettings, [name]: value });
   };
 
-  // ---------- Security Settings ----------
-  const [securitySettings, setSecuritySettings] = useState({
-    twoFactorAuth: false,
-    sessionTimeout: '30',
-    maxLoginAttempts: '5',
-    passwordExpiry: '90',
-    ipWhitelist: '',
+  // ==================================================================
+  // ⭐ PASSWORD CHANGE (Shop + Admin)
+  // ==================================================================
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [pwdVisibility, setPwdVisibility] = useState({
+    current: false,
+    new: false,
+    confirm: false,
   });
 
-  const handleSecurityChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setSecuritySettings({
-      ...securitySettings,
-      [name]: type === 'checkbox' ? checked : value,
-    });
+  const handlePasswordFormChange = (e) => {
+    const { name, value } = e.target;
+    setPasswordForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const togglePwdVisibility = (field) => {
+    setPwdVisibility((prev) => ({ ...prev, [field]: !prev[field] }));
+  };
+
+  const resetPasswordForm = () => {
+    setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    setPwdVisibility({ current: false, new: false, confirm: false });
+  };
+
+  const getChangePasswordApi = () => {
+    if (isShopRole) return CHANGE_PASSWORD_API_SHOP;
+    if (isAdminRole) return CHANGE_PASSWORD_API_ADMIN;
+    return null;
+  };
+
+  const handleChangePassword = async () => {
+    if (!canChangePassword) {
+      showToast('warning', 'You do not have permission to change password.');
+      return;
+    }
+
+    const { currentPassword, newPassword, confirmPassword } = passwordForm;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      showToast('warning', 'Please fill in all password fields.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      showToast('warning', 'New password must be at least 6 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast('warning', 'New password and confirm password do not match.');
+      return;
+    }
+    if (currentPassword === newPassword) {
+      showToast('warning', 'New password must be different from current password.');
+      return;
+    }
+
+    const token = getToken();
+    if (!token) {
+      showToast('error', 'Please login first');
+      return;
+    }
+
+    const api = getChangePasswordApi();
+    if (!api) {
+      showToast('error', 'Password change endpoint not configured for your role.');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const response = await fetch(api, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          CurrentPassword: currentPassword,
+          NewPassword: newPassword,
+          ConfirmPassword: confirmPassword,
+        }),
+      });
+
+      if (response.status === 401) return handle401Error();
+
+      let result = {};
+      try {
+        result = await response.json();
+      } catch {
+        /* non-JSON */
+      }
+
+      if (!response.ok || result.success === false) {
+        const msg =
+          result.message ||
+          result.error ||
+          result.detail ||
+          `Failed to change password (${response.status})`;
+        throw new Error(msg);
+      }
+
+      showToast('success', '🔐 Password changed successfully!');
+      setSuccessMsg('Password changed successfully!');
+      setShowSuccessMessage(true);
+      setTimeout(() => setShowSuccessMessage(false), 3000);
+      resetPasswordForm();
+    } catch (err) {
+      console.error('❌ Change Password Error:', err);
+      showToast('error', 'Error: ' + (err.message || 'Failed to change password'));
+    } finally {
+      setChangingPassword(false);
+    }
   };
 
   // ---------- Appearance Settings ----------
@@ -418,30 +549,19 @@ function Settings() {
   const handleProfileImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     const previewUrl = URL.createObjectURL(file);
-    setTempProfile({
-      ...tempProfile,
-      imageFile: file,
-      imagePreview: previewUrl,
-    });
+    setTempProfile({ ...tempProfile, imageFile: file, imagePreview: previewUrl });
   };
 
   const removeProfileImage = () => {
     if (tempProfile.imagePreview && tempProfile.imagePreview.startsWith('blob:')) {
       URL.revokeObjectURL(tempProfile.imagePreview);
     }
-    setTempProfile({
-      ...tempProfile,
-      imageFile: null,
-      imagePreview: null,
-      image: null,
-    });
+    setTempProfile({ ...tempProfile, imageFile: null, imagePreview: null, image: null });
   };
 
   const handleProfileChange = (e) => {
     const { name, value } = e.target;
-
     if (name === 'slug') {
       const clean = value
         .toLowerCase()
@@ -451,20 +571,16 @@ function Settings() {
       setTempProfile({ ...tempProfile, slug: clean });
       return;
     }
-
     setTempProfile({ ...tempProfile, [name]: value });
   };
 
   // ---------- Copy / Share Profile Link ----------
   const copyProfileLink = async () => {
-    const link = adminProfile.profileUrl
-      || buildProfileUrl(adminProfile.slug || adminProfile.id);
-
+    const link = adminProfile.profileUrl || buildProfileUrl(adminProfile.slug || adminProfile.id);
     if (!link) {
       showToast('warning', 'Profile link is not available yet.');
       return;
     }
-
     try {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(link);
@@ -480,20 +596,16 @@ function Settings() {
         document.execCommand('copy');
         document.body.removeChild(textarea);
       }
-
       setCopied(true);
       showToast('success', 'Profile link copied to clipboard!');
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('❌ Copy link error:', err);
       showToast('error', 'Could not copy link. Please copy manually.');
     }
   };
 
   const shareProfileLink = async () => {
-    const link = adminProfile.profileUrl
-      || buildProfileUrl(adminProfile.slug || adminProfile.id);
-
+    const link = adminProfile.profileUrl || buildProfileUrl(adminProfile.slug || adminProfile.id);
     if (!link) {
       showToast('warning', 'Profile link is not available yet.');
       return;
@@ -509,20 +621,16 @@ function Settings() {
         copyProfileLink();
       }
     } catch (err) {
-      // user cancel
+      /* user cancel */
     }
   };
 
-  // ============ ⭐ TOGGLE SHOP ACTIVE/INACTIVE ============
-  //  Endpoint: PUT  /auth/shop/activate/
-  //  Body    : { "is_active": true }  → Shop ON
-  //            { "is_active": false } → Shop OFF
+  // ---------- TOGGLE SHOP ACTIVE/INACTIVE ----------
   const handleToggleActive = async () => {
     if (!isShopRole) {
       showToast('warning', 'Only shop accounts can toggle this.');
       return;
     }
-
     const token = getToken();
     if (!token) {
       showToast('error', 'Please login first');
@@ -531,15 +639,10 @@ function Settings() {
 
     const previousState = isShopActive;
     const newState = !isShopActive;
-
     setTogglingActive(true);
     setIsShopActive(newState);
 
     try {
-      console.log(`🔄 Toggling Shop → ${newState ? 'ON' : 'OFF'}`);
-      console.log(`🌐 PUT ${ACTIVATE_API}`);
-      console.log(`📦 Body: { is_active: ${newState} }`);
-
       const response = await fetch(ACTIVATE_API, {
         method: 'PUT',
         headers: {
@@ -547,9 +650,7 @@ function Settings() {
           Accept: 'application/json',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          is_active: newState,
-        }),
+        body: JSON.stringify({ is_active: newState }),
       });
 
       if (response.status === 401) {
@@ -561,18 +662,12 @@ function Settings() {
       try {
         result = await response.json();
       } catch {
-        // empty/non-JSON
+        /* empty */
       }
-
-      console.log('✅ Toggle Response:', result);
 
       if (!response.ok || result.success === false) {
         setIsShopActive(previousState);
-        const msg =
-          result.message ||
-          result.error ||
-          `Failed to turn shop ${newState ? 'ON' : 'OFF'} (${response.status})`;
-        throw new Error(msg);
+        throw new Error(result.message || result.error || `Failed (${response.status})`);
       }
 
       try {
@@ -590,10 +685,12 @@ function Settings() {
               };
               localStorage.setItem(key, JSON.stringify(merged));
             }
-          } catch (e) { /* ignore */ }
+          } catch (e) {
+            /* ignore */
+          }
         }
       } catch (e) {
-        console.warn('localStorage update failed:', e);
+        /* ignore */
       }
 
       setAdminProfile((prev) => ({
@@ -609,12 +706,9 @@ function Settings() {
 
       showToast(
         'success',
-        newState
-          ? '🏪 Shop turned ON successfully!'
-          : '🔒 Shop turned OFF successfully!'
+        newState ? '🏪 Shop turned ON successfully!' : '🔒 Shop turned OFF successfully!'
       );
     } catch (err) {
-      console.error(`❌ Toggle Shop Error:`, err);
       setIsShopActive(previousState);
       showToast('error', 'Error: ' + (err.message || 'Toggle failed'));
     } finally {
@@ -622,13 +716,56 @@ function Settings() {
     }
   };
 
-  // ---------- SAVE SHOP PROFILE (PUT) ----------
+  // ==================================================================
+  // ⭐ SAVE PROFILE — role-aware
+  // ==================================================================
   const handleSaveProfile = async () => {
     if (!tempProfile.fullName || !tempProfile.fullName.trim()) {
-      showToast('warning', 'Shop name is required.');
+      showToast('warning', 'Name is required.');
       return;
     }
 
+    // ---------- ADMIN: localStorage only ----------
+    if (!isShopRole) {
+      try {
+        const updateKeys = ['user', 'userData', 'userInfo', 'admin', 'adminData', 'currentUser', 'profile'];
+        for (const key of updateKeys) {
+          try {
+            const existing = localStorage.getItem(key);
+            if (existing) {
+              const parsed = JSON.parse(existing);
+              const merged = {
+                ...parsed,
+                full_name: tempProfile.fullName,
+                name: tempProfile.fullName,
+                username: parsed.username || tempProfile.fullName,
+                email: tempProfile.email,
+                phone: tempProfile.phone,
+                address: tempProfile.address,
+                township: tempProfile.township,
+                region: tempProfile.region,
+                department: tempProfile.department,
+              };
+              localStorage.setItem(key, JSON.stringify(merged));
+            }
+          } catch (e) {
+            /* ignore */
+          }
+        }
+
+        setAdminProfile({ ...tempProfile });
+        setIsEditingProfile(false);
+        showToast('success', 'Profile updated successfully!');
+        setSuccessMsg('Profile updated successfully!');
+        setShowSuccessMessage(true);
+        setTimeout(() => setShowSuccessMessage(false), 3000);
+      } catch (err) {
+        showToast('error', 'Error: ' + err.message);
+      }
+      return;
+    }
+
+    // ---------- SHOP: shop API ----------
     const token = getToken();
     if (!token) {
       showToast('error', 'Please login first');
@@ -646,37 +783,23 @@ function Settings() {
       form.append('address', (tempProfile.address || '').trim());
       form.append('township', (tempProfile.township || '').trim());
       form.append('region', (tempProfile.region || '').trim());
-
-      if (tempProfile.slug) {
-        form.append('slug', tempProfile.slug.trim());
-      }
-      if (tempProfile.imageFile) {
-        form.append('image', tempProfile.imageFile);
-      }
-
-      console.log('📤 Updating Shop Profile...');
+      if (tempProfile.slug) form.append('slug', tempProfile.slug.trim());
+      if (tempProfile.imageFile) form.append('image', tempProfile.imageFile);
 
       const response = await fetch(`${API_BASE_SHOP}/profile/update`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: form,
       });
 
       if (response.status === 401) return handle401Error();
-
       if (!response.ok) {
         const text = await response.text();
         throw new Error(`Server error ${response.status}: ${text.substring(0, 100)}`);
       }
 
       const result = await response.json();
-      console.log('✅ Update Shop Profile Response:', result);
-
-      if (result.success === false) {
-        throw new Error(result.message || 'Update failed');
-      }
+      if (result.success === false) throw new Error(result.message || 'Update failed');
 
       try {
         const updateKeys = ['user', 'userData', 'userInfo', 'shop', 'shopData', 'currentUser', 'profile'];
@@ -699,27 +822,15 @@ function Settings() {
               };
               localStorage.setItem(key, JSON.stringify(merged));
             }
-          } catch (e) { /* ignore */ }
+          } catch (e) {
+            /* ignore */
+          }
         }
-        if (!localStorage.getItem('user')) {
-          localStorage.setItem('user', JSON.stringify({
-            name: tempProfile.fullName,
-            shop_name: tempProfile.fullName,
-            email: tempProfile.email,
-            phone: tempProfile.phone,
-            address: tempProfile.address,
-            township: tempProfile.township,
-            region: tempProfile.region,
-            slug: tempProfile.slug,
-          }));
-        }
-        console.log('💾 localStorage updated with new profile data');
       } catch (e) {
-        console.warn('localStorage update failed:', e);
+        /* ignore */
       }
 
       await fetchProfile();
-
       setIsEditingProfile(false);
       showToast('success', 'Shop profile updated successfully!');
       setSuccessMsg('Shop profile updated successfully!');
@@ -727,7 +838,6 @@ function Settings() {
       setTimeout(() => setShowSuccessMessage(false), 3000);
     } catch (err) {
       setError(err.message);
-      console.error('❌ Update Profile Error:', err);
       showToast('error', 'Error: ' + err.message);
     } finally {
       setSavingProfile(false);
@@ -743,7 +853,6 @@ function Settings() {
   };
 
   const handleStartEdit = () => {
-    console.log('✏️ Start Edit with:', adminProfile);
     setTempProfile({ ...adminProfile });
     setIsEditingProfile(true);
   };
@@ -804,19 +913,23 @@ function Settings() {
 
       {/* Toast */}
       {toast.visible && (
-        <div style={{
-          position: 'fixed', top: '20px', right: '20px', zIndex: 99999,
-          padding: '12px 20px', borderRadius: '8px',
-          backgroundColor: toast.type === 'success' ? '#d4edda' : toast.type === 'warning' ? '#fff3cd' : '#f8d7da',
-          color: toast.type === 'success' ? '#155724' : toast.type === 'warning' ? '#856404' : '#721c24',
-          border: '1px solid ' + (toast.type === 'success' ? '#c3e6cb' : toast.type === 'warning' ? '#ffeeba' : '#f5c6cb'),
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)', maxWidth: '420px',
-        }}>
+        <div
+          style={{
+            position: 'fixed', top: '20px', right: '20px', zIndex: 99999,
+            padding: '12px 20px', borderRadius: '8px',
+            backgroundColor: toast.type === 'success' ? '#d4edda' : toast.type === 'warning' ? '#fff3cd' : '#f8d7da',
+            color: toast.type === 'success' ? '#155724' : toast.type === 'warning' ? '#856404' : '#721c24',
+            border: '1px solid ' + (toast.type === 'success' ? '#c3e6cb' : toast.type === 'warning' ? '#ffeeba' : '#f5c6cb'),
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)', maxWidth: '420px',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <i className={`bi ${toast.type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill'}`}></i>
             <span>{toast.message}</span>
-            <button onClick={() => setToast({ ...toast, visible: false })}
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', marginLeft: 'auto' }}>
+            <button
+              onClick={() => setToast({ ...toast, visible: false })}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', marginLeft: 'auto' }}
+            >
               <i className="bi bi-x-lg"></i>
             </button>
           </div>
@@ -839,8 +952,10 @@ function Settings() {
       {error && (
         <div style={{ background: '#f8d7da', color: '#721c24', padding: '10px', margin: '10px', borderRadius: '5px' }}>
           ❌ {error}
-          <button onClick={() => setError(null)}
-            style={{ marginLeft: '10px', background: 'none', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>
+          <button
+            onClick={() => setError(null)}
+            style={{ marginLeft: '10px', background: 'none', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}
+          >
             ✕
           </button>
         </div>
@@ -860,24 +975,27 @@ function Settings() {
               <p className="warning-text">This action cannot be undone.</p>
             </div>
             <div className="modal-footer">
-              <button className="discard-btn" onClick={() => setShowResetConfirm(false)}>Cancel</button>
-              <button className="btn-danger" onClick={confirmReset}>Reset All</button>
+              <button className="discard-btn" onClick={() => setShowResetConfirm(false)}>
+                Cancel
+              </button>
+              <button className="btn-danger" onClick={confirmReset}>
+                Reset All
+              </button>
             </div>
           </div>
         </div>
       )}
 
       <div className="settings-two-columns">
-        {/* ============ Left Column - Admin Profile Card ============ */}
+        {/* ============ Left Column - Profile Card ============ */}
         <div className="admin-profile-card">
-          {/* Profile Header */}
           <div className="profile-header">
             <div className="profile-image-section">
               <div className="profile-avatar-large">
                 {tempProfile.imagePreview ? (
-                  <img src={tempProfile.imagePreview} alt="Shop" />
+                  <img src={tempProfile.imagePreview} alt="Profile" />
                 ) : (
-                  <span className="avatar-emoji">🏪</span>
+                  <span className="avatar-emoji">{isShopRole ? '🏪' : '👤'}</span>
                 )}
               </div>
               {isEditingProfile && (
@@ -902,8 +1020,8 @@ function Settings() {
                     position: 'absolute', top: '6px', right: '6px',
                     background: '#dc3545', color: '#fff', border: 'none',
                     borderRadius: '50%', width: '26px', height: '26px',
-                    cursor: 'pointer', display: 'flex', alignItems: 'center',
-                    justifyContent: 'center',
+                    cursor: 'pointer', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center',
                   }}
                   title="Remove image"
                 >
@@ -919,11 +1037,11 @@ function Settings() {
                   value={tempProfile.fullName || ''}
                   onChange={handleProfileChange}
                   className="profile-name-input"
-                  placeholder="Shop Name"
+                  placeholder="Full Name"
                   autoComplete="off"
                 />
               ) : (
-                <h2>{adminProfile.fullName || 'Shop'}</h2>
+                <h2>{adminProfile.fullName || (isShopRole ? 'Shop' : 'Admin')}</h2>
               )}
               <span className={getStatusBadgeClass(adminProfile.status)}>
                 {adminProfile.status}
@@ -942,268 +1060,182 @@ function Settings() {
             </div>
           </div>
 
-          {/* ============ SHOP ON / OFF TOGGLE ============ */}
-          <div
-            className="shop-active-section"
-            style={{
-              margin: '12px 0 0',
-              padding: '14px 16px',
-              borderRadius: 10,
-              background: isDarkMode
-                ? (isShopActive ? 'rgba(40,167,69,0.12)' : 'rgba(220,53,69,0.12)')
-                : (isShopActive ? '#e6f7ed' : '#fdeaec'),
-              border: `1px solid ${
-                isShopActive
-                  ? (isDarkMode ? 'rgba(40,167,69,0.35)' : '#b7e4c7')
-                  : (isDarkMode ? 'rgba(220,53,69,0.35)' : '#f5c6cb')
-              }`,
-            }}
-          >
+          {/* SHOP STATUS — Shop only */}
+          {isShopRole && (
             <div
+              className="shop-active-section"
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 12,
+                margin: '12px 0 0',
+                padding: '14px 16px',
+                borderRadius: 10,
+                background: isDarkMode
+                  ? (isShopActive ? 'rgba(40,167,69,0.12)' : 'rgba(220,53,69,0.12)')
+                  : (isShopActive ? '#e6f7ed' : '#fdeaec'),
+                border: `1px solid ${isShopActive
+                  ? (isDarkMode ? 'rgba(40,167,69,0.35)' : '#b7e4c7')
+                  : (isDarkMode ? 'rgba(220,53,69,0.35)' : '#f5c6cb')}`,
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <i
-                  className={`bi ${
-                    isShopActive ? 'bi-shop-window' : 'bi-shop'
-                  }`}
-                  style={{
-                    fontSize: 22,
-                    color: isShopActive ? '#28a745' : '#dc3545',
-                  }}
-                ></i>
-                <div>
-                  <div
-                    style={{
-                      fontWeight: 600,
-                      fontSize: 14,
-                      color: isDarkMode ? '#eee' : '#333',
-                    }}
-                  >
-                    Shop Status
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: isShopActive
-                        ? (isDarkMode ? '#b7eb8f' : '#155724')
-                        : (isDarkMode ? '#ffa39e' : '#721c24'),
-                    }}
-                  >
-                    {isShopActive
-                      ? 'Currently ON — customers can see your shop'
-                      : 'Currently OFF — hidden from customers'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Toggle Switch */}
-              <button
-                type="button"
-                onClick={handleToggleActive}
-                disabled={!isShopRole || togglingActive || loading}
-                title={
-                  !isShopRole
-                    ? 'Only shop accounts can toggle this'
-                    : isShopActive
-                      ? 'Click to turn shop OFF'
-                      : 'Click to turn shop ON'
-                }
-                style={{
-                  position: 'relative',
-                  width: 64,
-                  height: 32,
-                  borderRadius: 16,
-                  border: 'none',
-                  cursor: !isShopRole || togglingActive ? 'not-allowed' : 'pointer',
-                  background: isShopActive
-                    ? '#28a745'
-                    : (isDarkMode ? '#555' : '#ccc'),
-                  opacity: !isShopRole || togglingActive ? 0.55 : 1,
-                  transition: 'background 0.25s ease',
-                  flexShrink: 0,
-                }}
-              >
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: 3,
-                    left: isShopActive ? 34 : 3,
-                    width: 26,
-                    height: 26,
-                    borderRadius: '50%',
-                    background: '#fff',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-                    transition: 'left 0.25s ease',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {togglingActive ? (
-                    <i
-                      className="bi bi-arrow-repeat"
-                      style={{
-                        fontSize: 14,
-                        color: '#333',
-                        animation: 'spin 1s linear infinite',
-                      }}
-                    ></i>
-                  ) : (
-                    <i
-                      className={`bi ${
-                        isShopActive ? 'bi-check-lg' : 'bi-x-lg'
-                      }`}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <i
+                    className={`bi ${isShopActive ? 'bi-shop-window' : 'bi-shop'}`}
+                    style={{ fontSize: 22, color: isShopActive ? '#28a745' : '#dc3545' }}
+                  ></i>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: isDarkMode ? '#eee' : '#333' }}>
+                      Shop Status
+                    </div>
+                    <div
                       style={{
                         fontSize: 12,
-                        color: isShopActive ? '#28a745' : '#999',
+                        color: isShopActive
+                          ? (isDarkMode ? '#b7eb8f' : '#155724')
+                          : (isDarkMode ? '#ffa39e' : '#721c24'),
                       }}
-                    ></i>
-                  )}
-                </span>
-              </button>
-            </div>
-
-            {/* Admin notice */}
-            {!isShopRole && (
-              <div
-                style={{
-                  marginTop: 10,
-                  fontSize: 11,
-                  color: isDarkMode ? '#bbb' : '#666',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  borderTop: `1px dashed ${
-                    isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
-                  }`,
-                  paddingTop: 8,
-                }}
-              >
-                <i className="bi bi-info-circle"></i>
-                {isAdminRole
-                  ? 'Admin accounts cannot toggle shop status. Only shop owners can.'
-                  : 'You do not have permission to toggle shop status.'}
+                    >
+                      {isShopActive
+                        ? 'Currently ON — customers can see your shop'
+                        : 'Currently OFF — hidden from customers'}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleActive}
+                  disabled={togglingActive || loading}
+                  title={isShopActive ? 'Click to turn shop OFF' : 'Click to turn shop ON'}
+                  style={{
+                    position: 'relative', width: 64, height: 32, borderRadius: 16,
+                    border: 'none',
+                    cursor: togglingActive ? 'not-allowed' : 'pointer',
+                    background: isShopActive ? '#28a745' : (isDarkMode ? '#555' : '#ccc'),
+                    opacity: togglingActive ? 0.55 : 1,
+                    transition: 'background 0.25s ease', flexShrink: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      position: 'absolute', top: 3, left: isShopActive ? 34 : 3,
+                      width: 26, height: 26, borderRadius: '50%', background: '#fff',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+                      transition: 'left 0.25s ease',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    {togglingActive ? (
+                      <i
+                        className="bi bi-arrow-repeat"
+                        style={{ fontSize: 14, color: '#333', animation: 'spin 1s linear infinite' }}
+                      ></i>
+                    ) : (
+                      <i
+                        className={`bi ${isShopActive ? 'bi-check-lg' : 'bi-x-lg'}`}
+                        style={{ fontSize: 12, color: isShopActive ? '#28a745' : '#999' }}
+                      ></i>
+                    )}
+                  </span>
+                </button>
               </div>
-            )}
 
-            {/* Current status pill */}
-            <div
-              style={{
-                marginTop: 10,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                fontSize: 11,
-              }}
-            >
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '2px 10px',
-                  borderRadius: 12,
-                  background: isShopActive
-                    ? (isDarkMode ? 'rgba(40,167,69,0.25)' : '#d4edda')
-                    : (isDarkMode ? 'rgba(220,53,69,0.25)' : '#f8d7da'),
-                  color: isShopActive
-                    ? (isDarkMode ? '#b7eb8f' : '#155724')
-                    : (isDarkMode ? '#ffa39e' : '#721c24'),
-                  fontWeight: 600,
-                }}
-              >
-                <i
-                  className={`bi ${
-                    isShopActive ? 'bi-circle-fill' : 'bi-circle'
-                  }`}
-                  style={{ fontSize: 8 }}
-                ></i>
-                {isShopActive ? 'ON' : 'OFF'}
-              </span>
+              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
+                <span
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '2px 10px', borderRadius: 12,
+                    background: isShopActive
+                      ? (isDarkMode ? 'rgba(40,167,69,0.25)' : '#d4edda')
+                      : (isDarkMode ? 'rgba(220,53,69,0.25)' : '#f8d7da'),
+                    color: isShopActive
+                      ? (isDarkMode ? '#b7eb8f' : '#155724')
+                      : (isDarkMode ? '#ffa39e' : '#721c24'),
+                    fontWeight: 600,
+                  }}
+                >
+                  <i className={`bi ${isShopActive ? 'bi-circle-fill' : 'bi-circle'}`} style={{ fontSize: 8 }}></i>
+                  {isShopActive ? 'ON' : 'OFF'}
+                </span>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* ============ Shareable Profile Link ============ */}
-          <div className="profile-link-section" style={{ marginTop: 12 }}>
-            <div className="profile-link-header">
-              <i className="bi bi-link-45deg"></i>
-              <span className="detail-label">Profile Link (Shareable)</span>
-            </div>
+          {/* PROFILE LINK — Shop only */}
+          {isShopRole && (
+            <div className="profile-link-section" style={{ marginTop: 12 }}>
+              <div className="profile-link-header">
+                <i className="bi bi-link-45deg"></i>
+                <span className="detail-label">Profile Link (Shareable)</span>
+              </div>
 
-            {isEditingProfile ? (
-              <>
+              {isEditingProfile ? (
+                <>
+                  <div className="profile-link-input-wrap">
+                    <span className="link-prefix">{window.location.origin}/shop/</span>
+                    <input
+                      type="text"
+                      name="slug"
+                      value={tempProfile.slug || ''}
+                      onChange={handleProfileChange}
+                      className="detail-input slug-input"
+                      placeholder="my-shop-name"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <p className="field-note">
+                    Letters, numbers and dashes only. This becomes your public profile link.
+                  </p>
+                </>
+              ) : (
                 <div className="profile-link-input-wrap">
-                  <span className="link-prefix">{window.location.origin}/shop/</span>
                   <input
                     type="text"
-                    name="slug"
-                    value={tempProfile.slug || ''}
-                    onChange={handleProfileChange}
-                    className="detail-input slug-input"
-                    placeholder="my-shop-name"
-                    autoComplete="off"
+                    readOnly
+                    value={
+                      adminProfile.profileUrl ||
+                      buildProfileUrl(adminProfile.slug || adminProfile.id) ||
+                      'Profile link will be available soon'
+                    }
+                    onFocus={(e) => e.target.select()}
+                    className="detail-input link-readonly"
                   />
                 </div>
-                <p className="field-note">
-                  Letters, numbers and dashes only. This becomes your public profile link.
-                </p>
-              </>
-            ) : (
-              <div className="profile-link-input-wrap">
-                <input
-                  type="text"
-                  readOnly
-                  value={
-                    adminProfile.profileUrl
-                    || buildProfileUrl(adminProfile.slug || adminProfile.id)
-                    || 'Profile link will be available soon'
-                  }
-                  onFocus={(e) => e.target.select()}
-                  className="detail-input link-readonly"
-                />
-              </div>
-            )}
-
-            <div className="profile-link-actions">
-              <button
-                type="button"
-                className="copy-link-btn"
-                onClick={copyProfileLink}
-                disabled={!adminProfile.profileUrl && !adminProfile.slug && !adminProfile.id}
-              >
-                <i className={`bi ${copied ? 'bi-check-lg' : 'bi-clipboard'}`}></i>
-                {copied ? 'Copied!' : 'Copy Link'}
-              </button>
-
-              <a
-                className="open-link-btn"
-                href={
-                  adminProfile.profileUrl
-                  || buildProfileUrl(adminProfile.slug || adminProfile.id)
-                  || '#'
-                }
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => {
-                  if (!adminProfile.profileUrl && !adminProfile.slug && !adminProfile.id) e.preventDefault();
-                }}
-              >
-                <i className="bi bi-box-arrow-up-right"></i> Open
-              </a>
-
-              {typeof navigator !== 'undefined' && navigator.share && (
-                <button type="button" className="share-link-btn" onClick={shareProfileLink}>
-                  <i className="bi bi-share-fill"></i> Share
-                </button>
               )}
+
+              <div className="profile-link-actions">
+                <button
+                  type="button"
+                  className="copy-link-btn"
+                  onClick={copyProfileLink}
+                  disabled={!adminProfile.profileUrl && !adminProfile.slug && !adminProfile.id}
+                >
+                  <i className={`bi ${copied ? 'bi-check-lg' : 'bi-clipboard'}`}></i>
+                  {copied ? 'Copied!' : 'Copy Link'}
+                </button>
+                <a
+                  className="open-link-btn"
+                  href={
+                    adminProfile.profileUrl ||
+                    buildProfileUrl(adminProfile.slug || adminProfile.id) ||
+                    '#'
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => {
+                    if (!adminProfile.profileUrl && !adminProfile.slug && !adminProfile.id) {
+                      e.preventDefault();
+                    }
+                  }}
+                >
+                  <i className="bi bi-box-arrow-up-right"></i> Open
+                </a>
+                {typeof navigator !== 'undefined' && navigator.share && (
+                  <button type="button" className="share-link-btn" onClick={shareProfileLink}>
+                    <i className="bi bi-share-fill"></i> Share
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Profile Details */}
           <div className="profile-details">
@@ -1212,9 +1244,15 @@ function Settings() {
               <div className="detail-content">
                 <span className="detail-label">Email</span>
                 {isEditingProfile ? (
-                  <input type="email" name="email" value={tempProfile.email || ''}
-                    onChange={handleProfileChange} className="detail-input"
-                    placeholder="email@example.com" autoComplete="off" />
+                  <input
+                    type="email"
+                    name="email"
+                    value={tempProfile.email || ''}
+                    onChange={handleProfileChange}
+                    className="detail-input"
+                    placeholder="email@example.com"
+                    autoComplete="off"
+                  />
                 ) : (
                   <span className="detail-value">{adminProfile.email || 'N/A'}</span>
                 )}
@@ -1226,9 +1264,15 @@ function Settings() {
               <div className="detail-content">
                 <span className="detail-label">Phone</span>
                 {isEditingProfile ? (
-                  <input type="text" name="phone" value={tempProfile.phone || ''}
-                    onChange={handleProfileChange} className="detail-input"
-                    placeholder="09-xxxxxxxxx" autoComplete="off" />
+                  <input
+                    type="text"
+                    name="phone"
+                    value={tempProfile.phone || ''}
+                    onChange={handleProfileChange}
+                    className="detail-input"
+                    placeholder="09-xxxxxxxxx"
+                    autoComplete="off"
+                  />
                 ) : (
                   <span className="detail-value">{adminProfile.phone || 'N/A'}</span>
                 )}
@@ -1240,9 +1284,15 @@ function Settings() {
               <div className="detail-content">
                 <span className="detail-label">Address</span>
                 {isEditingProfile ? (
-                  <input type="text" name="address" value={tempProfile.address || ''}
-                    onChange={handleProfileChange} className="detail-input"
-                    placeholder="Street address" autoComplete="off" />
+                  <input
+                    type="text"
+                    name="address"
+                    value={tempProfile.address || ''}
+                    onChange={handleProfileChange}
+                    className="detail-input"
+                    placeholder="Street address"
+                    autoComplete="off"
+                  />
                 ) : (
                   <span className="detail-value">{adminProfile.address || 'N/A'}</span>
                 )}
@@ -1254,9 +1304,15 @@ function Settings() {
               <div className="detail-content">
                 <span className="detail-label">Township</span>
                 {isEditingProfile ? (
-                  <input type="text" name="township" value={tempProfile.township || ''}
-                    onChange={handleProfileChange} className="detail-input"
-                    placeholder="Township" autoComplete="off" />
+                  <input
+                    type="text"
+                    name="township"
+                    value={tempProfile.township || ''}
+                    onChange={handleProfileChange}
+                    className="detail-input"
+                    placeholder="Township"
+                    autoComplete="off"
+                  />
                 ) : (
                   <span className="detail-value">{adminProfile.township || 'N/A'}</span>
                 )}
@@ -1268,9 +1324,15 @@ function Settings() {
               <div className="detail-content">
                 <span className="detail-label">Region</span>
                 {isEditingProfile ? (
-                  <input type="text" name="region" value={tempProfile.region || ''}
-                    onChange={handleProfileChange} className="detail-input"
-                    placeholder="Region" autoComplete="off" />
+                  <input
+                    type="text"
+                    name="region"
+                    value={tempProfile.region || ''}
+                    onChange={handleProfileChange}
+                    className="detail-input"
+                    placeholder="Region"
+                    autoComplete="off"
+                  />
                 ) : (
                   <span className="detail-value">{adminProfile.region || 'N/A'}</span>
                 )}
@@ -1282,8 +1344,14 @@ function Settings() {
               <div className="detail-content">
                 <span className="detail-label">Department</span>
                 {isEditingProfile ? (
-                  <input type="text" name="department" value={tempProfile.department || ''}
-                    onChange={handleProfileChange} className="detail-input" autoComplete="off" />
+                  <input
+                    type="text"
+                    name="department"
+                    value={tempProfile.department || ''}
+                    onChange={handleProfileChange}
+                    className="detail-input"
+                    autoComplete="off"
+                  />
                 ) : (
                   <span className="detail-value">{adminProfile.department}</span>
                 )}
@@ -1315,32 +1383,34 @@ function Settings() {
             </div>
           </div>
 
-          {/* Stats */}
-          <div className="profile-stats">
-            <div className="stat">
-              <i className="bi bi-people-fill"></i>
-              <div>
-                <h4>1,234</h4>
-                <span>Customers</span>
+          {/* Stats — Shop only */}
+          {isShopRole && (
+            <div className="profile-stats">
+              <div className="stat">
+                <i className="bi bi-people-fill"></i>
+                <div>
+                  <h4>1,234</h4>
+                  <span>Customers</span>
+                </div>
+              </div>
+              <div className="stat">
+                <i className="bi bi-star-fill"></i>
+                <div>
+                  <h4>4.9</h4>
+                  <span>Rating</span>
+                </div>
+              </div>
+              <div className="stat">
+                <i className="bi bi-trophy-fill"></i>
+                <div>
+                  <h4>2 yrs</h4>
+                  <span>Experience</span>
+                </div>
               </div>
             </div>
-            <div className="stat">
-              <i className="bi bi-star-fill"></i>
-              <div>
-                <h4>4.9</h4>
-                <span>Rating</span>
-              </div>
-            </div>
-            <div className="stat">
-              <i className="bi bi-trophy-fill"></i>
-              <div>
-                <h4>2 yrs</h4>
-                <span>Experience</span>
-              </div>
-            </div>
-          </div>
+          )}
 
-          {/* Edit/Cancel Buttons */}
+          {/* Edit/Cancel */}
           {isEditingProfile ? (
             <div className="profile-edit-actions">
               <button className="cancel-edit-btn" onClick={handleCancelEdit} disabled={savingProfile}>
@@ -1380,7 +1450,7 @@ function Settings() {
           </div>
 
           <div className="settings-content">
-            {/* General */}
+            {/* ---------- GENERAL ---------- */}
             {activeTab === 'general' && (
               <div className="settings-section">
                 <h2 className="section-title">
@@ -1447,7 +1517,9 @@ function Settings() {
                   <div className="switch-group">
                     <SwitchButton
                       checked={generalSettings.maintenanceMode}
-                      onChange={(checked) => setGeneralSettings({ ...generalSettings, maintenanceMode: checked })}
+                      onChange={(checked) =>
+                        setGeneralSettings({ ...generalSettings, maintenanceMode: checked })
+                      }
                       label="Maintenance Mode"
                     />
                     <p className="field-note">When enabled, only admins can access the site</p>
@@ -1464,7 +1536,7 @@ function Settings() {
               </div>
             )}
 
-            {/* Notifications */}
+            {/* ---------- NOTIFICATIONS ---------- */}
             {activeTab === 'notifications' && (
               <div className="settings-section">
                 <h2 className="section-title">
@@ -1474,34 +1546,61 @@ function Settings() {
                   <div className="notification-group">
                     <h3>Channels</h3>
                     <div className="switch-grid">
-                      <SwitchButton checked={notificationSettings.emailNotifications}
-                        onChange={(c) => handleNotificationChange('emailNotifications', c)} label="Email Notifications" />
-                      <SwitchButton checked={notificationSettings.smsNotifications}
-                        onChange={(c) => handleNotificationChange('smsNotifications', c)} label="SMS Notifications" />
-                      <SwitchButton checked={notificationSettings.pushNotifications}
-                        onChange={(c) => handleNotificationChange('pushNotifications', c)} label="Push Notifications" />
+                      <SwitchButton
+                        checked={notificationSettings.emailNotifications}
+                        onChange={(c) => handleNotificationChange('emailNotifications', c)}
+                        label="Email Notifications"
+                      />
+                      <SwitchButton
+                        checked={notificationSettings.smsNotifications}
+                        onChange={(c) => handleNotificationChange('smsNotifications', c)}
+                        label="SMS Notifications"
+                      />
+                      <SwitchButton
+                        checked={notificationSettings.pushNotifications}
+                        onChange={(c) => handleNotificationChange('pushNotifications', c)}
+                        label="Push Notifications"
+                      />
                     </div>
                   </div>
                   <div className="notification-group">
                     <h3>Events</h3>
                     <div className="switch-grid">
-                      <SwitchButton checked={notificationSettings.newUserAlert}
-                        onChange={(c) => handleNotificationChange('newUserAlert', c)} label="New User Registration" />
-                      <SwitchButton checked={notificationSettings.newBookingAlert}
-                        onChange={(c) => handleNotificationChange('newBookingAlert', c)} label="New Booking" />
-                      <SwitchButton checked={notificationSettings.newReviewAlert}
-                        onChange={(c) => handleNotificationChange('newReviewAlert', c)} label="New Review" />
-                      <SwitchButton checked={notificationSettings.reportAlert}
-                        onChange={(c) => handleNotificationChange('reportAlert', c)} label="Reported Content" />
+                      <SwitchButton
+                        checked={notificationSettings.newUserAlert}
+                        onChange={(c) => handleNotificationChange('newUserAlert', c)}
+                        label="New User Registration"
+                      />
+                      <SwitchButton
+                        checked={notificationSettings.newBookingAlert}
+                        onChange={(c) => handleNotificationChange('newBookingAlert', c)}
+                        label="New Booking"
+                      />
+                      <SwitchButton
+                        checked={notificationSettings.newReviewAlert}
+                        onChange={(c) => handleNotificationChange('newReviewAlert', c)}
+                        label="New Review"
+                      />
+                      <SwitchButton
+                        checked={notificationSettings.reportAlert}
+                        onChange={(c) => handleNotificationChange('reportAlert', c)}
+                        label="Reported Content"
+                      />
                     </div>
                   </div>
                   <div className="notification-group">
                     <h3>Digests</h3>
                     <div className="switch-grid">
-                      <SwitchButton checked={notificationSettings.dailyDigest}
-                        onChange={(c) => handleNotificationChange('dailyDigest', c)} label="Daily Digest" />
-                      <SwitchButton checked={notificationSettings.weeklyReport}
-                        onChange={(c) => handleNotificationChange('weeklyReport', c)} label="Weekly Report" />
+                      <SwitchButton
+                        checked={notificationSettings.dailyDigest}
+                        onChange={(c) => handleNotificationChange('dailyDigest', c)}
+                        label="Daily Digest"
+                      />
+                      <SwitchButton
+                        checked={notificationSettings.weeklyReport}
+                        onChange={(c) => handleNotificationChange('weeklyReport', c)}
+                        label="Weekly Report"
+                      />
                     </div>
                   </div>
                 </div>
@@ -1516,55 +1615,212 @@ function Settings() {
               </div>
             )}
 
-            {/* Security */}
+            {/* ---------- SECURITY — Change Password only ---------- */}
             {activeTab === 'security' && (
               <div className="settings-section">
                 <h2 className="section-title">
                   <i className="bi bi-shield-lock-fill"></i> Security Settings
                 </h2>
-                <div className="settings-form">
-                  <div className="switch-group">
-                    <SwitchButton
-                      checked={securitySettings.twoFactorAuth}
-                      onChange={(checked) => setSecuritySettings({ ...securitySettings, twoFactorAuth: checked })}
-                      label="Enable Two-Factor Authentication"
-                    />
+
+                {canChangePassword ? (
+                  <div
+                    className="password-change-card"
+                    style={{
+                      padding: '18px 18px 14px',
+                      borderRadius: 12,
+                      background: isDarkMode ? 'rgba(255,255,255,0.03)' : '#f8fafc',
+                      border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.08)' : '#e5e9f0'}`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginBottom: 14,
+                        gap: 10,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <h3
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          fontSize: 15,
+                          fontWeight: 600,
+                          margin: 0,
+                          color: isDarkMode ? '#f1f5f9' : '#1f2937',
+                        }}
+                      >
+                        <i className="bi bi-key-fill" style={{ color: '#4f46e5' }}></i>
+                        Change Password
+                      </h3>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: '3px 9px',
+                          borderRadius: 20,
+                          background: isShopRole
+                            ? (isDarkMode ? 'rgba(59,130,246,0.2)' : '#dbeafe')
+                            : (isDarkMode ? 'rgba(168,85,247,0.2)' : '#f3e8ff'),
+                          color: isShopRole
+                            ? (isDarkMode ? '#93c5fd' : '#1d4ed8')
+                            : (isDarkMode ? '#d8b4fe' : '#6b21a8'),
+                          textTransform: 'uppercase',
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        <i className={`bi ${isShopRole ? 'bi-shop' : 'bi-person-badge'} me-1`}></i>
+                        {isShopRole ? 'Shop Account' : 'Admin Account'}
+                      </span>
+                    </div>
+
+                    <div className="settings-form">
+                      <div className="form-group">
+                        <label>Current Password</label>
+                        <div className="password-input-wrap">
+                          <input
+                            type={pwdVisibility.current ? 'text' : 'password'}
+                            name="currentPassword"
+                            value={passwordForm.currentPassword}
+                            onChange={handlePasswordFormChange}
+                            placeholder="Enter current password"
+                            autoComplete="current-password"
+                          />
+                          <button
+                            type="button"
+                            className="password-toggle-btn"
+                            onClick={() => togglePwdVisibility('current')}
+                            title={pwdVisibility.current ? 'Hide' : 'Show'}
+                          >
+                            <i className={`bi ${pwdVisibility.current ? 'bi-eye-slash-fill' : 'bi-eye-fill'}`}></i>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="form-row">
+                        <div className="form-group">
+                          <label>New Password</label>
+                          <div className="password-input-wrap">
+                            <input
+                              type={pwdVisibility.new ? 'text' : 'password'}
+                              name="newPassword"
+                              value={passwordForm.newPassword}
+                              onChange={handlePasswordFormChange}
+                              placeholder="Min. 6 characters"
+                              autoComplete="new-password"
+                            />
+                            <button
+                              type="button"
+                              className="password-toggle-btn"
+                              onClick={() => togglePwdVisibility('new')}
+                              title={pwdVisibility.new ? 'Hide' : 'Show'}
+                            >
+                              <i className={`bi ${pwdVisibility.new ? 'bi-eye-slash-fill' : 'bi-eye-fill'}`}></i>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="form-group">
+                          <label>Confirm New Password</label>
+                          <div className="password-input-wrap">
+                            <input
+                              type={pwdVisibility.confirm ? 'text' : 'password'}
+                              name="confirmPassword"
+                              value={passwordForm.confirmPassword}
+                              onChange={handlePasswordFormChange}
+                              placeholder="Re-enter new password"
+                              autoComplete="new-password"
+                            />
+                            <button
+                              type="button"
+                              className="password-toggle-btn"
+                              onClick={() => togglePwdVisibility('confirm')}
+                              title={pwdVisibility.confirm ? 'Hide' : 'Show'}
+                            >
+                              <i className={`bi ${pwdVisibility.confirm ? 'bi-eye-slash-fill' : 'bi-eye-fill'}`}></i>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {passwordForm.newPassword && passwordForm.confirmPassword && (
+                        <p
+                          style={{
+                            margin: '4px 0 0',
+                            fontSize: 12,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            color:
+                              passwordForm.newPassword === passwordForm.confirmPassword
+                                ? '#16a34a'
+                                : '#dc2626',
+                          }}
+                        >
+                          <i
+                            className={`bi ${
+                              passwordForm.newPassword === passwordForm.confirmPassword
+                                ? 'bi-check-circle-fill'
+                                : 'bi-x-circle-fill'
+                            }`}
+                          ></i>
+                          {passwordForm.newPassword === passwordForm.confirmPassword
+                            ? 'Passwords match'
+                            : 'Passwords do not match'}
+                        </p>
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                        gap: 10,
+                        marginTop: 14,
+                        paddingTop: 14,
+                        borderTop: `1px dashed ${
+                          isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
+                        }`,
+                      }}
+                    >
+                      <button
+                        className="btn-secondary"
+                        onClick={resetPasswordForm}
+                        disabled={changingPassword}
+                      >
+                        <i className="bi bi-arrow-counterclockwise"></i> Clear
+                      </button>
+                      <button
+                        className="btn-primary"
+                        onClick={handleChangePassword}
+                        disabled={changingPassword}
+                      >
+                        {changingPassword ? (
+                          <>
+                            <i
+                              className="bi bi-arrow-repeat"
+                              style={{ animation: 'spin 1s linear infinite' }}
+                            ></i>{' '}
+                            Changing...
+                          </>
+                        ) : (
+                          <>
+                            <i className="bi bi-shield-lock-fill"></i> Change Password
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>Session Timeout (minutes)</label>
-                      <input type="number" name="sessionTimeout" value={securitySettings.sessionTimeout} onChange={handleSecurityChange} />
-                    </div>
-                    <div className="form-group">
-                      <label>Max Login Attempts</label>
-                      <input type="number" name="maxLoginAttempts" value={securitySettings.maxLoginAttempts} onChange={handleSecurityChange} />
-                    </div>
-                  </div>
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>Password Expiry (days)</label>
-                      <input type="number" name="passwordExpiry" value={securitySettings.passwordExpiry} onChange={handleSecurityChange} />
-                    </div>
-                    <div className="form-group">
-                      <label>IP Whitelist</label>
-                      <input type="text" name="ipWhitelist" placeholder="192.168.1.1, 10.0.0.1"
-                        value={securitySettings.ipWhitelist} onChange={handleSecurityChange} />
-                      <p className="field-note">Comma-separated IP addresses</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="settings-actions">
-                  <button className="btn-secondary" onClick={handleResetSettings}>
-                    <i className="bi bi-arrow-repeat"></i> Reset to Default
-                  </button>
-                  <button className="btn-primary" onClick={handleSaveSettings}>
-                    <i className="bi bi-check-lg"></i> Save Changes
-                  </button>
-                </div>
+                ) : (
+                  <p className="field-note">You do not have permission to change password.</p>
+                )}
               </div>
             )}
 
-            {/* Appearance */}
+            {/* ---------- APPEARANCE ---------- */}
             {activeTab === 'appearance' && (
               <div className="settings-section">
                 <h2 className="section-title">
@@ -1600,15 +1856,27 @@ function Settings() {
                     </div>
                   </div>
                   <div className="switch-group">
-                    <SwitchButton checked={appearanceSettings.sidebarCollapsed}
-                      onChange={(c) => setAppearanceSettings({ ...appearanceSettings, sidebarCollapsed: c })}
-                      label="Collapse Sidebar by Default" />
-                    <SwitchButton checked={appearanceSettings.compactMode}
-                      onChange={(c) => setAppearanceSettings({ ...appearanceSettings, compactMode: c })}
-                      label="Compact Mode (Denser Layout)" />
-                    <SwitchButton checked={appearanceSettings.animationsEnabled}
-                      onChange={(c) => setAppearanceSettings({ ...appearanceSettings, animationsEnabled: c })}
-                      label="Enable Animations" />
+                    <SwitchButton
+                      checked={appearanceSettings.sidebarCollapsed}
+                      onChange={(c) =>
+                        setAppearanceSettings({ ...appearanceSettings, sidebarCollapsed: c })
+                      }
+                      label="Collapse Sidebar by Default"
+                    />
+                    <SwitchButton
+                      checked={appearanceSettings.compactMode}
+                      onChange={(c) =>
+                        setAppearanceSettings({ ...appearanceSettings, compactMode: c })
+                      }
+                      label="Compact Mode (Denser Layout)"
+                    />
+                    <SwitchButton
+                      checked={appearanceSettings.animationsEnabled}
+                      onChange={(c) =>
+                        setAppearanceSettings({ ...appearanceSettings, animationsEnabled: c })
+                      }
+                      label="Enable Animations"
+                    />
                   </div>
                 </div>
                 <div className="settings-actions">
@@ -1622,7 +1890,7 @@ function Settings() {
               </div>
             )}
 
-            {/* Backup */}
+            {/* ---------- BACKUP ---------- */}
             {activeTab === 'backup' && (
               <div className="settings-section">
                 <h2 className="section-title">
@@ -1640,17 +1908,23 @@ function Settings() {
                     </div>
                   </div>
                   <div className="switch-group">
-                    <SwitchButton checked={backupSettings.autoBackup}
+                    <SwitchButton
+                      checked={backupSettings.autoBackup}
                       onChange={(c) => setBackupSettings({ ...backupSettings, autoBackup: c })}
-                      label="Enable Automatic Backups" />
+                      label="Enable Automatic Backups"
+                    />
                   </div>
                   {backupSettings.autoBackup && (
                     <>
                       <div className="form-row">
                         <div className="form-group">
                           <label>Backup Frequency</label>
-                          <select value={backupSettings.backupFrequency}
-                            onChange={(e) => setBackupSettings({ ...backupSettings, backupFrequency: e.target.value })}>
+                          <select
+                            value={backupSettings.backupFrequency}
+                            onChange={(e) =>
+                              setBackupSettings({ ...backupSettings, backupFrequency: e.target.value })
+                            }
+                          >
                             <option value="daily">Daily</option>
                             <option value="weekly">Weekly</option>
                             <option value="monthly">Monthly</option>
@@ -1658,14 +1932,23 @@ function Settings() {
                         </div>
                         <div className="form-group">
                           <label>Backup Time</label>
-                          <input type="time" value={backupSettings.backupTime}
-                            onChange={(e) => setBackupSettings({ ...backupSettings, backupTime: e.target.value })} />
+                          <input
+                            type="time"
+                            value={backupSettings.backupTime}
+                            onChange={(e) =>
+                              setBackupSettings({ ...backupSettings, backupTime: e.target.value })
+                            }
+                          />
                         </div>
                       </div>
                       <div className="form-group">
                         <label>Backup Location</label>
-                        <select value={backupSettings.backupLocation}
-                          onChange={(e) => setBackupSettings({ ...backupSettings, backupLocation: e.target.value })}>
+                        <select
+                          value={backupSettings.backupLocation}
+                          onChange={(e) =>
+                            setBackupSettings({ ...backupSettings, backupLocation: e.target.value })
+                          }
+                        >
                           <option value="local">Local Server</option>
                           <option value="cloud">Cloud Storage</option>
                           <option value="both">Both</option>
@@ -1696,11 +1979,49 @@ function Settings() {
         </div>
       </div>
 
-      {/* Spinner keyframes (inline) */}
+      {/* Spinner + Password styles */}
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
+        }
+
+        .password-input-wrap {
+          position: relative;
+          display: flex;
+          align-items: center;
+          width: 100%;
+        }
+        .password-input-wrap input {
+          width: 100%;
+          padding-right: 42px !important;
+        }
+        .password-toggle-btn {
+          position: absolute;
+          right: 6px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          color: #6b7280;
+          padding: 6px 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 6px;
+          transition: background 0.15s ease, color 0.15s ease;
+          font-size: 15px;
+          line-height: 1;
+        }
+        .password-toggle-btn:hover {
+          background: rgba(0, 0, 0, 0.06);
+          color: #111827;
+        }
+        .dark-theme .password-toggle-btn { color: #9ca3af; }
+        .dark-theme .password-toggle-btn:hover {
+          background: rgba(255, 255, 255, 0.1);
+          color: #f3f4f6;
         }
       `}</style>
     </div>
